@@ -1,0 +1,17 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Transaction {
+  id         Int      @id @default(autoincrement())
+  amount     Int
+  category   String
+  type       String   // "income" | "expense"
+  createdAt  DateTime @default(now())
+  occurredAt DateTime @default(now()) // ← 発生日（入力・編集したい日付）
+}
