@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Transaction {
@@ -13,5 +14,5 @@ model Transaction {
   category   String
   type       String   // "income" | "expense"
   createdAt  DateTime @default(now())
-  occurredAt DateTime @default(now()) // ← 発生日（入力・編集したい日付）
+  occurredAt DateTime @default(now()) // 発生日（入力・編集したい日付）
 }
