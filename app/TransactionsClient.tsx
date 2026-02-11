@@ -76,6 +76,66 @@ function normalizeUserKeyInput(s: string) {
   return s.trim().slice(0, 64);
 }
 
+/**
+ * ✅ リング描画（SVG）
+ * progress: 0〜1
+ */
+function Ring({
+  size,
+  stroke,
+  progress,
+  color,
+  trackColor = "#e5e7eb",
+}: {
+  size: number;
+  stroke: number;
+  progress: number;
+  color: string;
+  trackColor?: string;
+}) {
+  const p = clamp01(progress);
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const dashOffset = c * (1 - p);
+
+  return (
+    <svg
+      width={size}
+      height={size}
+      style={{
+        position: "absolute",
+        inset: 0,
+        pointerEvents: "none",
+      }}
+      viewBox={`0 0 ${size} ${size}`}
+    >
+      {/* track */}
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke={trackColor}
+        strokeWidth={stroke}
+      />
+      {/* progress */}
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke={color}
+        strokeWidth={stroke}
+        strokeLinecap="round"
+        strokeDasharray={c}
+        strokeDashoffset={dashOffset}
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        style={{ transition: "stroke-dashoffset 0.35s ease" }}
+      />
+    </svg>
+  );
+}
+
 export default function TransactionsClient({ initialTransactions }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>(
     initialTransactions ?? []
@@ -184,9 +244,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const savedThisMonth = summary.balance;
   const remainToMonthlySave = Math.max(0, monthlySaveTarget - savedThisMonth);
   const progressMonthlySave =
-    monthlySaveTarget > 0
-      ? clamp01(savedThisMonth / monthlySaveTarget)
-      : 0;
+    monthlySaveTarget > 0 ? clamp01(savedThisMonth / monthlySaveTarget) : 0;
 
   // --- ④ 年間予測 & 危険ゾーン（シンプル版）
   const monthlyBalances = useMemo(() => {
@@ -262,6 +320,17 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   // 残り返済総額
   const remainingDebt = Math.max(0, debtTotal - repaidTotal);
 
+  // ✅ リング進捗
+  // 残高：目標に近づくほど増える（グレー）
+  const balanceRingProgress = progressToTarget;
+
+  // 返済：B方式 → 「残り割合」が減っていく（赤）
+  const debtRingProgress =
+    debtTotal > 0 ? clamp01(remainingDebt / debtTotal) : 0;
+
+  // 貯蓄：今月目標に近づくほど増える（緑）
+  const saveRingProgress = progressMonthlySave;
+
   // スマホ判定（サイズ調整）
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -278,13 +347,15 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   >(null);
 
   const sizeFor = (key: "balance" | "debt" | "save") => {
-    const base = isMobile ? 140 : 240;   // 通常（スマホは少し小さめ）
+    const base = isMobile ? 140 : 240; // 通常（スマホは少し小さめ）
     const active = isMobile ? 220 : 300; // 拡大
-    const small = isMobile ? 115 : 190;  // 他2つ
+    const small = isMobile ? 115 : 190; // 他2つ
 
     if (activeCircle === null) return base;
     return activeCircle === key ? active : small;
   };
+
+  const strokeFor = () => (isMobile ? 10 : 12);
 
   // どの円をタップしたかで入力UIを出す
   const circleEditorTitle =
@@ -480,8 +551,18 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               userSelect: "none",
               cursor: "pointer",
               textAlign: "center",
+              position: "relative",
+              overflow: "hidden",
             }}
           >
+            {/* 残高リング（グレー） */}
+            <Ring
+              size={sizeFor("balance")}
+              stroke={strokeFor()}
+              progress={balanceRingProgress}
+              color="#9ca3af"
+            />
+
             <div style={{ fontSize: 14, opacity: 0.75, fontWeight: 700 }}>
               残高
             </div>
@@ -529,8 +610,18 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               userSelect: "none",
               cursor: "pointer",
               textAlign: "center",
+              position: "relative",
+              overflow: "hidden",
             }}
           >
+            {/* 返済リング（赤：残り割合が減る） */}
+            <Ring
+              size={sizeFor("debt")}
+              stroke={strokeFor()}
+              progress={debtRingProgress}
+              color="#ef4444"
+            />
+
             <div style={{ fontSize: 14, opacity: 0.75, fontWeight: 700 }}>
               返済
             </div>
@@ -577,8 +668,18 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               userSelect: "none",
               cursor: "pointer",
               textAlign: "center",
+              position: "relative",
+              overflow: "hidden",
             }}
           >
+            {/* 貯蓄リング（緑：増える） */}
+            <Ring
+              size={sizeFor("save")}
+              stroke={strokeFor()}
+              progress={saveRingProgress}
+              color="#22c55e"
+            />
+
             <div style={{ fontSize: 14, opacity: 0.75, fontWeight: 700 }}>
               貯蓄
             </div>
@@ -734,7 +835,13 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             </>
           )}
 
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              marginTop: 12,
+            }}
+          >
             <button
               type="button"
               onClick={() => setActiveCircle(null)}
