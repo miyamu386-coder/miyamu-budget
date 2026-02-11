@@ -346,6 +346,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     "balance" | "debt" | "save" | null
   >(null);
 
+  // ✅ 円のサイズ（表示用：拡大縮小）
   const sizeFor = (key: "balance" | "debt" | "save") => {
     const base = isMobile ? 140 : 240; // 通常（スマホは少し小さめ）
     const active = isMobile ? 220 : 300; // 拡大
@@ -355,7 +356,20 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     return activeCircle === key ? active : small;
   };
 
-  const strokeFor = () => (isMobile ? 10 : 12);
+  // ✅ リングのサイズは「固定」(ここがリング消え対策の肝)
+  const baseSizeFor = (key: "balance" | "debt" | "save") => {
+    if (key === "balance") return isMobile ? 140 : 240;
+    if (key === "debt") return isMobile ? 115 : 190;
+    return isMobile ? 115 : 190;
+  };
+
+  // ✅ strokeも固定サイズに合わせて安定化
+  const strokeFor = (key: "balance" | "debt" | "save") => {
+    const s = baseSizeFor(key);
+    // 大きい円は少し太く、他は少し細く
+    if (key === "balance") return s >= 200 ? 12 : 10;
+    return s >= 180 ? 11 : 9;
+  };
 
   // どの円をタップしたかで入力UIを出す
   const circleEditorTitle =
@@ -555,10 +569,10 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               overflow: "hidden",
             }}
           >
-            {/* 残高リング（グレー） */}
+            {/* ✅ 残高リング（グレー）※サイズは固定で描画 */}
             <Ring
-              size={sizeFor("balance")}
-              stroke={strokeFor()}
+              size={baseSizeFor("balance")}
+              stroke={strokeFor("balance")}
               progress={balanceRingProgress}
               color="#9ca3af"
             />
@@ -575,7 +589,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               {yen(summary.balance)}円
             </div>
 
-            {/* 詳細：残高 → 収入/支出 */}
             <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
               収入 {yen(summary.income)} / 支出 {yen(summary.expense)}
             </div>
@@ -614,10 +627,10 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               overflow: "hidden",
             }}
           >
-            {/* 返済リング（赤：残り割合が減る） */}
+            {/* ✅ 返済リング（赤：残り割合が減る）※サイズ固定で描画 */}
             <Ring
-              size={sizeFor("debt")}
-              stroke={strokeFor()}
+              size={baseSizeFor("debt")}
+              stroke={strokeFor("debt")}
               progress={debtRingProgress}
               color="#ef4444"
             />
@@ -637,7 +650,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               (累計)
             </div>
 
-            {/* 詳細：返済 → 残り総額 */}
             {activeCircle === "debt" && (
               <div style={{ marginTop: 10, fontSize: 13, opacity: 0.85 }}>
                 残り総額 {yen(remainingDebt)}円
@@ -672,10 +684,10 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               overflow: "hidden",
             }}
           >
-            {/* 貯蓄リング（緑：増える） */}
+            {/* ✅ 貯蓄リング（緑）※サイズ固定で描画 */}
             <Ring
-              size={sizeFor("save")}
-              stroke={strokeFor()}
+              size={baseSizeFor("save")}
+              stroke={strokeFor("save")}
               progress={saveRingProgress}
               color="#22c55e"
             />
@@ -693,7 +705,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             </div>
             <div style={{ marginTop: 4, fontSize: 12, opacity: 0.6 }}>今月</div>
 
-            {/* 詳細：貯蓄 → 目標との差 */}
             {activeCircle === "save" && (
               <div style={{ marginTop: 10, fontSize: 13, opacity: 0.85 }}>
                 目標差 {yen(remainToMonthlySave)}円
