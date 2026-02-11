@@ -8,7 +8,7 @@ export default async function Home() {
 
   return (
     <main style={{ padding: 24 }}>
-      <h1>miyamu budget</h1>
+      <h1>みやむMaker</h1>
       <TransactionsClient initialTransactions={transactions} />
     </main>
   );
