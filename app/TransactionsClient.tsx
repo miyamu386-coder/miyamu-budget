@@ -57,20 +57,41 @@ function yen(n: number) {
   return n.toLocaleString("ja-JP");
 }
 
+function clamp01(x: number) {
+  return Math.max(0, Math.min(1, x));
+}
+
+// ✅ 本番(Vercel)では userKey UI を出さない（ローカル開発だけ表示）
+const SHOW_USERKEY_UI = process.env.NODE_ENV !== "production";
+
+// lib/userKey.ts と同じキー名（ここだけ一致させる）
+const STORAGE_KEY = "miyamu_budget_user_key";
+
+function maskKey(k: string) {
+  if (!k) return "";
+  if (k.length <= 8) return k;
+  return `${k.slice(0, 4)}…${k.slice(-4)}`;
+}
+
+function normalizeUserKeyInput(s: string) {
+  return s.trim().slice(0, 64);
+}
+
 export default function TransactionsClient({ initialTransactions }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>(
     initialTransactions ?? []
   );
   const [editing, setEditing] = useState<Transaction | null>(null);
 
-  // ✅ userKey（内部では使う／UI表示はしない）
+  // ✅ 現在のuserKeyをstate管理（UIは本番では非表示だけど、内部では使う）
   const [userKey, setUserKey] = useState<string>("");
 
+  // 初回：localStorageから userKey を確定
   useEffect(() => {
     setUserKey(getOrCreateUserKey());
   }, []);
 
-  // ✅ userKeyのデータだけを取得
+  // ✅ userKeyが変わったら、そのuserKeyのデータを再取得
   useEffect(() => {
     if (!userKey) return;
 
@@ -96,7 +117,33 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     })();
   }, [userKey]);
 
-  // --- 月切替（今月デフォルト）
+  // ✅ userKey切替（デモUI：本番では非表示）
+  const [keyEditingOpen, setKeyEditingOpen] = useState(false);
+  const [userKeyInput, setUserKeyInput] = useState("");
+
+  useEffect(() => {
+    if (keyEditingOpen) setUserKeyInput(userKey);
+  }, [keyEditingOpen, userKey]);
+
+  const applyUserKey = () => {
+    const next = normalizeUserKeyInput(userKeyInput);
+    if (next.length < 8 || next.length > 64) {
+      alert("userKey は8〜64文字で入力してください（英数字推奨）");
+      return;
+    }
+    localStorage.setItem(STORAGE_KEY, next);
+    setUserKey(next);
+    setKeyEditingOpen(false);
+  };
+
+  const regenerateUserKey = () => {
+    localStorage.removeItem(STORAGE_KEY);
+    const next = getOrCreateUserKey();
+    setUserKey(next);
+    setKeyEditingOpen(false);
+  };
+
+  // --- ① 月切替（今月をデフォルト）
   const nowYm = ymdToMonthKey(new Date().toISOString().slice(0, 10));
   const [selectedYm, setSelectedYm] = useState<string>(nowYm);
 
@@ -123,14 +170,13 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     return Array.from(set);
   }, [transactions]);
 
-  // --- 円グラフ：内訳（カテゴリ）⇔ 割合（収入/支出）
+  // --- ② 円グラフ：内訳（カテゴリ）⇔ 割合（収入/支出）
   const [chartKind, setChartKind] = useState<"breakdown" | "ratio">("breakdown");
   const toggleChartKind = () => {
     setChartKind((k) => (k === "breakdown" ? "ratio" : "breakdown"));
   };
 
   const breakdownData: PieDatum[] = useMemo(() => {
-    // 今月の「支出」をカテゴリ集計
     const map = new Map<string, number>();
     for (const t of monthTransactions) {
       if (t.type !== "expense") continue;
@@ -159,28 +205,147 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
   const ratioTotal = summary.income + summary.expense;
 
-  // --- 3つの丸（今日は配置だけ）
-  // 残高：今月の収入-支出（いまの実装に合わせる）
-  const balanceValue = summary.balance;
+  // --- ③ 目標：残高目標 / 今月の貯金目標（任意入力）
+  const [targetBalanceStr, setTargetBalanceStr] = useState<string>("200000");
+  const targetBalance = Number(targetBalanceStr.replace(/,/g, "")) || 0;
 
-  // 貯蓄：ひとまず今月の差額をそのまま（後で「貯蓄」ルールに変更OK）
-  const savingValue = summary.balance;
+  const remainToTarget = Math.max(0, targetBalance - summary.balance);
+  const progressToTarget =
+    targetBalance > 0 ? clamp01(summary.balance / targetBalance) : 0;
 
-  // 返済：今日は仮（後で「カテゴリに返済が入った支出」などで反映）
-  const debtValue = 0;
+  const [monthlySaveTargetStr, setMonthlySaveTargetStr] =
+    useState<string>("50000");
+  const monthlySaveTarget = Number(monthlySaveTargetStr.replace(/,/g, "")) || 0;
+
+  const savedThisMonth = summary.balance;
+  const remainToMonthlySave = Math.max(0, monthlySaveTarget - savedThisMonth);
+  const progressMonthlySave =
+    monthlySaveTarget > 0
+      ? clamp01(savedThisMonth / monthlySaveTarget)
+      : 0;
+
+  // --- ④ 年間予測 & 危険ゾーン（シンプル版）
+  const monthlyBalances = useMemo(() => {
+    const map = new Map<string, { income: number; expense: number }>();
+    for (const t of transactions) {
+      const ymd = (t.occurredAt ?? "").slice(0, 10);
+      if (!ymd) continue;
+      const ym = ymdToMonthKey(ymd);
+      const cur = map.get(ym) ?? { income: 0, expense: 0 };
+      if (t.type === "income") cur.income += t.amount;
+      else cur.expense += t.amount;
+      map.set(ym, cur);
+    }
+    const arr = Array.from(map.entries())
+      .map(([ym, v]) => ({ ym, balance: v.income - v.expense }))
+      .sort((a, b) => (a.ym < b.ym ? -1 : 1));
+    return arr;
+  }, [transactions]);
+
+  const recent3Avg = useMemo(() => {
+    const last = monthlyBalances.slice(-3);
+    if (last.length === 0) return 0;
+    const sum = last.reduce((a, x) => a + x.balance, 0);
+    return sum / last.length;
+  }, [monthlyBalances]);
+
+  const year = selectedYm.slice(0, 4);
+  const remainingMonthsInYear = useMemo(() => {
+    const m = Number(selectedYm.slice(5, 7));
+    return 13 - m;
+  }, [selectedYm]);
+
+  const predictedYearEndBalance = useMemo(() => {
+    const rest = Math.max(0, remainingMonthsInYear - 1);
+    return summary.balance + recent3Avg * rest;
+  }, [summary.balance, recent3Avg, remainingMonthsInYear]);
+
+  const dangerLevel = useMemo(() => {
+    if (summary.balance < 0) return "danger";
+    if (recent3Avg < 0) return "warning";
+    return "ok";
+  }, [summary.balance, recent3Avg]);
+
+  const dangerText =
+    dangerLevel === "danger"
+      ? "危険：今月が赤字です"
+      : dangerLevel === "warning"
+      ? "注意：直近の平均貯金がマイナスです"
+      : "良好：この調子！";
+
+  // =========================
+  // ✅ B：3つの円（残高/返済/貯蓄）＋タップで拡大＋詳細表示
+  // =========================
+
+  // 返済総額（任意）
+  const [debtTotalStr, setDebtTotalStr] = useState<string>("0");
+  const debtTotal = Number(debtTotalStr.replace(/,/g, "")) || 0;
+
+  // 「返済」扱いの条件：カテゴリに「返済」を含む支出
+  const isRepayment = (t: Transaction) => {
+    const c = (t.category ?? "").trim();
+    return t.type === "expense" && c.includes("返済");
+  };
+
+  // 返済累計（全期間）
+  const repaidTotal = useMemo(() => {
+    return transactions.reduce((sum, t) => (isRepayment(t) ? sum + t.amount : sum), 0);
+  }, [transactions]);
+
+  // 残り返済総額
+  const remainingDebt = Math.max(0, debtTotal - repaidTotal);
+
+  // スマホ判定（サイズ調整）
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 600px)");
+    const apply = () => setIsMobile(mq.matches);
+    apply();
+    mq.addEventListener?.("change", apply);
+    return () => mq.removeEventListener?.("change", apply);
+  }, []);
+
+  // どの円がアクティブか
+  const [activeCircle, setActiveCircle] = useState<
+    "balance" | "debt" | "save" | null
+  >(null);
+
+  const sizeFor = (key: "balance" | "debt" | "save") => {
+    const base = isMobile ? 150 : 240;   // 通常
+    const active = isMobile ? 220 : 300; // 拡大
+    const small = isMobile ? 120 : 190;  // 他2つ
+
+    if (activeCircle === null) return base;
+    return activeCircle === key ? active : small;
+  };
 
   return (
     <div>
-      {/* ヘッダー：タイトル＋月切替 */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          marginBottom: 12,
-        }}
-      >
-        <div style={{ fontWeight: 900, fontSize: 22 }}>みやむmaker</div>
+      {/* ① 月切替（本番では userKey UI を出さない） */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+        <div style={{ fontWeight: 800 }}>みやむMaker</div>
+
+        {SHOW_USERKEY_UI && (
+          <>
+            <div style={{ marginLeft: 8, fontSize: 12, opacity: 0.75 }}>
+              userKey: {maskKey(userKey)}
+            </div>
+            <button
+              type="button"
+              onClick={() => setKeyEditingOpen((v) => !v)}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 10,
+                border: "1px solid #ccc",
+                background: "#fff",
+                cursor: "pointer",
+                fontSize: 12,
+              }}
+            >
+              切替
+            </button>
+          </>
+        )}
 
         <div style={{ flex: 1 }} />
 
@@ -196,9 +361,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
         >
           ◀
         </button>
-
         <div style={{ fontWeight: 800 }}>{fmtYM(selectedYm)}</div>
-
         <button
           onClick={() => setSelectedYm((v) => addMonths(v, 1))}
           style={{
@@ -213,115 +376,369 @@ export default function TransactionsClient({ initialTransactions }: Props) {
         </button>
       </div>
 
-      {/* === 3つの丸（配置だけ） === */}
+      {/* userKey切替UI（ローカル開発だけ表示） */}
+      {SHOW_USERKEY_UI && keyEditingOpen && (
+        <div
+          style={{
+            border: "1px dashed #ddd",
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 12,
+          }}
+        >
+          <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
+            userKeyを切り替える（デモ用）
+          </div>
+          <input
+            value={userKeyInput}
+            onChange={(e) => setUserKeyInput(e.target.value)}
+            placeholder="8〜64文字（例：itchy-2026）"
+            style={{
+              width: "100%",
+              padding: 10,
+              borderRadius: 10,
+              border: "1px solid #ccc",
+              fontSize: 12,
+            }}
+          />
+          <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={applyUserKey}
+              style={{
+                padding: "8px 10px",
+                borderRadius: 10,
+                border: "1px solid #ccc",
+                background: "#fff",
+                cursor: "pointer",
+                fontSize: 12,
+              }}
+            >
+              このuserKeyに切替
+            </button>
+            <button
+              type="button"
+              onClick={regenerateUserKey}
+              style={{
+                padding: "8px 10px",
+                borderRadius: 10,
+                border: "1px solid #ccc",
+                background: "#fff",
+                cursor: "pointer",
+                fontSize: 12,
+              }}
+            >
+              再生成
+            </button>
+            <button
+              type="button"
+              onClick={() => setKeyEditingOpen(false)}
+              style={{
+                padding: "8px 10px",
+                borderRadius: 10,
+                border: "1px solid #ccc",
+                background: "#fff",
+                cursor: "pointer",
+                fontSize: 12,
+              }}
+            >
+              閉じる
+            </button>
+          </div>
+          <div style={{ marginTop: 8, fontSize: 11, opacity: 0.65 }}>
+            ※切替すると、その場で一覧を再取得します（リロード不要）
+          </div>
+        </div>
+      )}
+
+      {/* ✅ B：3つの円サマリー（タップで拡大＆詳細表示） */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr auto 1fr",
-          gridTemplateAreas: `
-            ". main ."
-            "left . right"
-          `,
-          gap: 14,
-          justifyItems: "center",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 16,
           alignItems: "center",
           marginBottom: 18,
         }}
       >
-        {/* 上：残高（大） */}
-        <button
-          type="button"
-          style={{
-            gridArea: "main",
-            width: 200,
-            height: 200,
-            borderRadius: 999,
-            border: "1px solid #ddd",
-            background: "#fff",
-            cursor: "pointer",
-            display: "grid",
-            placeItems: "center",
-            padding: 12,
-            textAlign: "center",
-            boxShadow: "0 1px 10px rgba(0,0,0,0.07)",
-          }}
-          title="（後でタップで入れ替え）"
-        >
-          <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800 }}>
-            残高
-          </div>
-          <div style={{ fontSize: 30, fontWeight: 900, lineHeight: 1.1 }}>
-            {yen(balanceValue)}円
-          </div>
-          <div style={{ fontSize: 11, opacity: 0.65 }}>
-            収入 {yen(summary.income)} / 支出 {yen(summary.expense)}
-          </div>
-        </button>
+        {/* 上の円（残高） */}
+        <div style={{ gridColumn: "1 / 3", display: "flex", justifyContent: "center" }}>
+          <div
+            role="button"
+            onClick={() => setActiveCircle(activeCircle === "balance" ? null : "balance")}
+            style={{
+              width: sizeFor("balance"),
+              height: sizeFor("balance"),
+              borderRadius: 999,
+              border: "1px solid #e5e5e5",
+              background: "#fff",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.06)",
+              transition: "all 0.25s ease",
+              userSelect: "none",
+              cursor: "pointer",
+              textAlign: "center",
+            }}
+          >
+            <div style={{ fontSize: 14, opacity: 0.75, fontWeight: 700 }}>残高</div>
+            <div style={{ fontSize: activeCircle === "balance" ? 42 : 34, fontWeight: 900 }}>
+              {yen(summary.balance)}円
+            </div>
 
-        {/* 左下：返済（小） */}
-        <button
-          type="button"
-          style={{
-            gridArea: "left",
-            width: 135,
-            height: 135,
-            borderRadius: 999,
-            border: "1px solid #eee",
-            background: "#fff",
-            cursor: "pointer",
-            display: "grid",
-            placeItems: "center",
-            padding: 10,
-            textAlign: "center",
-          }}
-          title="（後でタップで上に移動）"
-        >
-          <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800 }}>
-            返済
+            {/* 詳細：残高 → 収入/支出 */}
+            {activeCircle === "balance" ? (
+              <div style={{ marginTop: 10, fontSize: 13, opacity: 0.85 }}>
+                収入 {yen(summary.income)} / 支出 {yen(summary.expense)}
+              </div>
+            ) : (
+              <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
+                収入 {yen(summary.income)} / 支出 {yen(summary.expense)}
+              </div>
+            )}
           </div>
-          <div style={{ fontSize: 18, fontWeight: 900 }}>
-            {yen(debtValue)}円
-          </div>
-          <div style={{ fontSize: 10, opacity: 0.6 }}>（仮）</div>
-        </button>
+        </div>
 
-        {/* 右下：貯蓄（小） */}
-        <button
-          type="button"
-          style={{
-            gridArea: "right",
-            width: 135,
-            height: 135,
-            borderRadius: 999,
-            border: "1px solid #eee",
-            background: "#fff",
-            cursor: "pointer",
-            display: "grid",
-            placeItems: "center",
-            padding: 10,
-            textAlign: "center",
-          }}
-          title="（後でタップで上に移動）"
-        >
-          <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800 }}>
-            貯蓄
+        {/* 左下（返済） */}
+        <div style={{ display: "flex", justifyContent: "center" }}>
+          <div
+            role="button"
+            onClick={() => setActiveCircle(activeCircle === "debt" ? null : "debt")}
+            style={{
+              width: sizeFor("debt"),
+              height: sizeFor("debt"),
+              borderRadius: 999,
+              border: "1px solid #e5e5e5",
+              background: "#fff",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.05)",
+              transition: "all 0.25s ease",
+              userSelect: "none",
+              cursor: "pointer",
+              textAlign: "center",
+            }}
+          >
+            <div style={{ fontSize: 14, opacity: 0.75, fontWeight: 700 }}>返済</div>
+            <div style={{ fontSize: activeCircle === "debt" ? 32 : 26, fontWeight: 900 }}>
+              {yen(repaidTotal)}円
+            </div>
+            <div style={{ marginTop: 4, fontSize: 12, opacity: 0.6 }}>(仮)</div>
+
+            {/* 詳細：返済 → 残り総額 */}
+            {activeCircle === "debt" && (
+              <div style={{ marginTop: 10, fontSize: 13, opacity: 0.85 }}>
+                残り総額 {yen(remainingDebt)}円
+              </div>
+            )}
           </div>
-          <div style={{ fontSize: 18, fontWeight: 900 }}>
-            {yen(savingValue)}円
+        </div>
+
+        {/* 右下（貯蓄） */}
+        <div style={{ display: "flex", justifyContent: "center" }}>
+          <div
+            role="button"
+            onClick={() => setActiveCircle(activeCircle === "save" ? null : "save")}
+            style={{
+              width: sizeFor("save"),
+              height: sizeFor("save"),
+              borderRadius: 999,
+              border: "1px solid #e5e5e5",
+              background: "#fff",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.05)",
+              transition: "all 0.25s ease",
+              userSelect: "none",
+              cursor: "pointer",
+              textAlign: "center",
+            }}
+          >
+            <div style={{ fontSize: 14, opacity: 0.75, fontWeight: 700 }}>貯蓄</div>
+            <div style={{ fontSize: activeCircle === "save" ? 32 : 26, fontWeight: 900 }}>
+              {yen(savedThisMonth)}円
+            </div>
+            <div style={{ marginTop: 4, fontSize: 12, opacity: 0.6 }}>今月</div>
+
+            {/* 詳細：貯蓄 → 目標との差 */}
+            {activeCircle === "save" && (
+              <div style={{ marginTop: 10, fontSize: 13, opacity: 0.85 }}>
+                目標差 {yen(remainToMonthlySave)}円
+              </div>
+            )}
           </div>
-          <div style={{ fontSize: 10, opacity: 0.6 }}>今月</div>
-        </button>
+        </div>
       </div>
 
-      {/* 円グラフ（現状のまま） */}
+      {/* ✅ 目標入力（残高/今月貯金/返済総額） */}
+      <div
+        style={{
+          border: "1px solid #ddd",
+          borderRadius: 12,
+          padding: 16,
+          marginBottom: 16,
+        }}
+      >
+        <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>目標残高（任意）</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            value={targetBalanceStr}
+            onChange={(e) => setTargetBalanceStr(e.target.value)}
+            inputMode="numeric"
+            style={{
+              width: "100%",
+              padding: 12,
+              borderRadius: 10,
+              border: "1px solid #ccc",
+            }}
+          />
+          <span style={{ opacity: 0.7 }}>円</span>
+        </div>
+
+        {targetBalance > 0 && (
+          <>
+            <div style={{ marginTop: 8, fontWeight: 700 }}>
+              達成まであと {yen(remainToTarget)}円
+            </div>
+            <div
+              style={{
+                height: 10,
+                background: "#eee",
+                borderRadius: 999,
+                overflow: "hidden",
+                marginTop: 8,
+              }}
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: `${progressToTarget * 100}%`,
+                  background: dangerLevel === "danger" ? "#ef4444" : "#22c55e",
+                }}
+              />
+            </div>
+            <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
+              進捗 {(progressToTarget * 100).toFixed(1)}%
+            </div>
+          </>
+        )}
+
+        <div style={{ marginTop: 12, fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
+          今月の貯金目標（任意）
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            value={monthlySaveTargetStr}
+            onChange={(e) => setMonthlySaveTargetStr(e.target.value)}
+            inputMode="numeric"
+            style={{
+              width: "100%",
+              padding: 12,
+              borderRadius: 10,
+              border: "1px solid #ccc",
+            }}
+          />
+          <span style={{ opacity: 0.7 }}>円</span>
+        </div>
+
+        {monthlySaveTarget > 0 && (
+          <>
+            <div style={{ marginTop: 8, fontWeight: 700 }}>
+              達成まであと {yen(remainToMonthlySave)}円
+            </div>
+            <div
+              style={{
+                height: 10,
+                background: "#eee",
+                borderRadius: 999,
+                overflow: "hidden",
+                marginTop: 8,
+              }}
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: `${progressMonthlySave * 100}%`,
+                  background: progressMonthlySave >= 1 ? "#22c55e" : "#60a5fa",
+                }}
+              />
+            </div>
+            <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
+              進捗 {(progressMonthlySave * 100).toFixed(1)}%
+            </div>
+          </>
+        )}
+
+        <div style={{ marginTop: 12, fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
+          返済総額（任意）
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            value={debtTotalStr}
+            onChange={(e) => setDebtTotalStr(e.target.value)}
+            inputMode="numeric"
+            style={{
+              width: "100%",
+              padding: 12,
+              borderRadius: 10,
+              border: "1px solid #ccc",
+            }}
+          />
+          <span style={{ opacity: 0.7 }}>円</span>
+        </div>
+
+        <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
+          返済累計：{yen(repaidTotal)}円　/　残り：{yen(remainingDebt)}円
+          （※カテゴリに「返済」を含む支出を返済扱い）
+        </div>
+
+        {/* 年間予測 & 危険ゾーン */}
+        <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid #eee" }}>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>年間予測（ざっくり）</div>
+          <div style={{ marginTop: 6, fontWeight: 800 }}>
+            {year}年末の予測残高：{yen(Math.round(predictedYearEndBalance))}円
+          </div>
+          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
+            直近3ヶ月の平均貯金：{yen(Math.round(recent3Avg))}円 / 月
+          </div>
+
+          <div
+            style={{
+              marginTop: 10,
+              padding: 10,
+              borderRadius: 10,
+              border: "1px solid #eee",
+              background:
+                dangerLevel === "danger"
+                  ? "#fff0f0"
+                  : dangerLevel === "warning"
+                  ? "#fff7ed"
+                  : "#f0fff4",
+              color:
+                dangerLevel === "danger"
+                  ? "#b42318"
+                  : dangerLevel === "warning"
+                  ? "#9a3412"
+                  : "#166534",
+              fontWeight: 700,
+            }}
+          >
+            {dangerText}
+          </div>
+        </div>
+      </div>
+
+      {/* ② 円グラフ（タップで切替） ※後で消すならここ丸ごと削除OK */}
       {chartKind === "breakdown" ? (
         <PieChart
           title="支出の内訳"
-          data={
-            breakdownData.length
-              ? breakdownData
-              : [{ label: "（データなし）", value: 0 }]
-          }
+          data={breakdownData.length ? breakdownData : [{ label: "（データなし）", value: 0 }]}
           totalLabel={`${yen(breakdownTotal)}円`}
           onToggle={toggleChartKind}
           toggleHint="円グラフをタップで「割合」に切替"
