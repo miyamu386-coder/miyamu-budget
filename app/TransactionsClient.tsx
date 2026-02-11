@@ -61,29 +61,13 @@ function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
 }
 
-// ✅ 本番(Vercel)では userKey UI を出さない（ローカル開発だけ表示）
-const SHOW_USERKEY_UI = process.env.NODE_ENV !== "production";
-
-// lib/userKey.ts と同じキー名（ここだけ一致させる）
-const STORAGE_KEY = "miyamu_budget_user_key";
-
-function maskKey(k: string) {
-  if (!k) return "";
-  if (k.length <= 8) return k;
-  return `${k.slice(0, 4)}…${k.slice(-4)}`;
-}
-
-function normalizeUserKeyInput(s: string) {
-  return s.trim().slice(0, 64);
-}
-
 export default function TransactionsClient({ initialTransactions }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>(
     initialTransactions ?? []
   );
   const [editing, setEditing] = useState<Transaction | null>(null);
 
-  // ✅ 現在のuserKeyをstate管理（UIは本番では非表示だけど、内部では使う）
+  // ✅ userKey は内部で使用（UIは一切出さない）
   const [userKey, setUserKey] = useState<string>("");
 
   // 初回：localStorageから userKey を確定
@@ -91,7 +75,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     setUserKey(getOrCreateUserKey());
   }, []);
 
-  // ✅ userKeyが変わったら、そのuserKeyのデータを再取得
+  // ✅ userKeyが確定したら、そのuserKeyのデータを再取得
   useEffect(() => {
     if (!userKey) return;
 
@@ -117,32 +101,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     })();
   }, [userKey]);
 
-  // ✅ userKey切替（デモUI：本番では非表示）
-  const [keyEditingOpen, setKeyEditingOpen] = useState(false);
-  const [userKeyInput, setUserKeyInput] = useState("");
-
-  useEffect(() => {
-    if (keyEditingOpen) setUserKeyInput(userKey);
-  }, [keyEditingOpen, userKey]);
-
-  const applyUserKey = () => {
-    const next = normalizeUserKeyInput(userKeyInput);
-    if (next.length < 8 || next.length > 64) {
-      alert("userKey は8〜64文字で入力してください（英数字推奨）");
-      return;
-    }
-    localStorage.setItem(STORAGE_KEY, next);
-    setUserKey(next);
-    setKeyEditingOpen(false);
-  };
-
-  const regenerateUserKey = () => {
-    localStorage.removeItem(STORAGE_KEY);
-    const next = getOrCreateUserKey();
-    setUserKey(next);
-    setKeyEditingOpen(false);
-  };
-
   // --- ① 月切替（今月をデフォルト）
   const nowYm = ymdToMonthKey(new Date().toISOString().slice(0, 10));
   const [selectedYm, setSelectedYm] = useState<string>(nowYm);
@@ -155,7 +113,10 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     });
   }, [transactions, selectedYm]);
 
-  const summary = useMemo(() => calcSummary(monthTransactions), [monthTransactions]);
+  const summary = useMemo(
+    () => calcSummary(monthTransactions),
+    [monthTransactions]
+  );
 
   // ✅ カテゴリ候補（フォーム用）
   const categorySuggestions = useMemo(() => {
@@ -168,7 +129,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   }, [transactions]);
 
   // --- ② 円グラフ：内訳（カテゴリ）⇔ 割合（収入/支出）
-  const [chartKind, setChartKind] = useState<"breakdown" | "ratio">("breakdown");
+  const [chartKind, setChartKind] = useState<"breakdown" | "ratio">(
+    "breakdown"
+  );
   const toggleChartKind = () => {
     setChartKind((k) => (k === "breakdown" ? "ratio" : "breakdown"));
   };
@@ -180,7 +143,10 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       const key = (t.category ?? "").trim() || "未分類";
       map.set(key, (map.get(key) ?? 0) + t.amount);
     }
-    const arr = Array.from(map.entries()).map(([label, value]) => ({ label, value }));
+    const arr = Array.from(map.entries()).map(([label, value]) => ({
+      label,
+      value,
+    }));
     arr.sort((a, b) => b.value - a.value);
     return arr;
   }, [monthTransactions]);
@@ -200,18 +166,23 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const ratioTotal = summary.income + summary.expense;
 
   // --- ③ 目標：残高目標 / 今月の貯金目標（任意入力）
-  const [targetBalanceStr, setTargetBalanceStr] = useState<string>("200000");
+  const [targetBalanceStr, setTargetBalanceStr] =
+    useState<string>("200000");
   const targetBalance = Number(targetBalanceStr.replace(/,/g, "")) || 0;
 
   const remainToTarget = Math.max(0, targetBalance - summary.balance);
-  const progressToTarget = targetBalance > 0 ? clamp01(summary.balance / targetBalance) : 0;
+  const progressToTarget =
+    targetBalance > 0 ? clamp01(summary.balance / targetBalance) : 0;
 
-  const [monthlySaveTargetStr, setMonthlySaveTargetStr] = useState<string>("50000");
-  const monthlySaveTarget = Number(monthlySaveTargetStr.replace(/,/g, "")) || 0;
+  const [monthlySaveTargetStr, setMonthlySaveTargetStr] =
+    useState<string>("50000");
+  const monthlySaveTarget =
+    Number(monthlySaveTargetStr.replace(/,/g, "")) || 0;
 
   const savedThisMonth = summary.balance;
   const remainToMonthlySave = Math.max(0, monthlySaveTarget - savedThisMonth);
-  const progressMonthlySave = monthlySaveTarget > 0 ? clamp01(savedThisMonth / monthlySaveTarget) : 0;
+  const progressMonthlySave =
+    monthlySaveTarget > 0 ? clamp01(savedThisMonth / monthlySaveTarget) : 0;
 
   // --- ④ 年間予測 & 危険ゾーン（シンプル版）
   const monthlyBalances = useMemo(() => {
@@ -264,31 +235,16 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
   return (
     <div>
-      {/* ① 月切替（本番では userKey UI を出さない） */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+      {/* ① 月切替 */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          marginBottom: 12,
+        }}
+      >
         <div style={{ fontWeight: 800 }}>miyamu budget</div>
-
-        {SHOW_USERKEY_UI && (
-          <>
-            <div style={{ marginLeft: 8, fontSize: 12, opacity: 0.75 }}>
-              userKey: {maskKey(userKey)}
-            </div>
-            <button
-              type="button"
-              onClick={() => setKeyEditingOpen((v) => !v)}
-              style={{
-                padding: "6px 10px",
-                borderRadius: 10,
-                border: "1px solid #ccc",
-                background: "#fff",
-                cursor: "pointer",
-                fontSize: 12,
-              }}
-            >
-              切替
-            </button>
-          </>
-        )}
 
         <div style={{ flex: 1 }} />
 
@@ -319,81 +275,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
         </button>
       </div>
 
-      {/* userKey切替UI（ローカル開発だけ表示） */}
-      {SHOW_USERKEY_UI && keyEditingOpen && (
-        <div
-          style={{
-            border: "1px dashed #ddd",
-            borderRadius: 12,
-            padding: 12,
-            marginBottom: 12,
-          }}
-        >
-          <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
-            userKeyを切り替える（デモ用）
-          </div>
-          <input
-            value={userKeyInput}
-            onChange={(e) => setUserKeyInput(e.target.value)}
-            placeholder="8〜64文字（例：itchy-2026）"
-            style={{
-              width: "100%",
-              padding: 10,
-              borderRadius: 10,
-              border: "1px solid #ccc",
-              fontSize: 12,
-            }}
-          />
-          <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-            <button
-              type="button"
-              onClick={applyUserKey}
-              style={{
-                padding: "8px 10px",
-                borderRadius: 10,
-                border: "1px solid #ccc",
-                background: "#fff",
-                cursor: "pointer",
-                fontSize: 12,
-              }}
-            >
-              このuserKeyに切替
-            </button>
-            <button
-              type="button"
-              onClick={regenerateUserKey}
-              style={{
-                padding: "8px 10px",
-                borderRadius: 10,
-                border: "1px solid #ccc",
-                background: "#fff",
-                cursor: "pointer",
-                fontSize: 12,
-              }}
-            >
-              再生成
-            </button>
-            <button
-              type="button"
-              onClick={() => setKeyEditingOpen(false)}
-              style={{
-                padding: "8px 10px",
-                borderRadius: 10,
-                border: "1px solid #ccc",
-                background: "#fff",
-                cursor: "pointer",
-                fontSize: 12,
-              }}
-            >
-              閉じる
-            </button>
-          </div>
-          <div style={{ marginTop: 8, fontSize: 11, opacity: 0.65 }}>
-            ※切替すると、その場で一覧を再取得します（リロード不要）
-          </div>
-        </div>
-      )}
-
       {/* サマリー */}
       <div
         style={{
@@ -404,7 +285,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
         }}
       >
         <div style={{ fontSize: 14, opacity: 0.7 }}>現在の残高</div>
-        <div style={{ fontSize: 36, fontWeight: 700 }}>{yen(summary.balance)}円</div>
+        <div style={{ fontSize: 36, fontWeight: 700 }}>
+          {yen(summary.balance)}円
+        </div>
 
         <div style={{ marginTop: 8, fontSize: 14, opacity: 0.8 }}>
           収入：{yen(summary.income)}円　支出：{yen(summary.expense)}円
@@ -412,7 +295,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
         {/* ③ 目標 */}
         <div style={{ marginTop: 14 }}>
-          <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>目標残高（任意）</div>
+          <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
+            目標残高（任意）
+          </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <input
               value={targetBalanceStr}
@@ -446,7 +331,8 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                   style={{
                     height: "100%",
                     width: `${progressToTarget * 100}%`,
-                    background: dangerLevel === "danger" ? "#ef4444" : "#22c55e",
+                    background:
+                      dangerLevel === "danger" ? "#ef4444" : "#22c55e",
                   }}
                 />
               </div>
@@ -456,7 +342,14 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             </>
           )}
 
-          <div style={{ marginTop: 12, fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
+          <div
+            style={{
+              marginTop: 12,
+              fontSize: 12,
+              opacity: 0.7,
+              marginBottom: 6,
+            }}
+          >
             今月の貯金目標（任意）
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -492,7 +385,8 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                   style={{
                     height: "100%",
                     width: `${progressMonthlySave * 100}%`,
-                    background: progressMonthlySave >= 1 ? "#22c55e" : "#60a5fa",
+                    background:
+                      progressMonthlySave >= 1 ? "#22c55e" : "#60a5fa",
                   }}
                 />
               </div>
@@ -543,7 +437,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       {chartKind === "breakdown" ? (
         <PieChart
           title="支出の内訳"
-          data={breakdownData.length ? breakdownData : [{ label: "（データなし）", value: 0 }]}
+          data={
+            breakdownData.length ? breakdownData : [{ label: "（データなし）", value: 0 }]
+          }
           totalLabel={`${yen(breakdownTotal)}円`}
           onToggle={toggleChartKind}
           toggleHint="円グラフをタップで「割合」に切替"
