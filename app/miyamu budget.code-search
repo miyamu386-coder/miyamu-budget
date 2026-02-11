@@ -1,0 +1,23 @@
+# Query: miyamu budget
+# ContextLines: 1
+
+4 results - 3 files
+
+app/layout.tsx:
+   4  export const metadata: Metadata = {
+   5:   title: "みやむMaker",
+   6    description: "家計簿・予算管理",
+
+  11      statusBarStyle: "default",
+  12:     title: "みやむMaker",
+  13    },
+
+app/manifest.ts:
+  4    return {
+  5:     name: "みやむMaker",
+  6      short_name: "budget",
+
+app/TransactionsClient.tsx:
+  246        >
+  247:         <div style={{ fontWeight: 800 }}>みやむMaker</div>
+  248  
