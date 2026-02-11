@@ -10,11 +10,12 @@ export type PieDatum = {
 type Props = {
   title: string;
   data: PieDatum[];
-  totalLabel?: string; // 中央に出す文字（例: "9,121円"）
-  showPercent?: boolean; // 凡例に % を表示
-  percentDigits?: number; // 小数点桁（例: 1 → 4.8%）
-  onToggle?: () => void; // 円グラフをクリックしたら切替
-  toggleHint?: string; // 右上の案内文
+  totalLabel?: string;     // 中央に出す数値（例: "4,000円"）※残高を渡す
+  centerTitle?: string;    // 中央上の見出し（例: "残高"）
+  showPercent?: boolean;
+  percentDigits?: number;
+  onToggle?: () => void;
+  toggleHint?: string;
 };
 
 function polarToCartesian(cx: number, cy: number, r: number, angle: number) {
@@ -31,9 +32,25 @@ function describeArc(
   startAngle: number,
   endAngle: number
 ) {
+  const TAU = Math.PI * 2;
+  const delta = endAngle - startAngle;
+
+  // 100%（360°）のときは2つの弧に分割して描く（消える対策）
+  if (delta >= TAU - 1e-6) {
+    const start = polarToCartesian(cx, cy, r, startAngle);
+    const mid = polarToCartesian(cx, cy, r, startAngle + Math.PI);
+
+    return `M ${cx} ${cy}
+            L ${start.x} ${start.y}
+            A ${r} ${r} 0 1 1 ${mid.x} ${mid.y}
+            A ${r} ${r} 0 1 1 ${start.x} ${start.y}
+            Z`;
+  }
+
   const start = polarToCartesian(cx, cy, r, startAngle);
   const end = polarToCartesian(cx, cy, r, endAngle);
-  const largeArcFlag = endAngle - startAngle <= Math.PI ? "0" : "1";
+  const largeArcFlag = delta <= Math.PI ? "0" : "1";
+
   return `M ${cx} ${cy} L ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} 1 ${end.x} ${end.y} Z`;
 }
 
@@ -45,12 +62,16 @@ export default function PieChart({
   title,
   data,
   totalLabel,
+  centerTitle = "残高",   // デフォルトを「残高」に
   showPercent = false,
   percentDigits = 1,
   onToggle,
   toggleHint,
 }: Props) {
-  const total = data.reduce((acc, d) => acc + (Number.isFinite(d.value) ? d.value : 0), 0);
+  const total = data.reduce(
+    (acc, d) => acc + (Number.isFinite(d.value) ? d.value : 0),
+    0
+  );
   const safeTotal = total > 0 ? total : 1;
 
   const size = 220;
@@ -95,7 +116,6 @@ export default function PieChart({
               const end = acc + frac * Math.PI * 2;
               acc = end;
 
-              // HSLで色を自動生成（同じデータなら同じ色順）
               const fill = `hsl(${(i * 57) % 360} 70% 55%)`;
 
               return (
@@ -110,15 +130,17 @@ export default function PieChart({
             {/* ドーナツ穴 */}
             <circle cx={cx} cy={cy} r={55} fill="#fff" />
 
-            {/* 中央ラベル */}
+            {/* 中央タイトル（残高） */}
             <text
               x={cx}
               y={cy - 6}
               textAnchor="middle"
               style={{ fontSize: 12, opacity: 0.7 }}
             >
-              合計
+              {centerTitle}
             </text>
+
+            {/* 中央の金額（残高を渡す） */}
             <text
               x={cx}
               y={cy + 18}
@@ -128,22 +150,24 @@ export default function PieChart({
               {totalLabel ?? fmtYen(total)}
             </text>
 
-            {/* 主要割合を円の下側に表示（最大値の%） */}
-            {showPercent && total > 0 && (() => {
-              const max = [...data].sort((a, b) => b.value - a.value)[0];
-              const p = (max.value / safeTotal) * 100;
-              const pStr = `${p.toFixed(percentDigits)}%`;
-              return (
-                <text
-                  x={cx}
-                  y={cy + 70}
-                  textAnchor="middle"
-                  style={{ fontSize: 12, opacity: 0.75 }}
-                >
-                  {pStr}
-                </text>
-              );
-            })()}
+            {/* 主要割合 */}
+            {showPercent &&
+              total > 0 &&
+              (() => {
+                const max = [...data].sort((a, b) => b.value - a.value)[0];
+                const p = (max.value / safeTotal) * 100;
+                const pStr = `${p.toFixed(percentDigits)}%`;
+                return (
+                  <text
+                    x={cx}
+                    y={cy + 70}
+                    textAnchor="middle"
+                    style={{ fontSize: 12, opacity: 0.75 }}
+                  >
+                    {pStr}
+                  </text>
+                );
+              })()}
           </svg>
         </div>
 
@@ -183,7 +207,9 @@ export default function PieChart({
             }}
           >
             <div>合計</div>
-            <div style={{ fontVariantNumeric: "tabular-nums" }}>{fmtYen(total)}</div>
+            <div style={{ fontVariantNumeric: "tabular-nums" }}>
+              {fmtYen(total)}
+            </div>
           </div>
         </div>
       </div>

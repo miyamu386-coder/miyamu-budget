@@ -10,9 +10,12 @@ datasource db {
 
 model Transaction {
   id         Int      @id @default(autoincrement())
+  userKey    String?   @db.VarChar(64)
   amount     Int
   category   String
-  type       String   // "income" | "expense"
+  type       String
   createdAt  DateTime @default(now())
-  occurredAt DateTime @default(now()) // 発生日（入力・編集したい日付）
+  occurredAt DateTime @default(now())
+
+  @@index([userKey, occurredAt])
 }

@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { Transaction } from "./types";
+import { getOrCreateUserKey } from "../lib/userKey";
 
 function formatDate(iso: string) {
   const d = new Date(iso);
@@ -14,16 +16,37 @@ export default function TransactionList({
 }: {
   transactions: Transaction[];
   onEdit: (t: Transaction) => void;
-  onDeleted: (id: number) => void; // ✅ 修正：引数idを受け取る
+  onDeleted: (id: number) => void; // ✅ 引数idを受け取る
 }) {
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
   const remove = async (id: number) => {
-    const res = await fetch(`/api/transactions?id=${id}`, { method: "DELETE" });
-    if (!res.ok) {
-      const e = await res.json().catch(() => ({}));
-      alert(e?.error ?? "削除に失敗しました");
-      return;
+    if (deletingId === id) return;
+
+    const userKey = getOrCreateUserKey();
+
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/transactions?id=${id}`, {
+        method: "DELETE",
+        headers: {
+          "x-user-key": userKey,
+        },
+      });
+
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        alert(e?.error ?? "削除に失敗しました");
+        return;
+      }
+
+      onDeleted(id); // ✅ 親に通知（await不要）
+    } catch (e) {
+      console.error(e);
+      alert("削除に失敗しました");
+    } finally {
+      setDeletingId(null);
     }
-    await onDeleted(id); // ✅ 修正：削除したidを親に通知
   };
 
   return (
@@ -46,7 +69,8 @@ export default function TransactionList({
           >
             <div>
               <div style={{ fontSize: 18, fontWeight: 700 }}>
-                {(t.type === "expense" ? -t.amount : t.amount).toLocaleString("ja-JP")}円
+                {(t.type === "expense" ? -t.amount : t.amount).toLocaleString("ja-JP")}
+                円
               </div>
               <div style={{ fontSize: 13, opacity: 0.75 }}>
                 {t.category} ・ {formatDate(t.occurredAt)}
@@ -65,8 +89,10 @@ export default function TransactionList({
               >
                 編集
               </button>
+
               <button
                 onClick={() => remove(t.id)}
+                disabled={deletingId === t.id}
                 style={{
                   padding: "8px 12px",
                   borderRadius: 10,
@@ -74,6 +100,7 @@ export default function TransactionList({
                   color: "#b42318",
                   background: "#fff0f0",
                   cursor: "pointer",
+                  opacity: deletingId === t.id ? 0.6 : 1,
                 }}
               >
                 削除
@@ -82,10 +109,9 @@ export default function TransactionList({
           </div>
         ))}
 
-        {transactions.length === 0 && (
-          <div style={{ opacity: 0.7 }}>まだ履歴がありません</div>
-        )}
+        {transactions.length === 0 && <div style={{ opacity: 0.7 }}>まだ履歴がありません</div>}
       </div>
     </div>
   );
 }
+
