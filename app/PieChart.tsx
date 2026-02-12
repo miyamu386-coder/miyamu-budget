@@ -10,8 +10,8 @@ export type PieDatum = {
 type Props = {
   title: string;
   data: PieDatum[];
-  totalLabel?: string;     // 中央に出す数値（例: "4,000円"）※残高を渡す
-  centerTitle?: string;    // 中央上の見出し（例: "残高"）
+  totalLabel?: string;     // 中央に出す数値（例: "4,000円"）※総資産を渡す
+  centerTitle?: string;    // 中央上の見出し（例: "総資産"）
   showPercent?: boolean;
   percentDigits?: number;
   onToggle?: () => void;
@@ -62,7 +62,7 @@ export default function PieChart({
   title,
   data,
   totalLabel,
-  centerTitle = "残高",   // デフォルトを「残高」に
+  centerTitle = "総資産",   // デフォルトを「総資産」に
   showPercent = false,
   percentDigits = 1,
   onToggle,
@@ -130,7 +130,7 @@ export default function PieChart({
             {/* ドーナツ穴 */}
             <circle cx={cx} cy={cy} r={55} fill="#fff" />
 
-            {/* 中央タイトル（残高） */}
+            {/* 中央タイトル（総資産） */}
             <text
               x={cx}
               y={cy - 6}
@@ -140,7 +140,7 @@ export default function PieChart({
               {centerTitle}
             </text>
 
-            {/* 中央の金額（残高を渡す） */}
+            {/* 中央の金額（総資産を渡す） */}
             <text
               x={cx}
               y={cy + 18}

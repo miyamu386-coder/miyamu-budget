@@ -79,6 +79,7 @@ function normalizeUserKeyInput(s: string) {
 /**
  * ✅ リング描画（SVG）
  * progress: 0〜1
+ * inset: 0なら通常。外周リング用に -8, -16... のように負値を入れると外に広がる
  */
 function Ring({
   size,
@@ -86,12 +87,14 @@ function Ring({
   progress,
   color,
   trackColor = "#e5e7eb",
+  inset = 0,
 }: {
   size: number;
   stroke: number;
   progress: number;
   color: string;
   trackColor?: string;
+  inset?: number;
 }) {
   const p = clamp01(progress);
   const r = (size - stroke) / 2;
@@ -104,7 +107,7 @@ function Ring({
       height={size}
       style={{
         position: "absolute",
-        inset: 0,
+        inset,
         pointerEvents: "none",
       }}
       viewBox={`0 0 ${size} ${size}`}
@@ -219,6 +222,8 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     [monthTransactions]
   );
 
+  const isAssetNegative = summary.balance < 0;
+
   // ✅ カテゴリ候補（フォーム用）
   const categorySuggestions = useMemo(() => {
     const set = new Set<string>();
@@ -229,13 +234,15 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     return Array.from(set);
   }, [transactions]);
 
-  // --- ③ 目標：残高目標 / 今月の貯金目標 / 返済総額（任意入力）
+  // --- ③ 目標：総資産目標 / 今月の貯金目標 / 返済総額（任意入力）
   const [targetBalanceStr, setTargetBalanceStr] = useState<string>("200000");
   const targetBalance = Number(targetBalanceStr.replace(/,/g, "")) || 0;
 
   const remainToTarget = Math.max(0, targetBalance - summary.balance);
   const progressToTarget =
     targetBalance > 0 ? clamp01(summary.balance / targetBalance) : 0;
+
+  const isTargetAchieved = targetBalance > 0 && progressToTarget >= 1;
 
   const [monthlySaveTargetStr, setMonthlySaveTargetStr] =
     useState<string>("50000");
@@ -296,7 +303,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       : "良好：この調子！";
 
   // =========================
-  // ✅ B：3つの円（残高/返済/貯蓄）＋タップで拡大＋詳細表示＋任意額入力UI
+  // ✅ B：3つの円（総資産/返済/貯蓄）＋タップで拡大＋詳細表示＋任意額入力UI
   // =========================
 
   // 返済総額（任意）
@@ -320,9 +327,11 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   // 残り返済総額
   const remainingDebt = Math.max(0, debtTotal - repaidTotal);
 
+  const isPaidOff = debtTotal > 0 && remainingDebt === 0;
+
   // ✅ リング進捗
-  // 残高：目標に近づくほど増える（グレー）
-  const balanceRingProgress = progressToTarget;
+  // 総資産：目標に近づくほど増える（通常グレー、マイナスなら赤）
+  const assetRingProgress = progressToTarget;
 
   // 返済：B方式 → 「残り割合」が減っていく（赤）
   const debtRingProgress =
@@ -356,7 +365,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     return activeCircle === key ? active : small;
   };
 
-  // ✅ リングのサイズは「固定」(ここがリング消え対策の肝)
+  // ✅ リングのサイズは「固定」
   const baseSizeFor = (key: "balance" | "debt" | "save") => {
     if (key === "balance") return isMobile ? 140 : 240;
     if (key === "debt") return isMobile ? 115 : 190;
@@ -366,15 +375,32 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   // ✅ strokeも固定サイズに合わせて安定化
   const strokeFor = (key: "balance" | "debt" | "save") => {
     const s = baseSizeFor(key);
-    // 大きい円は少し太く、他は少し細く
     if (key === "balance") return s >= 200 ? 12 : 10;
     return s >= 180 ? 11 : 9;
   };
 
+  // ✅ ⑥：総資産の円の周りに追加リング最大8本（いまは“見た目枠”としてダミー）
+  // 後で「口座」「目標」「カテゴリ」等の実データに差し替える前提
+  const extraRings = useMemo(() => {
+    // 最大8本。色は仮（後で統一感あるパレットにする）
+    // progressは 0.15, 0.30... のダミー（後で差し替え）
+    const base = [
+      { progress: 0.18, color: "#60a5fa" },
+      { progress: 0.32, color: "#a78bfa" },
+      { progress: 0.46, color: "#f59e0b" },
+      { progress: 0.58, color: "#22c55e" },
+      { progress: 0.66, color: "#f472b6" },
+      { progress: 0.74, color: "#34d399" },
+      { progress: 0.82, color: "#fb7185" },
+      { progress: 0.9, color: "#93c5fd" },
+    ];
+    return base.slice(0, 8);
+  }, []);
+
   // どの円をタップしたかで入力UIを出す
   const circleEditorTitle =
     activeCircle === "balance"
-      ? "残高（目標残高を設定）"
+      ? "総資産（目標総資産を設定）"
       : activeCircle === "debt"
       ? "返済（返済総額を設定）"
       : activeCircle === "save"
@@ -383,6 +409,38 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
   return (
     <div>
+      {/* ③ 目標達成で光る（総資産カード） */}
+      <style jsx global>{`
+        @keyframes miyamuPulse {
+          0% {
+            transform: scale(1);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.06);
+          }
+          50% {
+            transform: scale(1.01);
+            box-shadow: 0 18px 40px rgba(34, 197, 94, 0.22);
+          }
+          100% {
+            transform: scale(1);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.06);
+          }
+        }
+        @keyframes miyamuSpark {
+          0% {
+            transform: translateY(0);
+            opacity: 0.85;
+          }
+          50% {
+            transform: translateY(-2px);
+            opacity: 1;
+          }
+          100% {
+            transform: translateY(0);
+            opacity: 0.85;
+          }
+        }
+      `}</style>
+
       {/* ① 月切替 */}
       <div
         style={{
@@ -537,7 +595,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           marginBottom: 12,
         }}
       >
-        {/* 上の円（残高） */}
+        {/* 上の円（総資産） */}
         <div
           style={{
             gridColumn: "1 / 3",
@@ -566,24 +624,45 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               cursor: "pointer",
               textAlign: "center",
               position: "relative",
-              overflow: "hidden",
+              overflow: "visible", // ✅ 外周リングを見せる
+              animation: isTargetAchieved ? "miyamuPulse 1.4s ease-in-out infinite" : "none",
             }}
           >
-            {/* ✅ 残高リング（グレー）※サイズは固定で描画 */}
+            {/* ✅ ① メインリング（総資産：通常グレー/赤字なら赤） */}
             <Ring
               size={baseSizeFor("balance")}
               stroke={strokeFor("balance")}
-              progress={balanceRingProgress}
-              color="#9ca3af"
+              progress={assetRingProgress}
+              color={isAssetNegative ? "#ef4444" : "#9ca3af"}
             />
 
+            {/* ✅ ⑥ 追加リング最大8本（外周） */}
+            {extraRings.map((r, i) => {
+              const pad = 10 + i * 8; // 外側へ
+              const size = baseSizeFor("balance") + pad * 2;
+              return (
+                <Ring
+                  key={i}
+                  size={size}
+                  stroke={4}
+                  progress={r.progress}
+                  color={r.color}
+                  trackColor="#f3f4f6"
+                  inset={-pad}
+                />
+              );
+            })}
+
+            <div style={{ fontSize: 18, marginBottom: 2 }}>💰</div>
             <div style={{ fontSize: 14, opacity: 0.75, fontWeight: 700 }}>
-              残高
+              総資産
             </div>
+
             <div
               style={{
                 fontSize: activeCircle === "balance" ? 42 : 34,
                 fontWeight: 900,
+                color: isAssetNegative ? "#ef4444" : "inherit", // ✅ ② マイナス赤
               }}
             >
               {yen(summary.balance)}円
@@ -596,6 +675,23 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             {activeCircle === "balance" && (
               <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
                 目標まであと {yen(remainToTarget)}円
+              </div>
+            )}
+
+            {isTargetAchieved && (
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  background: "#f0fff4",
+                  border: "1px solid #bbf7d0",
+                  color: "#166534",
+                  fontWeight: 900,
+                  fontSize: 12,
+                }}
+              >
+                ✨ 目標達成！
               </div>
             )}
           </div>
@@ -627,14 +723,14 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               overflow: "hidden",
             }}
           >
-            {/* ✅ 返済リング（赤：残り割合が減る）※サイズ固定で描画 */}
             <Ring
               size={baseSizeFor("debt")}
               stroke={strokeFor("debt")}
               progress={debtRingProgress}
-              color="#ef4444"
+              color={isPaidOff ? "#22c55e" : "#ef4444"} // ✅ ④ 完済したら緑寄せ
             />
 
+            <div style={{ fontSize: 18, marginBottom: 2 }}>🧾</div>
             <div style={{ fontSize: 14, opacity: 0.75, fontWeight: 700 }}>
               返済
             </div>
@@ -649,6 +745,24 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             <div style={{ marginTop: 4, fontSize: 12, opacity: 0.6 }}>
               (累計)
             </div>
+
+            {isPaidOff && (
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  background: "#f0fff4",
+                  border: "1px solid #bbf7d0",
+                  color: "#166534",
+                  fontWeight: 900,
+                  fontSize: 12,
+                  animation: "miyamuSpark 0.9s ease-in-out infinite",
+                }}
+              >
+                🎉 完済！
+              </div>
+            )}
 
             {activeCircle === "debt" && (
               <div style={{ marginTop: 10, fontSize: 13, opacity: 0.85 }}>
@@ -684,14 +798,14 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               overflow: "hidden",
             }}
           >
-            {/* ✅ 貯蓄リング（緑）※サイズ固定で描画 */}
             <Ring
               size={baseSizeFor("save")}
               stroke={strokeFor("save")}
               progress={saveRingProgress}
-              color="#22c55e"
+              color={progressMonthlySave >= 1 ? "#22c55e" : "#22c55e"}
             />
 
+            <div style={{ fontSize: 18, marginBottom: 2 }}>🌱</div>
             <div style={{ fontSize: 14, opacity: 0.75, fontWeight: 700 }}>
               貯蓄
             </div>
@@ -731,7 +845,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           {activeCircle === "balance" && (
             <>
               <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
-                目標残高（任意）
+                目標総資産（任意）
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <input
