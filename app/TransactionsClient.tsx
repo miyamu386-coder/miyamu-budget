@@ -236,10 +236,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     });
   }, [transactions, selectedYm]);
 
-  const summary = useMemo(
-    () => calcSummary(monthTransactions),
-    [monthTransactions]
-  );
+  const summary = useMemo(() => calcSummary(monthTransactions), [monthTransactions]);
 
   // ✅ カテゴリ候補
   const categorySuggestions = useMemo(() => {
@@ -260,8 +257,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   }, [userKey]);
 
   const [targetBalanceStr, setTargetBalanceStr] = useState<string>("200000");
-  const [monthlySaveTargetStr, setMonthlySaveTargetStr] =
-    useState<string>("50000");
+  const [monthlySaveTargetStr, setMonthlySaveTargetStr] = useState<string>("50000");
   const [debtTotalStr, setDebtTotalStr] = useState<string>("0");
 
   useEffect(() => {
@@ -273,10 +269,8 @@ export default function TransactionsClient({ initialTransactions }: Props) {
         monthlySaveTargetStr?: string;
         debtTotalStr?: string;
       };
-      if (typeof obj.targetBalanceStr === "string")
-        setTargetBalanceStr(obj.targetBalanceStr);
-      if (typeof obj.monthlySaveTargetStr === "string")
-        setMonthlySaveTargetStr(obj.monthlySaveTargetStr);
+      if (typeof obj.targetBalanceStr === "string") setTargetBalanceStr(obj.targetBalanceStr);
+      if (typeof obj.monthlySaveTargetStr === "string") setMonthlySaveTargetStr(obj.monthlySaveTargetStr);
       if (typeof obj.debtTotalStr === "string") setDebtTotalStr(obj.debtTotalStr);
     } catch (e) {
       console.warn("goals load failed", e);
@@ -300,8 +294,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
   // 残高進捗
   const remainToTarget = Math.max(0, targetBalance - summary.balance);
-  const progressToTarget =
-    targetBalance > 0 ? clamp01(summary.balance / targetBalance) : 0;
+  const progressToTarget = targetBalance > 0 ? clamp01(summary.balance / targetBalance) : 0;
 
   // 今月貯蓄進捗
   const savedThisMonth = summary.balance;
@@ -316,10 +309,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   };
 
   const repaidTotal = useMemo(() => {
-    return transactions.reduce(
-      (sum, t) => (isRepayment(t) ? sum + t.amount : sum),
-      0
-    );
+    return transactions.reduce((sum, t) => (isRepayment(t) ? sum + t.amount : sum), 0);
   }, [transactions]);
 
   const remainingDebt = Math.max(0, debtTotal - repaidTotal);
@@ -328,11 +318,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const debtRingProgress = debtTotal > 0 ? clamp01(remainingDebt / debtTotal) : 0;
   const saveRingProgress = progressMonthlySave;
 
-  const balanceAchieved =
-    targetBalance > 0 ? summary.balance >= targetBalance : false;
+  const balanceAchieved = targetBalance > 0 ? summary.balance >= targetBalance : false;
   const debtAchieved = debtTotal > 0 ? repaidTotal >= debtTotal : false;
-  const saveAchieved =
-    monthlySaveTarget > 0 ? savedThisMonth >= monthlySaveTarget : false;
+  const saveAchieved = monthlySaveTarget > 0 ? savedThisMonth >= monthlySaveTarget : false;
 
   // =========================
   // ✅ 年間予測（ざっくり）
@@ -398,10 +386,17 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
   // =========================
   // ✅ 追加リング localStorage（userKey別）
+  //   - v2: slot対応
+  //   - v1/v2どちらでも救済読み込み
   // =========================
-  const extrasStorageKey = useMemo(() => {
+  const extrasStorageKeyV2 = useMemo(() => {
     const k = userKey || "anonymous";
-    return `miyamu_maker_extra_rings_v2:${k}`; // ✅ v2（slot対応）
+    return `miyamu_maker_extra_rings_v2:${k}`;
+  }, [userKey]);
+
+  const extrasStorageKeyV1 = useMemo(() => {
+    const k = userKey || "anonymous";
+    return `miyamu_maker_extra_rings_v1:${k}`;
   }, [userKey]);
 
   const [extraRings, setExtraRings] = useState<ExtraRing[]>([]);
@@ -423,60 +418,71 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   // ✅ userKey確定後にロード（slotが無い古いデータも救済）
   useEffect(() => {
     if (!userKey) return;
-    try {
-      const raw = localStorage.getItem(extrasStorageKey);
-      if (!raw) {
-        setExtraRings([]);
-        setActiveExtraId(null);
-        setPickedSlot(null);
-        return;
+
+    const load = (key: string) => {
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return null;
+        const arr = JSON.parse(raw) as ExtraRing[];
+        if (!Array.isArray(arr)) return null;
+        return arr;
+      } catch {
+        return null;
       }
-      const arr = JSON.parse(raw) as ExtraRing[];
-      if (Array.isArray(arr)) {
-        let safe = arr
-          .filter((x) => x && typeof x.id === "string")
-          .slice(0, MAX_EXTRA_RINGS)
-          .map((x) => ({
-            ...x,
-            current: Number(x.current) || 0,
-            target: Number(x.target) || 0,
-            color: x.color || "#60a5fa",
-          }));
+    };
 
-        // ✅ slotが無いものに自動でslotを割り当て（重複も直す）
-        const used = new Set<number>([0, 1]);
-        safe = safe.map((r) => {
-          let slot =
-            typeof r.slot === "number" && r.slot >= 2 ? r.slot : undefined;
+    const v2 = load(extrasStorageKeyV2);
+    const v1 = v2 ? null : load(extrasStorageKeyV1);
+    const source = v2 ?? v1;
 
-          if (slot === undefined || used.has(slot)) {
-            slot = findNextFreeSlot(
-              safe.map((x) => ({ ...x, slot: x.id === r.id ? undefined : x.slot }))
-            );
-          }
-          used.add(slot);
-          return { ...r, slot };
-        });
-
-        setExtraRings(safe);
-        setActiveExtraId((cur) => cur ?? safe[0]?.id ?? null);
-        setPickedSlot(null);
-      }
-    } catch (e) {
-      console.warn("extra rings load failed", e);
+    if (!source) {
+      setExtraRings([]);
+      setActiveExtraId(null);
+      setPickedSlot(null);
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userKey, extrasStorageKey]);
 
-  // ✅ 保存
+    let safe = source
+      .filter((x) => x && typeof x.id === "string")
+      .slice(0, MAX_EXTRA_RINGS)
+      .map((x) => ({
+        ...x,
+        title: (x.title ?? "").toString().slice(0, 24) || "追加リング",
+        current: Number((x as any).current) || 0,
+        target: Number((x as any).target) || 0,
+        color: (x.color ?? "#60a5fa").toString(),
+        offsetDeg: typeof x.offsetDeg === "number" ? x.offsetDeg : -90,
+        slot: typeof x.slot === "number" ? x.slot : undefined,
+      }));
+
+    // ✅ slotが無いものに自動でslotを割り当て（重複も直す）
+    const used = new Set<number>([0, 1]);
+    safe = safe.map((r) => {
+      let slot = typeof r.slot === "number" && r.slot >= 2 ? r.slot : undefined;
+
+      if (slot === undefined || used.has(slot)) {
+        slot = findNextFreeSlot(
+          safe.map((x) => ({ ...x, slot: x.id === r.id ? undefined : x.slot }))
+        );
+      }
+      used.add(slot);
+      return { ...r, slot };
+    });
+
+    setExtraRings(safe);
+    setActiveExtraId((cur) => cur ?? safe[0]?.id ?? null);
+    setPickedSlot(null);
+  }, [userKey, extrasStorageKeyV2, extrasStorageKeyV1]);
+
+  // ✅ 保存（v2に保存）
   useEffect(() => {
     if (!userKey) return;
     try {
-      localStorage.setItem(extrasStorageKey, JSON.stringify(extraRings));
+      localStorage.setItem(extrasStorageKeyV2, JSON.stringify(extraRings));
     } catch (e) {
       console.warn("extra rings save failed", e);
     }
-  }, [userKey, extrasStorageKey, extraRings]);
+  }, [userKey, extrasStorageKeyV2, extraRings]);
 
   const canAddExtra = extraRings.length < MAX_EXTRA_RINGS;
 
@@ -486,7 +492,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       return;
     }
     const n = extraRings.length + 1;
-
     const slot = findNextFreeSlot(extraRings);
 
     const next: ExtraRing = {
@@ -575,19 +580,10 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   return (
     <div>
       {/* 月切替 */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          marginBottom: 12,
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
         {SHOW_USERKEY_UI && (
           <>
-            <div style={{ fontSize: 12, opacity: 0.75 }}>
-              userKey: {maskKey(userKey)}
-            </div>
+            <div style={{ fontSize: 12, opacity: 0.75 }}>userKey: {maskKey(userKey)}</div>
             <button
               type="button"
               onClick={() => setKeyEditingOpen((v) => !v)}
@@ -638,17 +634,8 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
       {/* userKey切替UI（ローカルのみ） */}
       {SHOW_USERKEY_UI && keyEditingOpen && (
-        <div
-          style={{
-            border: "1px dashed #ddd",
-            borderRadius: 12,
-            padding: 12,
-            marginBottom: 12,
-          }}
-        >
-          <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
-            userKeyを切り替える（デモ用）
-          </div>
+        <div style={{ border: "1px dashed #ddd", borderRadius: 12, padding: 12, marginBottom: 12 }}>
+          <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>userKeyを切り替える（デモ用）</div>
           <input
             value={userKeyInput}
             onChange={(e) => setUserKeyInput(e.target.value)}
@@ -726,7 +713,13 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           }}
         >
           {/* 中央：総資産（大リング） */}
-          <div
+          <button
+            type="button"
+            onClick={() => {
+              // ✅ 中央を押したら選択解除（誤操作防止）
+              setPickedSlot(null);
+              setActiveExtraId(null);
+            }}
             style={{
               width: bigSize,
               height: bigSize,
@@ -747,7 +740,10 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 ? "0 0 28px rgba(34,197,94,0.45)"
                 : "0 10px 25px rgba(0,0,0,0.06)",
               zIndex: 2,
+              cursor: "pointer",
+              padding: 0,
             }}
+            title="中央（選択解除）"
           >
             <Ring
               size={bigSize}
@@ -783,7 +779,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 <div style={{ marginTop: 10, fontWeight: 900 }}>✅ 目標達成！</div>
               )}
             </div>
-          </div>
+          </button>
 
           {/* 周囲：スロット配置（タップ入れ替え） */}
           {Array.from({ length: SLOT_COUNT }).map((_, slotIdx) => {
@@ -835,23 +831,19 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 key={`slot_${slotIdx}`}
                 type="button"
                 onClick={() => {
-                  // 固定スロットは入れ替え不可（押すと該当カードにフォーカスだけする）
-                  if (slotIdx === 0) {
-                    setActiveExtraId(null);
+                  // ✅ 固定スロットでも「反応」はさせる（選択解除）
+                  if (fixed) {
                     setPickedSlot(null);
-                    return;
-                  }
-                  if (slotIdx === 1) {
                     setActiveExtraId(null);
-                    setPickedSlot(null);
                     return;
                   }
 
-                  // 空き or 追加リングの場合
+                  // 1回目タップ：選択
                   if (pickedSlot === null) {
-                    setPickedSlot(slotIdx); // 1回目：選ぶ
+                    setPickedSlot(slotIdx);
                   } else {
-                    swapSlots(pickedSlot, slotIdx); // 2回目：入れ替え
+                    // 2回目タップ：swap
+                    swapSlots(pickedSlot, slotIdx);
                     setPickedSlot(null);
                   }
 
@@ -878,16 +870,17 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                   justifyContent: "center",
                   textAlign: "center",
                   overflow: "visible",
-                  cursor: fixed ? "default" : "pointer",
+                  cursor: fixed ? "pointer" : "pointer",
                   boxShadow: achieved
                     ? "0 0 28px rgba(34,197,94,0.45)"
                     : "0 10px 25px rgba(0,0,0,0.05)",
                   zIndex: 1,
                   opacity: entry ? 1 : 0.55,
+                  padding: 0,
                 }}
                 title={
                   fixed
-                    ? "固定リング"
+                    ? "固定リング（タップで選択解除）"
                     : pickedSlot === null
                     ? "タップで選択"
                     : "タップで移動（入れ替え）"
@@ -901,9 +894,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                   color={color}
                 />
                 <div style={{ zIndex: 2 }}>
-                  <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>
-                    {title}
-                  </div>
+                  <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>{title}</div>
                   <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900 }}>
                     {yen(value)}円
                   </div>
@@ -916,7 +907,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
         {/* ✅ 操作説明 */}
         <div style={{ marginTop: 8, fontSize: 12, opacity: 0.7, textAlign: "center" }}>
-          追加リングは「1回目タップで選択」→「2回目タップで移動先と入れ替え」できます（返済/貯蓄は固定）
+          追加リング：1回目タップで選択 → 2回目タップで入れ替え（返済/貯蓄は固定・タップで選択解除）
         </div>
 
         {/* ✅ 追加リングボタン */}
@@ -940,7 +931,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           </button>
         </div>
 
-        {/* ✅ 追加リング編集 */}
+        {/* ✅ 追加リング編集（編集内容は即 state 更新 → 上の円にも即反映） */}
         {activeExtra && (
           <div
             style={{
@@ -952,9 +943,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ fontWeight: 900, flex: 1 }}>
-                編集：{activeExtra.title}
-              </div>
+              <div style={{ fontWeight: 900, flex: 1 }}>編集：{activeExtra.title}</div>
               <button
                 type="button"
                 onClick={() => removeExtraRing(activeExtra.id)}
@@ -977,9 +966,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 <input
                   value={activeExtra.title}
                   onChange={(e) =>
-                    updateExtraRing(activeExtra.id, {
-                      title: e.target.value.slice(0, 24),
-                    })
+                    updateExtraRing(activeExtra.id, { title: e.target.value.slice(0, 24) })
                   }
                   style={{
                     width: "100%",
@@ -1036,9 +1023,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 <input
                   value={activeExtra.color}
                   onChange={(e) =>
-                    updateExtraRing(activeExtra.id, {
-                      color: e.target.value.slice(0, 16),
-                    })
+                    updateExtraRing(activeExtra.id, { color: e.target.value.slice(0, 16) })
                   }
                   style={{
                     width: "100%",
@@ -1055,9 +1040,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 {activeExtra.target > 0
                   ? `${(clamp01(activeExtra.current / activeExtra.target) * 100).toFixed(1)}%`
                   : "—"}
-                {activeExtra.target > 0 && activeExtra.current >= activeExtra.target
-                  ? " ✅ 目標達成！"
-                  : ""}
+                {activeExtra.target > 0 && activeExtra.current >= activeExtra.target ? " ✅ 目標達成！" : ""}
               </div>
             </div>
           </div>
@@ -1065,15 +1048,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       </div>
 
       {/* ✅ 目標入力（3つ） */}
-      <div
-        style={{
-          border: "1px solid #eee",
-          borderRadius: 12,
-          padding: 14,
-          marginBottom: 14,
-          marginTop: 16,
-        }}
-      >
+      <div style={{ border: "1px solid #eee", borderRadius: 12, padding: 14, marginBottom: 14, marginTop: 16 }}>
         <div style={{ fontWeight: 900, marginBottom: 10 }}>目標設定（リロードしても保持）</div>
 
         <div style={{ display: "grid", gap: 10 }}>
@@ -1084,12 +1059,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 value={targetBalanceStr}
                 onChange={(e) => setTargetBalanceStr(e.target.value)}
                 inputMode="numeric"
-                style={{
-                  width: "100%",
-                  padding: 12,
-                  borderRadius: 10,
-                  border: "1px solid #ccc",
-                }}
+                style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #ccc" }}
               />
               <span style={{ opacity: 0.7 }}>円</span>
             </div>
@@ -1102,12 +1072,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 value={debtTotalStr}
                 onChange={(e) => setDebtTotalStr(e.target.value)}
                 inputMode="numeric"
-                style={{
-                  width: "100%",
-                  padding: 12,
-                  borderRadius: 10,
-                  border: "1px solid #ccc",
-                }}
+                style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #ccc" }}
               />
               <span style={{ opacity: 0.7 }}>円</span>
             </div>
@@ -1125,31 +1090,17 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 value={monthlySaveTargetStr}
                 onChange={(e) => setMonthlySaveTargetStr(e.target.value)}
                 inputMode="numeric"
-                style={{
-                  width: "100%",
-                  padding: 12,
-                  borderRadius: 10,
-                  border: "1px solid #ccc",
-                }}
+                style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #ccc" }}
               />
               <span style={{ opacity: 0.7 }}>円</span>
             </div>
-            <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
-              目標差：{yen(remainToMonthlySave)}円
-            </div>
+            <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>目標差：{yen(remainToMonthlySave)}円</div>
           </div>
         </div>
       </div>
 
       {/* ✅ 年間予測 */}
-      <div
-        style={{
-          border: "1px solid #eee",
-          borderRadius: 12,
-          padding: 14,
-          marginBottom: 14,
-        }}
-      >
+      <div style={{ border: "1px solid #eee", borderRadius: 12, padding: 14, marginBottom: 14 }}>
         <div style={{ fontSize: 12, opacity: 0.7 }}>年間予測（ざっくり）</div>
         <div style={{ marginTop: 6, fontWeight: 900 }}>
           {year}年末の予測残高：{yen(Math.round(predictedYearEndBalance))}円
