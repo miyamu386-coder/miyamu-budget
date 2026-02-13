@@ -77,8 +77,9 @@ function normalizeUserKeyInput(s: string) {
 }
 
 /**
- * ✅ リング描画（SVG）
- * progress: 0〜1
+ * ✅ 外周リング描画（SVG）
+ * - size: 親(円カード)の表示サイズに合わせる
+ * - padding: リングを“外周寄り”に置くための内側余白
  */
 function Ring({
   size,
@@ -86,15 +87,20 @@ function Ring({
   progress,
   color,
   trackColor = "#e5e7eb",
+  padding = 6,
 }: {
   size: number;
   stroke: number;
   progress: number;
   color: string;
   trackColor?: string;
+  padding?: number;
 }) {
   const p = clamp01(progress);
-  const r = (size - stroke) / 2;
+
+  // ✅ 外周寄りにリングを置く（strokeの半分 + padding 分だけ内側へ）
+  const r = size / 2 - stroke / 2 - padding;
+
   const c = 2 * Math.PI * r;
   const dashOffset = c * (1 - p);
 
@@ -229,18 +235,59 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     return Array.from(set);
   }, [transactions]);
 
-  // --- ③ 目標：残高目標 / 今月の貯金目標 / 返済総額（任意入力）
-  const [targetBalanceStr, setTargetBalanceStr] = useState<string>("200000");
-  const targetBalance = Number(targetBalanceStr.replace(/,/g, "")) || 0;
+  // =========================
+  // ✅ localStorage 永続化（残高目標 / 貯蓄目標 / 返済総額）
+  // =========================
+  const LS_TARGET_BALANCE = "miyamu_goal_targetBalance";
+  const LS_MONTHLY_SAVE_TARGET = "miyamu_goal_monthlySaveTarget";
+  const LS_DEBT_TOTAL = "miyamu_goal_debtTotal";
 
+  const [targetBalanceStr, setTargetBalanceStr] = useState<string>("200000");
+  const [monthlySaveTargetStr, setMonthlySaveTargetStr] =
+    useState<string>("50000");
+  const [debtTotalStr, setDebtTotalStr] = useState<string>("0");
+
+  // 初回ロード（localStorage -> state）
+  useEffect(() => {
+    try {
+      const tb = localStorage.getItem(LS_TARGET_BALANCE);
+      const ms = localStorage.getItem(LS_MONTHLY_SAVE_TARGET);
+      const dt = localStorage.getItem(LS_DEBT_TOTAL);
+
+      if (tb !== null) setTargetBalanceStr(tb);
+      if (ms !== null) setMonthlySaveTargetStr(ms);
+      if (dt !== null) setDebtTotalStr(dt);
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  // 変更時保存（state -> localStorage）
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_TARGET_BALANCE, targetBalanceStr);
+    } catch {}
+  }, [targetBalanceStr]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_MONTHLY_SAVE_TARGET, monthlySaveTargetStr);
+    } catch {}
+  }, [monthlySaveTargetStr]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_DEBT_TOTAL, debtTotalStr);
+    } catch {}
+  }, [debtTotalStr]);
+
+  // --- ③ 目標計算
+  const targetBalance = Number(targetBalanceStr.replace(/,/g, "")) || 0;
   const remainToTarget = Math.max(0, targetBalance - summary.balance);
   const progressToTarget =
     targetBalance > 0 ? clamp01(summary.balance / targetBalance) : 0;
 
-  const [monthlySaveTargetStr, setMonthlySaveTargetStr] =
-    useState<string>("50000");
   const monthlySaveTarget = Number(monthlySaveTargetStr.replace(/,/g, "")) || 0;
-
   const savedThisMonth = summary.balance;
   const remainToMonthlySave = Math.max(0, monthlySaveTarget - savedThisMonth);
   const progressMonthlySave =
@@ -296,11 +343,8 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       : "良好：この調子！";
 
   // =========================
-  // ✅ 3つの円（総資産/返済/貯蓄）＋タップで拡大＋詳細表示＋任意額入力UI
+  // ✅ 返済リング（返済総額に対して達成で光る）
   // =========================
-
-  // 返済総額（任意）
-  const [debtTotalStr, setDebtTotalStr] = useState<string>("0");
   const debtTotal = Number(debtTotalStr.replace(/,/g, "")) || 0;
 
   // 「返済」扱いの条件：カテゴリに「返済」を含む支出
@@ -320,13 +364,21 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   // 残り返済総額
   const remainingDebt = Math.max(0, debtTotal - repaidTotal);
 
-  // ✅ リング進捗
+  // ✅ 目標達成判定（返済＝累計が目標以上 / 貯蓄＝今月が目標以上）
+  const debtAchieved = debtTotal > 0 && repaidTotal >= debtTotal;
+  const saveAchieved = monthlySaveTarget > 0 && savedThisMonth >= monthlySaveTarget;
+
+  // ✅ リング進捗（外周リング）
+  // 残高：目標に近づくほど増える（グレー）
   const balanceRingProgress = progressToTarget;
-  const debtRingProgress =
-    debtTotal > 0 ? clamp01(remainingDebt / debtTotal) : 0;
+
+  // 返済：A方式 → 達成に向かって増える（わかりやすい）
+  const debtRingProgress = debtTotal > 0 ? clamp01(repaidTotal / debtTotal) : 0;
+
+  // 貯蓄：今月目標に近づくほど増える（緑）
   const saveRingProgress = progressMonthlySave;
 
-  // スマホ判定
+  // スマホ判定（サイズ調整 + 三角配置切替）
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 600px)");
@@ -341,39 +393,28 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     "balance" | "debt" | "save" | null
   >(null);
 
-  // ✅ 円のサイズ（表示用：拡大縮小）
-  // ★スマホは小さめに調整（縦一列をやめるので、2列に収まるサイズ感に）
+  // ✅ 円のサイズ（表示用：通常/拡大/小）
   const sizeFor = (key: "balance" | "debt" | "save") => {
-    // 通常サイズ
-    const baseBalance = isMobile ? 140 : 240;
-    const baseSmall = isMobile ? 120 : 190;
+    const base = isMobile ? 190 : 260; // 通常
+    const active = isMobile ? 240 : 320; // 拡大
+    const small = isMobile ? 120 : 200; // 小
 
-    // 拡大時サイズ
-    const activeBalance = isMobile ? 200 : 300;
-    const activeSmall = isMobile ? 170 : 260;
-
-    if (activeCircle === null) {
-      return key === "balance" ? baseBalance : baseSmall;
-    }
-    if (activeCircle === key) {
-      return key === "balance" ? activeBalance : activeSmall;
-    }
-    // 非アクティブ2つはさらに少し小さく
-    return isMobile ? 105 : 170;
+    if (activeCircle === null) return key === "balance" ? base : small;
+    return activeCircle === key ? active : small;
   };
 
-  // ✅ リングのサイズは固定（リングが消えない/ズレない対策）
-  const baseSizeFor = (key: "balance" | "debt" | "save") => {
-    if (key === "balance") return isMobile ? 140 : 240;
-    return isMobile ? 120 : 190;
+  // ✅ strokeはサイズから決める（表示サイズに追従）
+  const strokeFromSize = (size: number) => {
+    if (size >= 300) return 14;
+    if (size >= 240) return 12;
+    if (size >= 200) return 11;
+    return 10;
   };
 
-  const strokeFor = (key: "balance" | "debt" | "save") => {
-    const s = baseSizeFor(key);
-    if (key === "balance") return s >= 200 ? 12 : 10;
-    return s >= 180 ? 11 : 9;
-  };
+  // ✅ 内側余白（リングが文字に被らない対策）
+  const innerPadding = isMobile ? 14 : 18;
 
+  // どの円をタップしたかで入力UIを出す
   const circleEditorTitle =
     activeCircle === "balance"
       ? "総資産（目標総資産を設定）"
@@ -383,10 +424,11 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       ? "貯蓄（今月の目標を設定）"
       : "";
 
-  // ✅ 「＋リング追加」仮ハンドラ（後でタブUIに差し替え）
-  const handleAddRing = () => {
-    alert("（今は仮）リング追加UIは次のステップで実装します！");
-  };
+  // =========================
+  // ✅ 将来の最大8リング対応しやすい：追加ボタン（今はデモ）
+  // =========================
+  const [extraRingsCount, setExtraRingsCount] = useState(0);
+  const canAddMore = extraRingsCount < 5; // 既存3 + 追加5 = 8
 
   return (
     <div>
@@ -477,14 +519,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               fontSize: 12,
             }}
           />
-          <div
-            style={{
-              display: "flex",
-              gap: 10,
-              marginTop: 10,
-              flexWrap: "wrap",
-            }}
-          >
+          <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
             <button
               type="button"
               onClick={applyUserKey}
@@ -534,211 +569,401 @@ export default function TransactionsClient({ initialTransactions }: Props) {
         </div>
       )}
 
-      {/* ✅ 3つの円サマリー（スマホも三角配置） */}
-      <div style={{ maxWidth: isMobile ? 420 : 900, margin: "0 auto" }}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gridTemplateAreas: `
-              "balance balance"
-              "debt    save"
-              "add     add"
-            `,
-            gap: isMobile ? 12 : 16,
-            alignItems: "center",
-            justifyItems: "center",
-            marginBottom: 12,
-          }}
-        >
-          {/* 上（総資産） */}
-          <div style={{ gridArea: "balance" }}>
-            <div
-              role="button"
-              onClick={() =>
-                setActiveCircle(activeCircle === "balance" ? null : "balance")
-              }
-              style={{
-                width: sizeFor("balance"),
-                height: sizeFor("balance"),
-                borderRadius: 999,
-                border: "1px solid #e5e5e5",
-                background: "#fff",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                boxShadow: "0 10px 25px rgba(0,0,0,0.06)",
-                transition: "all 0.25s ease",
-                userSelect: "none",
-                cursor: "pointer",
-                textAlign: "center",
-                position: "relative",
-                overflow: "hidden",
-              }}
-            >
-              <Ring
-                size={baseSizeFor("balance")}
-                stroke={strokeFor("balance")}
-                progress={balanceRingProgress}
-                color="#9ca3af"
-              />
-
-              <div style={{ fontSize: 14, opacity: 0.75, fontWeight: 700 }}>
-                総資産
-              </div>
+      {/* ✅ 3つの円サマリー（スマホは三角配置） */}
+      <div style={{ maxWidth: 900, margin: "0 auto" }}>
+        {/* スマホ三角配置 */}
+        {isMobile ? (
+          <div style={{ display: "grid", gap: 14, marginBottom: 12 }}>
+            {/* 上：総資産 */}
+            <div style={{ display: "flex", justifyContent: "center" }}>
               <div
+                role="button"
+                onClick={() =>
+                  setActiveCircle(activeCircle === "balance" ? null : "balance")
+                }
                 style={{
-                  fontSize: activeCircle === "balance" ? 42 : 34,
-                  fontWeight: 900,
-                  color: summary.balance < 0 ? "#ef4444" : "#111",
+                  width: sizeFor("balance"),
+                  height: sizeFor("balance"),
+                  borderRadius: 999,
+                  border: "1px solid #e5e5e5",
+                  background: "#fff",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 10px 25px rgba(0,0,0,0.06)",
+                  transition: "all 0.25s ease",
+                  userSelect: "none",
+                  cursor: "pointer",
+                  textAlign: "center",
+                  position: "relative",
+                  overflow: "hidden",
+                  padding: innerPadding, // ✅ 文字がリングに被らない
                 }}
               >
-                {yen(summary.balance)}円
-              </div>
+                <Ring
+                  size={sizeFor("balance")} // ✅ 表示サイズに追従（外周がずれない）
+                  stroke={strokeFromSize(sizeFor("balance"))}
+                  progress={balanceRingProgress}
+                  color="#9ca3af"
+                />
 
-              <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
-                収入 {yen(summary.income)} / 支出 {yen(summary.expense)}
-              </div>
-
-              {activeCircle === "balance" && (
-                <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
-                  目標まであと {yen(remainToTarget)}円
+                <div style={{ fontSize: 14, opacity: 0.75, fontWeight: 700 }}>
+                  総資産
                 </div>
-              )}
-            </div>
-          </div>
+                <div
+                  style={{
+                    fontSize: activeCircle === "balance" ? 40 : 34,
+                    fontWeight: 900,
+                    color: summary.balance < 0 ? "#ef4444" : "#111",
+                  }}
+                >
+                  {yen(summary.balance)}円
+                </div>
 
-          {/* 左下（返済） */}
-          <div style={{ gridArea: "debt" }}>
+                <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
+                  収入 {yen(summary.income)} / 支出 {yen(summary.expense)}
+                </div>
+
+                {activeCircle === "balance" && (
+                  <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
+                    目標まであと {yen(remainToTarget)}円
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 下：返済 + 貯蓄 を左右 */}
             <div
-              role="button"
-              onClick={() =>
-                setActiveCircle(activeCircle === "debt" ? null : "debt")
-              }
               style={{
-                width: sizeFor("debt"),
-                height: sizeFor("debt"),
-                borderRadius: 999,
-                border: "1px solid #e5e5e5",
-                background: "#fff",
                 display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
                 justifyContent: "center",
-                boxShadow: "0 10px 25px rgba(0,0,0,0.05)",
-                transition: "all 0.25s ease",
-                userSelect: "none",
-                cursor: "pointer",
-                textAlign: "center",
-                position: "relative",
-                overflow: "hidden",
+                gap: 18,
+                alignItems: "flex-start",
               }}
             >
-              <Ring
-                size={baseSizeFor("debt")}
-                stroke={strokeFor("debt")}
-                progress={debtRingProgress}
-                color="#ef4444"
-              />
-
-              <div style={{ fontSize: 14, opacity: 0.75, fontWeight: 700 }}>
-                返済
-              </div>
+              {/* 返済 */}
               <div
+                role="button"
+                onClick={() =>
+                  setActiveCircle(activeCircle === "debt" ? null : "debt")
+                }
                 style={{
-                  fontSize: activeCircle === "debt" ? 32 : 26,
-                  fontWeight: 900,
+                  width: sizeFor("debt"),
+                  height: sizeFor("debt"),
+                  borderRadius: 999,
+                  border: "1px solid #e5e5e5",
+                  background: "#fff",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 10px 25px rgba(0,0,0,0.05)",
+                  transition: "all 0.25s ease",
+                  userSelect: "none",
+                  cursor: "pointer",
+                  textAlign: "center",
+                  position: "relative",
+                  overflow: "hidden",
+                  padding: innerPadding,
+                  // ✅ 目標達成で光る
+                  boxShadow: debtAchieved
+                    ? "0 0 24px rgba(34,197,94,0.55)"
+                    : "0 10px 25px rgba(0,0,0,0.05)",
                 }}
               >
-                {yen(repaidTotal)}円
-              </div>
-              <div style={{ marginTop: 4, fontSize: 12, opacity: 0.6 }}>
-                (累計)
-              </div>
+                <Ring
+                  size={sizeFor("debt")}
+                  stroke={strokeFromSize(sizeFor("debt"))}
+                  progress={debtRingProgress}
+                  color={debtAchieved ? "#22c55e" : "#ef4444"}
+                />
 
-              {activeCircle === "debt" && (
-                <div style={{ marginTop: 10, fontSize: 13, opacity: 0.85 }}>
-                  残り総額 {yen(remainingDebt)}円
+                <div style={{ fontSize: 14, opacity: 0.75, fontWeight: 700 }}>
+                  返済
                 </div>
-              )}
-            </div>
-          </div>
+                <div style={{ fontSize: 24, fontWeight: 900 }}>
+                  {yen(repaidTotal)}円
+                </div>
+                <div style={{ marginTop: 4, fontSize: 12, opacity: 0.6 }}>
+                  (累計)
+                </div>
 
-          {/* 右下（貯蓄） */}
-          <div style={{ gridArea: "save" }}>
-            <div
-              role="button"
-              onClick={() =>
-                setActiveCircle(activeCircle === "save" ? null : "save")
-              }
-              style={{
-                width: sizeFor("save"),
-                height: sizeFor("save"),
-                borderRadius: 999,
-                border: "1px solid #e5e5e5",
-                background: "#fff",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                boxShadow: "0 10px 25px rgba(0,0,0,0.05)",
-                transition: "all 0.25s ease",
-                userSelect: "none",
-                cursor: "pointer",
-                textAlign: "center",
-                position: "relative",
-                overflow: "hidden",
-              }}
-            >
-              <Ring
-                size={baseSizeFor("save")}
-                stroke={strokeFor("save")}
-                progress={saveRingProgress}
-                color="#22c55e"
-              />
-
-              <div style={{ fontSize: 14, opacity: 0.75, fontWeight: 700 }}>
-                貯蓄
+                {debtAchieved && (
+                  <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800 }}>
+                    ✅ 目標達成！
+                  </div>
+                )}
               </div>
+
+              {/* 貯蓄 */}
               <div
+                role="button"
+                onClick={() =>
+                  setActiveCircle(activeCircle === "save" ? null : "save")
+                }
                 style={{
-                  fontSize: activeCircle === "save" ? 32 : 26,
-                  fontWeight: 900,
+                  width: sizeFor("save"),
+                  height: sizeFor("save"),
+                  borderRadius: 999,
+                  border: "1px solid #e5e5e5",
+                  background: "#fff",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 10px 25px rgba(0,0,0,0.05)",
+                  transition: "all 0.25s ease",
+                  userSelect: "none",
+                  cursor: "pointer",
+                  textAlign: "center",
+                  position: "relative",
+                  overflow: "hidden",
+                  padding: innerPadding,
+                  // ✅ 目標達成で光る
+                  boxShadow: saveAchieved
+                    ? "0 0 24px rgba(34,197,94,0.55)"
+                    : "0 10px 25px rgba(0,0,0,0.05)",
                 }}
               >
-                {yen(savedThisMonth)}円
-              </div>
-              <div style={{ marginTop: 4, fontSize: 12, opacity: 0.6 }}>
-                今月
-              </div>
+                <Ring
+                  size={sizeFor("save")}
+                  stroke={strokeFromSize(sizeFor("save"))}
+                  progress={saveRingProgress}
+                  color="#22c55e"
+                />
 
-              {activeCircle === "save" && (
-                <div style={{ marginTop: 10, fontSize: 13, opacity: 0.85 }}>
-                  目標差 {yen(remainToMonthlySave)}円
+                <div style={{ fontSize: 14, opacity: 0.75, fontWeight: 700 }}>
+                  貯蓄
                 </div>
-              )}
+                <div style={{ fontSize: 24, fontWeight: 900 }}>
+                  {yen(savedThisMonth)}円
+                </div>
+                <div style={{ marginTop: 4, fontSize: 12, opacity: 0.6 }}>今月</div>
+
+                {saveAchieved && (
+                  <div style={{ marginTop: 6, fontSize: 12, fontWeight: 800 }}>
+                    ✅ 目標達成！
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 追加ボタン */}
+            <div style={{ display: "flex", justifyContent: "center", marginTop: 8 }}>
+              <button
+                type="button"
+                disabled={!canAddMore}
+                onClick={() => setExtraRingsCount((v) => Math.min(5, v + 1))}
+                style={{
+                  padding: "12px 18px",
+                  borderRadius: 14,
+                  border: "1px solid #ccc",
+                  background: canAddMore ? "#fff" : "#f5f5f5",
+                  cursor: canAddMore ? "pointer" : "not-allowed",
+                  fontWeight: 800,
+                }}
+              >
+                ＋ リング追加
+              </button>
             </div>
           </div>
+        ) : (
+          // PC：上に総資産、下に2つ
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 16,
+              alignItems: "center",
+              marginBottom: 12,
+            }}
+          >
+            {/* 上の円（総資産） */}
+            <div style={{ gridColumn: "1 / 3", display: "flex", justifyContent: "center" }}>
+              <div
+                role="button"
+                onClick={() =>
+                  setActiveCircle(activeCircle === "balance" ? null : "balance")
+                }
+                style={{
+                  width: sizeFor("balance"),
+                  height: sizeFor("balance"),
+                  borderRadius: 999,
+                  border: "1px solid #e5e5e5",
+                  background: "#fff",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: "0 10px 25px rgba(0,0,0,0.06)",
+                  transition: "all 0.25s ease",
+                  userSelect: "none",
+                  cursor: "pointer",
+                  textAlign: "center",
+                  position: "relative",
+                  overflow: "hidden",
+                  padding: innerPadding,
+                }}
+              >
+                <Ring
+                  size={sizeFor("balance")}
+                  stroke={strokeFromSize(sizeFor("balance"))}
+                  progress={balanceRingProgress}
+                  color="#9ca3af"
+                />
 
-          {/* 下：＋リング追加 */}
-          <div style={{ gridArea: "add" }}>
-            <button
-              type="button"
-              onClick={handleAddRing}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 12,
-                border: "1px solid #ccc",
-                background: "#fff",
-                cursor: "pointer",
-                fontWeight: 800,
-              }}
-            >
-              ＋ リング追加
-            </button>
+                <div style={{ fontSize: 14, opacity: 0.75, fontWeight: 700 }}>
+                  総資産
+                </div>
+                <div
+                  style={{
+                    fontSize: activeCircle === "balance" ? 42 : 34,
+                    fontWeight: 900,
+                    color: summary.balance < 0 ? "#ef4444" : "#111",
+                  }}
+                >
+                  {yen(summary.balance)}円
+                </div>
+
+                <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
+                  収入 {yen(summary.income)} / 支出 {yen(summary.expense)}
+                </div>
+
+                {activeCircle === "balance" && (
+                  <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
+                    目標まであと {yen(remainToTarget)}円
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 左：返済 */}
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <div
+                role="button"
+                onClick={() =>
+                  setActiveCircle(activeCircle === "debt" ? null : "debt")
+                }
+                style={{
+                  width: sizeFor("debt"),
+                  height: sizeFor("debt"),
+                  borderRadius: 999,
+                  border: "1px solid #e5e5e5",
+                  background: "#fff",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "all 0.25s ease",
+                  userSelect: "none",
+                  cursor: "pointer",
+                  textAlign: "center",
+                  position: "relative",
+                  overflow: "hidden",
+                  padding: innerPadding,
+                  boxShadow: debtAchieved
+                    ? "0 0 24px rgba(34,197,94,0.55)"
+                    : "0 10px 25px rgba(0,0,0,0.05)",
+                }}
+              >
+                <Ring
+                  size={sizeFor("debt")}
+                  stroke={strokeFromSize(sizeFor("debt"))}
+                  progress={debtRingProgress}
+                  color={debtAchieved ? "#22c55e" : "#ef4444"}
+                />
+
+                <div style={{ fontSize: 14, opacity: 0.75, fontWeight: 700 }}>
+                  返済
+                </div>
+                <div style={{ fontSize: 28, fontWeight: 900 }}>
+                  {yen(repaidTotal)}円
+                </div>
+                <div style={{ marginTop: 4, fontSize: 12, opacity: 0.6 }}>
+                  (累計)
+                </div>
+
+                {debtAchieved && (
+                  <div style={{ marginTop: 8, fontSize: 13, fontWeight: 800 }}>
+                    ✅ 目標達成！
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 右：貯蓄 */}
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <div
+                role="button"
+                onClick={() =>
+                  setActiveCircle(activeCircle === "save" ? null : "save")
+                }
+                style={{
+                  width: sizeFor("save"),
+                  height: sizeFor("save"),
+                  borderRadius: 999,
+                  border: "1px solid #e5e5e5",
+                  background: "#fff",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "all 0.25s ease",
+                  userSelect: "none",
+                  cursor: "pointer",
+                  textAlign: "center",
+                  position: "relative",
+                  overflow: "hidden",
+                  padding: innerPadding,
+                  boxShadow: saveAchieved
+                    ? "0 0 24px rgba(34,197,94,0.55)"
+                    : "0 10px 25px rgba(0,0,0,0.05)",
+                }}
+              >
+                <Ring
+                  size={sizeFor("save")}
+                  stroke={strokeFromSize(sizeFor("save"))}
+                  progress={saveRingProgress}
+                  color="#22c55e"
+                />
+
+                <div style={{ fontSize: 14, opacity: 0.75, fontWeight: 700 }}>
+                  貯蓄
+                </div>
+                <div style={{ fontSize: 28, fontWeight: 900 }}>
+                  {yen(savedThisMonth)}円
+                </div>
+                <div style={{ marginTop: 4, fontSize: 12, opacity: 0.6 }}>今月</div>
+
+                {saveAchieved && (
+                  <div style={{ marginTop: 8, fontSize: 13, fontWeight: 800 }}>
+                    ✅ 目標達成！
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 追加ボタン */}
+            <div style={{ gridColumn: "1 / 3", display: "flex", justifyContent: "center" }}>
+              <button
+                type="button"
+                disabled={!canAddMore}
+                onClick={() => setExtraRingsCount((v) => Math.min(5, v + 1))}
+                style={{
+                  padding: "12px 18px",
+                  borderRadius: 14,
+                  border: "1px solid #ccc",
+                  background: canAddMore ? "#fff" : "#f5f5f5",
+                  cursor: canAddMore ? "pointer" : "not-allowed",
+                  fontWeight: 800,
+                }}
+              >
+                ＋ リング追加
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* ✅ タップした円に応じて任意額を入力 */}
@@ -758,7 +983,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           {activeCircle === "balance" && (
             <>
               <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
-                目標総資産（任意）
+                目標総資産（任意）※リロードしても保持されます
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <input
@@ -806,7 +1031,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           {activeCircle === "debt" && (
             <>
               <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
-                返済総額（任意）
+                返済総額（任意）※リロードしても保持されます
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <input
@@ -833,7 +1058,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           {activeCircle === "save" && (
             <>
               <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
-                今月の貯金目標（任意）
+                今月の貯金目標（任意）※リロードしても保持されます
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <input
@@ -873,13 +1098,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             </>
           )}
 
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              marginTop: 12,
-            }}
-          >
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
             <button
               type="button"
               onClick={() => setActiveCircle(null)}
@@ -940,7 +1159,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
         </div>
       </div>
 
-      {/* ✅ 入力フォーム（上部へ移動） */}
+      {/* ✅ 入力フォーム */}
       <TransactionForm
         editing={editing}
         categorySuggestions={categorySuggestions}
