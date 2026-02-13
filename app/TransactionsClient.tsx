@@ -79,7 +79,7 @@ function normalizeUserKeyInput(s: string) {
 /**
  * ✅ 外周リング描画（SVG）
  * - 文字に被らないように「外周」に出す
- * - offsetDeg で開始位置（時計回りに動かす時にも使える）
+ * - offsetDeg で開始位置（-90で12時スタート）
  */
 function Ring({
   size,
@@ -485,7 +485,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   };
 
   const updateExtraRing = (id: string, patch: Partial<ExtraRing>) => {
-    setExtraRings((prev) => prev.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+    setExtraRings((prev) =>
+      prev.map((x) => (x.id === id ? { ...x, ...patch } : x))
+    );
   };
 
   const activeExtra = useMemo(() => {
@@ -493,8 +495,17 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     return extraRings.find((x) => x.id === activeExtraTab) ?? null;
   }, [extraRings, activeExtraTab]);
 
+  // ✅ 追加リングを「上部リングエリア」に反映する用（小リング一覧）
+  const extraPreview = useMemo(() => {
+    return extraRings.slice(0, MAX_EXTRA_RINGS).map((r) => {
+      const progress = r.target > 0 ? clamp01(r.current / r.target) : 0;
+      const achieved = r.target > 0 ? r.current >= r.target : false;
+      return { ...r, progress, achieved };
+    });
+  }, [extraRings]);
+
   // =========================
-  // ✅ 表示サイズ（拡大なし：外周リングで文字が被らない設計にしたので）
+  // ✅ 表示サイズ（外周リングで文字が被らない設計）
   // =========================
   const bigSize = isMobile ? 260 : 360;
   const smallSize = isMobile ? 160 : 220;
@@ -507,20 +518,17 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const outwardSmall = isMobile ? 8 : 10;
 
   // ✅ 三角配置（スマホでも縦一列にならない）
-  // - 上：総資産（大）
-  // - 下：返済 / 貯蓄（小）
   const gridCols = "1fr 1fr";
   const gap = isMobile ? 14 : 18;
 
-  // =========================
-  // ✅ “みやむMaker が2回出る”対策
-  // → このコンポーネント側ではタイトルを出さない
-  //    （page/layoutで出てるH1に任せる）
-  // =========================
+  // ✅ 上部に出す「追加リング反映」の小リングサイズ
+  const extraMiniSize = isMobile ? 140 : 160;
+  const extraMiniStroke = isMobile ? 10 : 12;
+  const extraMiniOutward = isMobile ? 7 : 8;
 
   return (
     <div>
-      {/* ① 月切替（ここで “みやむMaker” 表示はしない） */}
+      {/* ① 月切替（このコンポーネント側では “みやむMaker” タイトルは出さない） */}
       <div
         style={{
           display: "flex",
@@ -676,7 +684,13 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           }}
         >
           {/* 上（総資産：大） */}
-          <div style={{ gridColumn: "1 / 3", display: "flex", justifyContent: "center" }}>
+          <div
+            style={{
+              gridColumn: "1 / 3",
+              display: "flex",
+              justifyContent: "center",
+            }}
+          >
             <div
               style={{
                 width: bigSize,
@@ -696,7 +710,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                   : "0 10px 25px rgba(0,0,0,0.06)",
               }}
             >
-              {/* 外周リング（グレー） */}
               <Ring
                 size={bigSize}
                 stroke={strokeBig}
@@ -759,7 +772,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                   : "0 10px 25px rgba(0,0,0,0.05)",
               }}
             >
-              {/* 外周リング（返済：薄グレー track + 薄グレー progress） */}
               <Ring
                 size={smallSize}
                 stroke={strokeSmall}
@@ -819,7 +831,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                   : "0 10px 25px rgba(0,0,0,0.05)",
               }}
             >
-              {/* 外周リング（緑） */}
               <Ring
                 size={smallSize}
                 stroke={strokeSmall}
@@ -859,7 +870,13 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           </div>
 
           {/* ✅ 追加リングボタン（最大8） */}
-          <div style={{ gridColumn: "1 / 3", display: "flex", justifyContent: "center" }}>
+          <div
+            style={{
+              gridColumn: "1 / 3",
+              display: "flex",
+              justifyContent: "center",
+            }}
+          >
             <button
               type="button"
               onClick={addExtraRing}
@@ -879,9 +896,82 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             </button>
           </div>
 
-          {/* ✅ 追加リングの「タブ」 */}
-          {extraRings.length > 0 && (
+          {/* ✅ 上部に反映：追加リングの小リング一覧（保存した値がここに出る） */}
+          {extraPreview.length > 0 && (
             <div style={{ gridColumn: "1 / 3" }}>
+              <div style={{ fontWeight: 900, margin: "8px 0 10px" }}>
+                追加リング（上部反映）
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)",
+                  gap: 12,
+                }}
+              >
+                {extraPreview.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => setActiveExtraTab(r.id)}
+                    style={{
+                      border: activeExtraTab === r.id ? "2px solid #111" : "1px solid #e5e7eb",
+                      borderRadius: 14,
+                      background: "#fff",
+                      padding: 10,
+                      cursor: "pointer",
+                      textAlign: "center",
+                      boxShadow: r.achieved
+                        ? "0 0 20px rgba(34,197,94,0.35)"
+                        : "0 10px 20px rgba(0,0,0,0.05)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: extraMiniSize,
+                        height: extraMiniSize,
+                        margin: "0 auto",
+                        borderRadius: 999,
+                        border: "1px solid #e5e5e5",
+                        position: "relative",
+                        overflow: "visible",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Ring
+                        size={extraMiniSize}
+                        stroke={extraMiniStroke}
+                        outward={extraMiniOutward}
+                        progress={r.progress}
+                        color={r.color}
+                        offsetDeg={r.offsetDeg ?? -90}
+                      />
+                      <div style={{ zIndex: 2, position: "relative" }}>
+                        <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.75 }}>
+                          {r.title}
+                        </div>
+                        <div style={{ fontSize: 22, fontWeight: 900 }}>
+                          {yen(r.current)}
+                        </div>
+                        {r.achieved && (
+                          <div style={{ marginTop: 4, fontSize: 12, fontWeight: 900 }}>
+                            ✅
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ✅ 追加リングの「タブ」 + 編集（ここで詳細設定） */}
+          {extraRings.length > 0 && (
+            <div style={{ gridColumn: "1 / 3", marginTop: 6 }}>
               <div style={{ fontWeight: 900, margin: "6px 0 10px" }}>
                 追加リング（最大{MAX_EXTRA_RINGS}）
               </div>
@@ -915,7 +1005,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 ))}
               </div>
 
-              {/* ✅ タブ中身（編集） */}
               {activeExtra && (
                 <div
                   style={{
@@ -972,7 +1061,8 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                         inputMode="numeric"
                         onChange={(e) =>
                           updateExtraRing(activeExtra.id, {
-                            current: Number(e.target.value.replace(/,/g, "")) || 0,
+                            current:
+                              Number(e.target.value.replace(/,/g, "")) || 0,
                           })
                         }
                         style={{
@@ -992,7 +1082,8 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                         inputMode="numeric"
                         onChange={(e) =>
                           updateExtraRing(activeExtra.id, {
-                            target: Number(e.target.value.replace(/,/g, "")) || 0,
+                            target:
+                              Number(e.target.value.replace(/,/g, "")) || 0,
                           })
                         }
                         style={{
@@ -1027,15 +1118,25 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                     <div style={{ fontSize: 12, opacity: 0.75 }}>
                       進捗：{" "}
                       {activeExtra.target > 0
-                        ? `${(clamp01(activeExtra.current / activeExtra.target) * 100).toFixed(1)}%`
+                        ? `${(
+                            clamp01(activeExtra.current / activeExtra.target) *
+                            100
+                          ).toFixed(1)}%`
                         : "—"}
-                      {activeExtra.target > 0 && activeExtra.current >= activeExtra.target
+                      {activeExtra.target > 0 &&
+                      activeExtra.current >= activeExtra.target
                         ? " ✅ 目標達成！"
                         : ""}
                     </div>
 
-                    {/* 追加リングのプレビュー */}
-                    <div style={{ display: "flex", justifyContent: "center", marginTop: 6 }}>
+                    {/* 追加リングのプレビュー（大きめ） */}
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "center",
+                        marginTop: 6,
+                      }}
+                    >
                       <div
                         style={{
                           width: isMobile ? 200 : 220,
@@ -1051,7 +1152,8 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                           overflow: "visible",
                           textAlign: "center",
                           boxShadow:
-                            activeExtra.target > 0 && activeExtra.current >= activeExtra.target
+                            activeExtra.target > 0 &&
+                            activeExtra.current >= activeExtra.target
                               ? "0 0 28px rgba(34,197,94,0.45)"
                               : "0 10px 25px rgba(0,0,0,0.05)",
                         }}
@@ -1099,7 +1201,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           marginBottom: 14,
         }}
       >
-        <div style={{ fontWeight: 900, marginBottom: 10 }}>目標設定（リロードしても保持）</div>
+        <div style={{ fontWeight: 900, marginBottom: 10 }}>
+          目標設定（リロードしても保持）
+        </div>
 
         <div style={{ display: "grid", gap: 10 }}>
           {/* 残高 */}
