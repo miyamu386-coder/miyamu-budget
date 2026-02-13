@@ -778,6 +778,58 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           {extraRings.length > 0 && (
             <div style={{ gridColumn: "1 / 3" }}>
               <div style={{ fontWeight: 900, margin: "6px 0 10px" }}>追加リング（上部反映）</div>
+              {/* ✅ 選択中の追加リングを「上部に大きく反映」 */}
+{activeExtra && (
+  <div
+    style={{
+      marginBottom: 12,
+      borderRadius: 16,
+      border: "1px solid #e5e7eb",
+      background: "#fff",
+      padding: 14,
+      display: "flex",
+      justifyContent: "center",
+    }}
+  >
+    <div
+      style={{
+        width: bigSize,
+        height: bigSize,
+        borderRadius: 999,
+        border: "1px solid #eee",
+        position: "relative",
+        overflow: "visible",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
+      }}
+    >
+      <Ring
+        size={bigSize}
+        stroke={strokeBig}
+        outward={outwardBig}
+        progress={activeExtra.target > 0 ? clamp01(activeExtra.current / activeExtra.target) : 0}
+        color={activeExtra.color}
+        offsetDeg={activeExtra.offsetDeg ?? -90}
+      />
+      <div style={{ zIndex: 2 }}>
+        <div style={{ fontSize: 16, opacity: 0.75, fontWeight: 900 }}>{activeExtra.title}</div>
+        <div style={{ fontSize: isMobile ? 44 : 54, fontWeight: 900, lineHeight: 1.05 }}>
+          {yen(activeExtra.current)}円
+        </div>
+        {activeExtra.target > 0 && (
+          <div style={{ marginTop: 10, fontSize: 13, opacity: 0.75 }}>
+            目標まであと {yen(Math.max(0, activeExtra.target - activeExtra.current))}円
+          </div>
+        )}
+        {activeExtra.target > 0 && activeExtra.current >= activeExtra.target && (
+          <div style={{ marginTop: 10, fontWeight: 900 }}>✅ 目標達成！</div>
+        )}
+      </div>
+    </div>
+  </div>
+)}
 
               <div
                 style={{
