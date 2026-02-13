@@ -647,7 +647,29 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               }}
             >
               <Ring size={bigSize} stroke={strokeBig} outward={outwardBig} progress={balanceRingProgress} color="#9ca3af" />
+               {/* ✅ 追加リングを「総資産リングの外周」に重ねる（最大8） */}
+{extraRings.slice(0, 8).map((r, i) => {
+  const p = r.target > 0 ? clamp01(r.current / r.target) : 0;
 
+  // 外側へずらして重ならないように（リングごとに外へ）
+  const extraOutward = outwardBig + (i + 1) * (strokeBig + 8);
+
+  // 時計回りに開始位置をずらす（1本ずつ少し回す）
+  const extraOffset = (r.offsetDeg ?? -90) + i * 18;
+
+  return (
+    <Ring
+      key={r.id}
+      size={bigSize}
+      stroke={strokeBig}
+      outward={extraOutward}
+      progress={p}
+      color={r.color}
+      offsetDeg={extraOffset}
+      trackColor="#e5e7eb"
+    />
+  );
+})}
               <div style={{ zIndex: 2, position: "relative" }}>
                 <div style={{ fontSize: 16, opacity: 0.75, fontWeight: 800 }}>総資産</div>
                 <div
