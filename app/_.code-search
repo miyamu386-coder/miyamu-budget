@@ -1,0 +1,59 @@
+# Query: 残高
+# ContextLines: 1
+
+16 results - 2 files
+
+app/PieChart.tsx:
+   12    data: PieDatum[];
+   13:   totalLabel?: string;     // 中央に出す数値（例: "4,000円"）※総資産を渡す
+   14:   centerTitle?: string;    // 中央上の見出し（例: "総資産"）
+   15    showPercent?: boolean;
+
+   64    totalLabel,
+   65:   centerTitle = "総資産",   // デフォルトを「総資産」に
+   66    showPercent = false,
+
+  132  
+  133:             {/* 中央タイトル（総資産） */}
+  134              <text
+
+  142  
+  143:             {/* 中央の金額（総資産を渡す） */}
+  144              <text
+
+app/TransactionsClient.tsx:
+  231  
+  232:   // --- ③ 目標：総資産目標 / 今月の貯金目標 / 返済総額（任意入力）
+  233    const [targetBalanceStr, setTargetBalanceStr] = useState<string>("200000");
+
+  298    // =========================
+  299:   // ✅ B：3つの円（総資産/返済/貯蓄）＋タップで拡大＋詳細表示＋任意額入力UI
+  300    // =========================
+
+  323    // ✅ リング進捗
+  324:   // 総資産：目標に近づくほど増える（グレー）
+  325    const balanceRingProgress = progressToTarget;
+
+  376      activeCircle === "balance"
+  377:       ? "総資産（目標残高を設定）"
+  378        : activeCircle === "debt"
+
+  539        >
+  540:         {/* 上の円（総資産） */}
+  541          <div
+
+  571            >
+  572:             {/* ✅ 総資産リング（グレー）※サイズは固定で描画 */}
+  573              <Ring
+
+  580              <div style={{ fontSize: 14, opacity: 0.75, fontWeight: 700 }}>
+  581:               総資産
+  582              </div>
+
+  733                <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
+  734:                 目標総資産（任意）
+  735                </div>
+
+  884          <div style={{ marginTop: 6, fontWeight: 900 }}>
+  885:           {year}年末の予測総資産：{yen(Math.round(predictedYearEndBalance))}円
+  886          </div>
