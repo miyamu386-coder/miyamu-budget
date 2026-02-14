@@ -1247,4 +1247,4 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       />
     </div>
   );
-}？
+}
