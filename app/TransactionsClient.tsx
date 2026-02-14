@@ -197,11 +197,17 @@ function resolveChara(title: string, mode?: CharaMode): Exclude<CharaMode, "auto
 }
 
 function CharaBadge({ kind }: { kind: "mofu" | "hina" }) {
-  const src = kind === "mofu" ? "/icons/mofu-mini.png" : "/icons/hina-mini.png";
+  // ✅ みやむの指定：mofu-chibi / hina-chibi
+  const src = kind === "mofu" ? "/icons/mofu-chibi.png" : "/icons/hina-chibi.png";
+
   return (
     <img
       src={src}
       alt={kind}
+      onError={(e) => {
+        // 画像が無い/読めない時は「?」が出るので非表示にする
+        (e.currentTarget as HTMLImageElement).style.display = "none";
+      }}
       style={{
         position: "absolute",
         right: -6,
@@ -218,27 +224,74 @@ function CharaBadge({ kind }: { kind: "mofu" | "hina" }) {
   );
 }
 
-// ✅ 長押し（スマホ対応）
+/**
+ * ✅ 長押し（iPhone Safari対応・確実版）
+ * - touch/pointer 両対応
+ * - 長押し中に出るメニュー/選択を抑止
+ * - 指が動いたらキャンセル（スクロール時の誤爆防止）
+ */
 function useLongPress(onLongPress: () => void, ms = 650) {
   const timer = useRef<number | null>(null);
+  const startXY = useRef<{ x: number; y: number } | null>(null);
+  const fired = useRef(false);
 
   const clear = () => {
     if (timer.current) window.clearTimeout(timer.current);
     timer.current = null;
+    startXY.current = null;
+    fired.current = false;
   };
 
-  const onPointerDown = () => {
+  const start = (x: number, y: number) => {
     clear();
+    startXY.current = { x, y };
     timer.current = window.setTimeout(() => {
+      fired.current = true;
       onLongPress();
     }, ms);
   };
 
-  const onPointerUp = () => clear();
-  const onPointerCancel = () => clear();
-  const onPointerLeave = () => clear();
+  const moveCancelIfNeeded = (x: number, y: number) => {
+    const s = startXY.current;
+    if (!s) return;
+    const dx = Math.abs(x - s.x);
+    const dy = Math.abs(y - s.y);
+    if (dx > 10 || dy > 10) clear();
+  };
 
-  return { onPointerDown, onPointerUp, onPointerCancel, onPointerLeave };
+  return {
+    // pointer系（対応ブラウザ）
+    onPointerDown: (e: React.PointerEvent) => {
+      // iOSでの選択/メニューを抑止したいので先に止める
+      e.preventDefault?.();
+      start(e.clientX, e.clientY);
+    },
+    onPointerMove: (e: React.PointerEvent) => moveCancelIfNeeded(e.clientX, e.clientY),
+    onPointerUp: () => clear(),
+    onPointerCancel: () => clear(),
+    onPointerLeave: () => clear(),
+
+    // touch系（iPhoneで一番安定）
+    onTouchStart: (e: React.TouchEvent) => {
+      e.preventDefault(); // ←これが無いと長押しがSafari側に奪われがち
+      const t = e.touches[0];
+      if (!t) return;
+      start(t.clientX, t.clientY);
+    },
+    onTouchMove: (e: React.TouchEvent) => {
+      const t = e.touches[0];
+      if (!t) return;
+      moveCancelIfNeeded(t.clientX, t.clientY);
+    },
+    onTouchEnd: () => clear(),
+    onTouchCancel: () => clear(),
+
+    // Safariのコンテキストメニュー抑止
+    onContextMenu: (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    },
+  };
 }
 
 type FixedEditKind = "asset" | "save" | "debt" | null;
@@ -593,8 +646,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     setSavePos(ns);
     setExtraRings([...normalizedExtras, next]);
     setActiveExtraId(next.id);
-
-    // 追加リングは「後で」長押し編集に寄せるので、いまはズーム維持でOK
     setFocused(null);
   };
 
@@ -709,6 +760,14 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const lpAsset = useLongPress(() => openFixedEdit("asset"));
   const lpDebt = useLongPress(() => openFixedEdit("debt"));
   const lpSave = useLongPress(() => openFixedEdit("save"));
+
+  // ✅ iPhoneで長押しを奪われないための共通スタイル
+  const pressSafeStyle: React.CSSProperties = {
+    WebkitTouchCallout: "none",
+    WebkitUserSelect: "none",
+    userSelect: "none",
+    touchAction: "manipulation",
+  };
 
   return (
     <div>
@@ -831,22 +890,17 @@ export default function TransactionsClient({ initialTransactions }: Props) {
         </div>
       )}
 
-      {/* =========================
-          ✅ 三角配置固定：
-          - 中央：総資産（長押しで目標編集）
-          - 上：返済（長押しで返済総額編集）
-          - 下：貯蓄（長押しで今月目標編集）
-          追加リングは周囲に並ぶ（必要なら後で）
-         ========================= */}
+      {/* ✅ 三角配置固定 */}
       <div style={{ maxWidth: 980, margin: "0 auto" }}>
         <div
           style={{
             position: "relative",
             width: "100%",
             height: isMobile ? 760 : 860,
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
+            // ✅ display:flex を消す（Safariでabsoluteが不安定になるのを避ける）
+            // display: "flex",
+            // justifyContent: "center",
+            // alignItems: "center",
           }}
         >
           {/* 中央リング（総資産） */}
@@ -855,6 +909,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             {...lpAsset}
             onClick={() => setFocused({ kind: "asset" })}
             style={{
+              ...pressSafeStyle,
               width: bigSize,
               height: bigSize,
               borderRadius: 999,
@@ -878,9 +933,14 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             }}
             title="タップ：中央表示 / 長押し：目標編集"
           >
-            <Ring size={bigSize} stroke={strokeBig} outward={outwardBig} progress={centerCard.progress} color={centerCard.color} />
+            <Ring
+              size={bigSize}
+              stroke={strokeBig}
+              outward={outwardBig}
+              progress={centerCard.progress}
+              color={centerCard.color}
+            />
 
-            {/* ここはあとでイラスト。今は維持 */}
             <CharaBadge kind="mofu" />
 
             <div style={{ zIndex: 2, position: "relative" }}>
@@ -905,12 +965,13 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             </div>
           </button>
 
-          {/* 上：返済（固定位置） */}
+          {/* 上：返済 */}
           <button
             type="button"
             {...lpDebt}
             onClick={() => setFocused({ kind: "debt" })}
             style={{
+              ...pressSafeStyle,
               position: "absolute",
               left: "50%",
               top: isMobile ? 70 : 90,
@@ -944,12 +1005,13 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             </div>
           </button>
 
-          {/* 下：貯蓄（固定位置） */}
+          {/* 下：貯蓄 */}
           <button
             type="button"
             {...lpSave}
             onClick={() => setFocused({ kind: "save" })}
             style={{
+              ...pressSafeStyle,
               position: "absolute",
               left: "50%",
               bottom: isMobile ? 55 : 85,
@@ -983,7 +1045,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             </div>
           </button>
 
-          {/* 追加リング（周囲）…今回は“優先度低”なので表示だけ維持 */}
+          {/* 追加リング（周囲） */}
           {orbitItems
             .filter((x) => x.kind === "extra")
             .map((item, idx) => {
@@ -1018,6 +1080,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                     setActiveExtraId((item as any).id);
                   }}
                   style={{
+                    ...pressSafeStyle,
                     position: "absolute",
                     left: "50%",
                     top: "50%",
@@ -1070,7 +1133,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           </button>
         </div>
 
-        {/* 追加リング編集（既存のまま：今回は触らない） */}
+        {/* 追加リング編集 */}
         {activeExtra && (
           <div style={{ border: "1px solid #eee", borderRadius: 12, padding: 12, background: "#fff", marginTop: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1255,7 +1318,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
         </div>
       )}
 
-      {/* ✅ 目標入力（3つ） ※いまは残す。後で“この枠いらない”なら削除してOK */}
+      {/* ✅ 目標入力（3つ） */}
       <div style={{ border: "1px solid #eee", borderRadius: 12, padding: 14, marginBottom: 14, marginTop: 16 }}>
         <div style={{ fontWeight: 900, marginBottom: 10 }}>目標設定（リロードしても保持）</div>
 
