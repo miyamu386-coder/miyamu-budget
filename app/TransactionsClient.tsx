@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import TransactionForm from "./TransactionForm";
 import TransactionList from "./TransactionList";
 import type { Transaction } from "./types";
@@ -50,10 +50,6 @@ function yen(n: number) {
 
 function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
-}
-
-function toNum(str: string) {
-  return Number(String(str ?? "").replace(/,/g, "").trim()) || 0;
 }
 
 // ✅ 本番(Vercel)では userKey UI を出さない（ローカル開発だけ表示）
@@ -136,7 +132,7 @@ function Ring({
 /** =========================
  * 追加リング（最大8）
  * pos: 周囲リングの並び位置（入れ替え保持）
- * charMode: 手動上書き（auto/mofu/hina/none）
+ * charMode: ② 手動上書き（auto/mofu/hina/none）
  * ========================= */
 type CharaMode = "auto" | "mofu" | "hina" | "none";
 
@@ -164,7 +160,7 @@ function makeId() {
 
 const MAX_EXTRA_RINGS = 8;
 
-// ✅ 自動判定 + 手動上書き
+// ✅ ②：自動判定 + 手動上書き
 function pickCharaAuto(title: string): Exclude<CharaMode, "auto"> {
   const t = (title ?? "").toLowerCase();
 
@@ -222,12 +218,30 @@ function CharaBadge({ kind }: { kind: "mofu" | "hina" }) {
   );
 }
 
-type EditTarget =
-  | { kind: "asset" }
-  | { kind: "debt" }
-  | { kind: "save" }
-  | { kind: "extra"; id: string; isNew?: boolean }
-  | null;
+// ✅ 長押し（スマホ対応）
+function useLongPress(onLongPress: () => void, ms = 650) {
+  const timer = useRef<number | null>(null);
+
+  const clear = () => {
+    if (timer.current) window.clearTimeout(timer.current);
+    timer.current = null;
+  };
+
+  const onPointerDown = () => {
+    clear();
+    timer.current = window.setTimeout(() => {
+      onLongPress();
+    }, ms);
+  };
+
+  const onPointerUp = () => clear();
+  const onPointerCancel = () => clear();
+  const onPointerLeave = () => clear();
+
+  return { onPointerDown, onPointerUp, onPointerCancel, onPointerLeave };
+}
+
+type FixedEditKind = "asset" | "save" | "debt" | null;
 
 export default function TransactionsClient({ initialTransactions }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions ?? []);
@@ -356,9 +370,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     }
   }, [goalsStorageKey, targetBalanceStr, monthlySaveTargetStr, debtTotalStr]);
 
-  const targetBalance = toNum(targetBalanceStr);
-  const monthlySaveTarget = toNum(monthlySaveTargetStr);
-  const debtTotal = toNum(debtTotalStr);
+  const targetBalance = Number(targetBalanceStr.replace(/,/g, "")) || 0;
+  const monthlySaveTarget = Number(monthlySaveTargetStr.replace(/,/g, "")) || 0;
+  const debtTotal = Number(debtTotalStr.replace(/,/g, "")) || 0;
 
   // 残高進捗
   const remainToTarget = Math.max(0, targetBalance - summary.balance);
@@ -390,56 +404,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const saveAchieved = monthlySaveTarget > 0 ? savedThisMonth >= monthlySaveTarget : false;
 
   // =========================
-  // ✅ 年間予測（ざっくり）
-  // =========================
-  const monthlyBalances = useMemo(() => {
-    const map = new Map<string, { income: number; expense: number }>();
-    for (const t of transactions) {
-      const ymd = (t.occurredAt ?? "").slice(0, 10);
-      if (!ymd) continue;
-      const ym = ymdToMonthKey(ymd);
-      const cur = map.get(ym) ?? { income: 0, expense: 0 };
-      if (t.type === "income") cur.income += t.amount;
-      else cur.expense += t.amount;
-      map.set(ym, cur);
-    }
-    return Array.from(map.entries())
-      .map(([ym, v]) => ({ ym, balance: v.income - v.expense }))
-      .sort((a, b) => (a.ym < b.ym ? -1 : 1));
-  }, [transactions]);
-
-  const recent3Avg = useMemo(() => {
-    const last = monthlyBalances.slice(-3);
-    if (last.length === 0) return 0;
-    const sum = last.reduce((a, x) => a + x.balance, 0);
-    return sum / last.length;
-  }, [monthlyBalances]);
-
-  const year = selectedYm.slice(0, 4);
-  const remainingMonthsInYear = useMemo(() => {
-    const m = Number(selectedYm.slice(5, 7));
-    return 13 - m;
-  }, [selectedYm]);
-
-  const predictedYearEndBalance = useMemo(() => {
-    const rest = Math.max(0, remainingMonthsInYear - 1);
-    return summary.balance + recent3Avg * rest;
-  }, [summary.balance, recent3Avg, remainingMonthsInYear]);
-
-  const dangerLevel = useMemo(() => {
-    if (summary.balance < 0) return "danger";
-    if (recent3Avg < 0) return "warning";
-    return "ok";
-  }, [summary.balance, recent3Avg]);
-
-  const dangerText =
-    dangerLevel === "danger"
-      ? "危険：今月が赤字です"
-      : dangerLevel === "warning"
-      ? "注意：直近の平均貯金がマイナスです"
-      : "良好：この調子！";
-
-  // =========================
   // ✅ スマホ判定
   // =========================
   const [isMobile, setIsMobile] = useState(false);
@@ -449,15 +413,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     apply();
     mq.addEventListener?.("change", apply);
     return () => mq.removeEventListener?.("change", apply);
-  }, []);
-
-  // 画面幅（切れ防止）
-  const [vw, setVw] = useState<number>(0);
-  useEffect(() => {
-    const apply = () => setVw(window.innerWidth || 0);
-    apply();
-    window.addEventListener("resize", apply);
-    return () => window.removeEventListener("resize", apply);
   }, []);
 
   // =========================
@@ -474,6 +429,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   }, [userKey]);
 
   const [extraRings, setExtraRings] = useState<ExtraRing[]>([]);
+  const [activeExtraId, setActiveExtraId] = useState<string | null>(null);
 
   // ✅ 周囲2つ（返済/貯蓄）も入れ替えOKにするため pos を持たせる
   const [debtPos, setDebtPos] = useState<number>(0);
@@ -482,13 +438,31 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   // ✅ 2回タップ入れ替え
   const [pickedKey, setPickedKey] = useState<string | null>(null);
 
-  // ✅ 中央ズーム
+  // ✅ 中央ズーム（今回は触らない：長押し編集を優先）
   const [focused, setFocused] = useState<Focused>(null);
 
-  // ✅ 編集モーダル（長押しで開く）
-  const [editTarget, setEditTarget] = useState<EditTarget>(null);
+  // ✅ 固定リング長押し編集モーダル
+  const [fixedEdit, setFixedEdit] = useState<FixedEditKind>(null);
+  const [fixedDraft, setFixedDraft] = useState<{ value: string }>({ value: "" });
 
-  // 次の空きpos（表示してる個数=2+extrasCount の範囲で）
+  const openFixedEdit = (kind: Exclude<FixedEditKind, null>) => {
+    if (kind === "asset") setFixedDraft({ value: targetBalanceStr });
+    if (kind === "save") setFixedDraft({ value: monthlySaveTargetStr });
+    if (kind === "debt") setFixedDraft({ value: debtTotalStr });
+    setFixedEdit(kind);
+  };
+
+  const saveFixedEdit = () => {
+    if (!fixedEdit) return;
+    const v = fixedDraft.value;
+    if (fixedEdit === "asset") setTargetBalanceStr(v);
+    if (fixedEdit === "save") setMonthlySaveTargetStr(v);
+    if (fixedEdit === "debt") setDebtTotalStr(v);
+    setFixedEdit(null);
+  };
+
+  const closeFixedEdit = () => setFixedEdit(null);
+
   const findNextFreePos = (dPos: number, sPos: number, rings: ExtraRing[], count: number) => {
     const used = new Set<number>([dPos, sPos]);
     for (const r of rings) if (typeof r.pos === "number") used.add(r.pos);
@@ -544,11 +518,8 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
     ld = norm(ld);
     ls = norm(ls);
-
-    // debt/save が被ったら救済
     if (ld === ls) ls = norm(ls + 1);
 
-    // extras のpos救済（重複も直す）
     const used = new Set<number>([ld, ls]);
     const fixedExtras = loadedExtras.map((r) => {
       let p = typeof r.pos === "number" ? norm(r.pos) : -1;
@@ -562,12 +533,11 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     setDebtPos(ld);
     setSavePos(ls);
     setExtraRings(fixedExtras);
+    setActiveExtraId((cur) => cur ?? fixedExtras[0]?.id ?? null);
     setPickedKey(null);
     setFocused(null);
-    setEditTarget(null);
   }, [userKey, extrasStorageKey, layoutStorageKey]);
 
-  // ✅ 保存（extras）
   useEffect(() => {
     if (!userKey) return;
     try {
@@ -577,7 +547,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     }
   }, [userKey, extrasStorageKey, extraRings]);
 
-  // ✅ 保存（layout）
   useEffect(() => {
     if (!userKey) return;
     try {
@@ -595,14 +564,12 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       return;
     }
 
-    // ✅ 追加後の表示数
     const nextCount = 2 + (extraRings.length + 1);
     const norm = (p: number) => ((Math.round(p) % nextCount) + nextCount) % nextCount;
 
     const nd = norm(debtPos);
     const ns = norm(savePos);
 
-    // 既存extrasもnextCountに合わせて軽く補正
     const normalizedExtras = extraRings.map((r) => ({
       ...r,
       pos: typeof r.pos === "number" ? norm(r.pos) : r.pos,
@@ -625,19 +592,28 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     setDebtPos(nd);
     setSavePos(ns);
     setExtraRings([...normalizedExtras, next]);
+    setActiveExtraId(next.id);
 
-    // ✅ 追加直後に「編集モーダル」を開く（保存/キャンセルが明確）
-    setFocused({ kind: "extra", id: next.id });
-    setEditTarget({ kind: "extra", id: next.id, isNew: true });
+    // 追加リングは「後で」長押し編集に寄せるので、いまはズーム維持でOK
+    setFocused(null);
   };
 
   const removeExtraRing = (id: string) => {
     setExtraRings((prev) => prev.filter((x) => x.id !== id));
+    setActiveExtraId((cur) => (cur === id ? null : cur));
     setPickedKey(null);
     if (focused?.kind === "extra" && focused.id === id) setFocused(null);
   };
 
-  // ✅ 周囲リングリスト（空きは出さない）
+  const updateExtraRing = (id: string, patch: Partial<ExtraRing>) => {
+    setExtraRings((prev) => prev.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+  };
+
+  const activeExtra = useMemo(() => {
+    if (!activeExtraId) return null;
+    return extraRings.find((x) => x.id === activeExtraId) ?? null;
+  }, [extraRings, activeExtraId]);
+
   type OrbitItem =
     | { key: "debt"; kind: "debt"; pos: number }
     | { key: "save"; kind: "save"; pos: number }
@@ -648,16 +624,13 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       { key: "debt", kind: "debt", pos: debtPos },
       { key: "save", kind: "save", pos: savePos },
     ];
-
     for (const r of extraRings) {
       items.push({ key: r.id, kind: "extra", id: r.id, pos: typeof r.pos === "number" ? r.pos : 9999 });
     }
-
     items.sort((a, b) => a.pos - b.pos);
     return items;
   }, [debtPos, savePos, extraRings]);
 
-  // ✅ 2回タップ入れ替え（返済/貯蓄/追加 全部OK）
   const swapByKey = (aKey: string, bKey: string) => {
     if (aKey === bKey) return;
 
@@ -672,19 +645,17 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     const pb = getPos(bKey);
     if (pa === null || pb === null) return;
 
-    // A
     if (aKey === "debt") setDebtPos(pb);
     else if (aKey === "save") setSavePos(pb);
     else setExtraRings((prev) => prev.map((r) => (r.id === aKey ? { ...r, pos: pb } : r)));
 
-    // B
     if (bKey === "debt") setDebtPos(pa);
     else if (bKey === "save") setSavePos(pa);
     else setExtraRings((prev) => prev.map((r) => (r.id === bKey ? { ...r, pos: pa } : r)));
   };
 
   // =========================
-  // ✅ サイズ（増えたら中央を少し小さく）+ 周囲半径調整（切れ防止）
+  // ✅ サイズ（増えたら中央を少し小さく）+ 周囲半径調整
   // =========================
   const orbitCount = orbitItems.length; // 2..10
   const baseBig = isMobile ? 260 : 360;
@@ -706,82 +677,25 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const outwardBig = isMobile ? 10 : 12;
   const outwardSmall = isMobile ? 8 : 10;
 
-  // まず「理想の半径」
-  const orbitRadiusIdeal = useMemo(() => {
-    const base = isMobile ? 180 : 300;
-    return base + Math.max(0, orbitCount - 4) * (isMobile ? 10 : 12);
+  const orbitRadius = useMemo(() => {
+    // ちょい広め（狭い問題の対策）
+    const base = isMobile ? 205 : 315;
+    return base + Math.max(0, orbitCount - 4) * (isMobile ? 12 : 14);
   }, [isMobile, orbitCount]);
 
-  // 切れないように上限を作る（画面幅から逆算）
-  const orbitRadius = useMemo(() => {
-    const containerW = Math.min(980, vw || 980);
-    const maxR = Math.max(120, containerW / 2 - smallSize / 2 - 14); // 14=余白
-    return Math.min(orbitRadiusIdeal, maxR);
-  }, [orbitRadiusIdeal, vw, smallSize]);
-
-  // 高さも半径に合わせて可変
-  const stageH = useMemo(() => {
-    const base = isMobile ? 720 : 840;
-    const needed = bigSize / 2 + orbitRadius + smallSize / 2 + 40;
-    return Math.max(base, Math.ceil(needed));
-  }, [isMobile, bigSize, orbitRadius, smallSize]);
-
-  // =========================
-  // ✅ 中央表示（focusedがあれば差し替え）
-  // =========================
+  // ✅ 中央カード（総資産固定表示：三角配置優先）
   const centerCard = useMemo(() => {
-    if (!focused || focused.kind === "asset") {
-      return {
-        title: "総資産",
-        value: summary.balance,
-        progress: balanceRingProgress,
-        color: "#9ca3af",
-        sub1: `収入 ${yen(summary.income)} / 支出 ${yen(summary.expense)}`,
-        sub2: targetBalance > 0 ? `目標まであと ${yen(remainToTarget)}円` : "",
-        achieved: balanceAchieved,
-        kind: "asset" as const,
-      };
-    }
-
-    if (focused.kind === "debt") {
-      return {
-        title: "返済",
-        value: repaidTotal,
-        progress: debtRingProgress,
-        color: "#d1d5db",
-        sub1: "(累計)",
-        sub2: debtTotal > 0 ? `残り総額 ${yen(remainingDebt)}円` : "",
-        achieved: debtAchieved,
-        kind: "debt" as const,
-      };
-    }
-
-    if (focused.kind === "save") {
-      return {
-        title: "貯蓄",
-        value: savedThisMonth,
-        progress: saveRingProgress,
-        color: "#22c55e",
-        sub1: "今月",
-        sub2: monthlySaveTarget > 0 ? `目標差 ${yen(remainToMonthlySave)}円` : "",
-        achieved: saveAchieved,
-        kind: "save" as const,
-      };
-    }
-
-    const r = extraRings.find((x) => x.id === focused.id);
     return {
-      title: r?.title ?? "追加リング",
-      value: r?.current ?? 0,
-      progress: r && r.target > 0 ? clamp01(r.current / r.target) : 0,
-      color: r?.color ?? "#60a5fa",
-      sub1: r && r.target > 0 ? `目標まであと ${yen(Math.max(0, r.target - r.current))}円` : "",
-      sub2: "",
-      achieved: r && r.target > 0 ? r.current >= r.target : false,
-      kind: "extra" as const,
+      title: "総資産",
+      value: summary.balance,
+      progress: balanceRingProgress,
+      color: "#9ca3af",
+      sub1: `収入 ${yen(summary.income)} / 支出 ${yen(summary.expense)}`,
+      sub2: targetBalance > 0 ? `目標まであと ${yen(remainToTarget)}円` : "",
+      achieved: balanceAchieved,
+      kind: "asset" as const,
     };
   }, [
-    focused,
     summary.balance,
     summary.income,
     summary.expense,
@@ -789,147 +703,13 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     targetBalance,
     remainToTarget,
     balanceAchieved,
-    repaidTotal,
-    debtRingProgress,
-    debtTotal,
-    remainingDebt,
-    debtAchieved,
-    savedThisMonth,
-    saveRingProgress,
-    monthlySaveTarget,
-    remainToMonthlySave,
-    saveAchieved,
-    extraRings,
   ]);
 
-  // =========================
-  // ✅ 長押し(0.8s) 判定（短押しと排他）
-  // =========================
-  function useLongPress() {
-    const timerRef = useRef<number | null>(null);
-    const longPressedRef = useRef(false);
+  // ✅ 長押しハンドラ（固定3つ）
+  const lpAsset = useLongPress(() => openFixedEdit("asset"));
+  const lpDebt = useLongPress(() => openFixedEdit("debt"));
+  const lpSave = useLongPress(() => openFixedEdit("save"));
 
-    const clear = () => {
-      if (timerRef.current) window.clearTimeout(timerRef.current);
-      timerRef.current = null;
-    };
-
-    const start = (onLong: () => void) => {
-      clear();
-      longPressedRef.current = false;
-      timerRef.current = window.setTimeout(() => {
-        longPressedRef.current = true;
-        onLong();
-      }, 800);
-    };
-
-    const end = (onShort: () => void) => {
-      const wasLong = longPressedRef.current;
-      clear();
-      if (!wasLong) onShort();
-      longPressedRef.current = false;
-    };
-
-    const cancel = () => {
-      clear();
-      longPressedRef.current = false;
-    };
-
-    return { start, end, cancel };
-  }
-
-  const lp = useLongPress();
-
-  // =========================
-  // ✅ 編集モーダル：draft
-  // =========================
-  const [draftGoal, setDraftGoal] = useState<{ targetBalanceStr: string; debtTotalStr: string; monthlySaveTargetStr: string }>(
-    { targetBalanceStr, debtTotalStr, monthlySaveTargetStr }
-  );
-
-  const [draftExtra, setDraftExtra] = useState<{
-    title: string;
-    currentStr: string;
-    targetStr: string;
-    color: string;
-    charMode: CharaMode;
-  } | null>(null);
-
-  // editTargetが変わったらdraftを作る
-  useEffect(() => {
-    if (!editTarget) {
-      setDraftExtra(null);
-      setDraftGoal({ targetBalanceStr, debtTotalStr, monthlySaveTargetStr });
-      return;
-    }
-
-    if (editTarget.kind === "asset" || editTarget.kind === "debt" || editTarget.kind === "save") {
-      setDraftGoal({ targetBalanceStr, debtTotalStr, monthlySaveTargetStr });
-      setDraftExtra(null);
-      return;
-    }
-
-    const r = extraRings.find((x) => x.id === editTarget.id);
-    setDraftExtra({
-      title: r?.title ?? "追加リング",
-      currentStr: String(r?.current ?? 0),
-      targetStr: String(r?.target ?? 0),
-      color: r?.color ?? "#60a5fa",
-      charMode: (r?.charMode ?? "auto") as CharaMode,
-    });
-  }, [editTarget, extraRings, targetBalanceStr, debtTotalStr, monthlySaveTargetStr]);
-
-  const closeEdit = (opts?: { cancelNew?: boolean }) => {
-    // 追加直後のキャンセルなら消す
-    if (opts?.cancelNew && editTarget?.kind === "extra" && editTarget.isNew) {
-      removeExtraRing(editTarget.id);
-    }
-    setEditTarget(null);
-  };
-
-  const saveEdit = () => {
-    if (!editTarget) return;
-
-    if (editTarget.kind === "asset") {
-      setTargetBalanceStr(draftGoal.targetBalanceStr);
-      setEditTarget(null);
-      return;
-    }
-    if (editTarget.kind === "debt") {
-      setDebtTotalStr(draftGoal.debtTotalStr);
-      setEditTarget(null);
-      return;
-    }
-    if (editTarget.kind === "save") {
-      setMonthlySaveTargetStr(draftGoal.monthlySaveTargetStr);
-      setEditTarget(null);
-      return;
-    }
-
-    // extra
-    if (editTarget.kind === "extra" && draftExtra) {
-      const nextTitle = (draftExtra.title ?? "").slice(0, 24);
-      setExtraRings((prev) =>
-        prev.map((x) =>
-          x.id === editTarget.id
-            ? {
-                ...x,
-                title: nextTitle || x.title,
-                current: toNum(draftExtra.currentStr),
-                target: toNum(draftExtra.targetStr),
-                color: (draftExtra.color || "#60a5fa").slice(0, 16),
-                charMode: (draftExtra.charMode ?? "auto") as CharaMode,
-              }
-            : x
-        )
-      );
-      setEditTarget(null);
-    }
-  };
-
-  // =========================
-  // ✅ UI
-  // =========================
   return (
     <div>
       {/* 月切替 */}
@@ -1052,48 +832,28 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       )}
 
       {/* =========================
-          ✅ 中央：総資産（or ズーム内容） / 周囲：返済・貯蓄・追加リング
-          ✅ タップ入れ替え：2回タップでswap
-          ✅ 長押し(0.8秒)：編集モーダル（保存/キャンセル）
+          ✅ 三角配置固定：
+          - 中央：総資産（長押しで目標編集）
+          - 上：返済（長押しで返済総額編集）
+          - 下：貯蓄（長押しで今月目標編集）
+          追加リングは周囲に並ぶ（必要なら後で）
          ========================= */}
       <div style={{ maxWidth: 980, margin: "0 auto" }}>
         <div
           style={{
             position: "relative",
             width: "100%",
-            height: stageH,
+            height: isMobile ? 760 : 860,
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
           }}
         >
-          {/* ズーム中の背景クリックで戻る */}
-          {focused && focused.kind !== "asset" && (
-            <button
-              type="button"
-              onClick={() => setFocused(null)}
-              style={{
-                position: "absolute",
-                inset: 0,
-                background: "rgba(0,0,0,0.04)",
-                border: "none",
-                cursor: "pointer",
-                zIndex: 3,
-              }}
-              aria-label="close focus"
-            />
-          )}
-
-          {/* 中央リング（短押し: 総資産へ / 長押し: 総資産目標を編集） */}
+          {/* 中央リング（総資産） */}
           <button
             type="button"
-            onPointerDown={() => lp.start(() => setEditTarget({ kind: "asset" }))}
-            onPointerUp={() =>
-              lp.end(() => {
-                setFocused({ kind: "asset" });
-              })
-            }
-            onPointerCancel={lp.cancel}
+            {...lpAsset}
+            onClick={() => setFocused({ kind: "asset" })}
             style={{
               width: bigSize,
               height: bigSize,
@@ -1113,22 +873,15 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               boxShadow: centerCard.achieved
                 ? "0 0 28px rgba(34,197,94,0.45)"
                 : "0 10px 25px rgba(0,0,0,0.06)",
-              zIndex: focused ? 4 : 2,
+              zIndex: 2,
               cursor: "pointer",
-              touchAction: "manipulation",
             }}
-            title="短押し：総資産へ / 長押し：編集"
+            title="タップ：中央表示 / 長押し：目標編集"
           >
-            <Ring
-              size={bigSize}
-              stroke={strokeBig}
-              outward={outwardBig}
-              progress={centerCard.progress}
-              color={centerCard.color}
-            />
+            <Ring size={bigSize} stroke={strokeBig} outward={outwardBig} progress={centerCard.progress} color={centerCard.color} />
 
-            {/* ✅ 総資産はモフ固定（アイコンは後ででOK） */}
-            {/* <CharaBadge kind="mofu" /> */}
+            {/* ここはあとでイラスト。今は維持 */}
+            <CharaBadge kind="mofu" />
 
             <div style={{ zIndex: 2, position: "relative" }}>
               <div style={{ fontSize: 16, opacity: 0.75, fontWeight: 900 }}>{centerCard.title}</div>
@@ -1136,7 +889,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 style={{
                   fontSize: isMobile ? 44 : 54,
                   fontWeight: 900,
-                  color: centerCard.kind === "asset" && summary.balance < 0 ? "#ef4444" : "#111",
+                  color: summary.balance < 0 ? "#ef4444" : "#111",
                   lineHeight: 1.05,
                 }}
               >
@@ -1147,130 +900,153 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               {centerCard.sub2 && <div style={{ marginTop: 8, fontSize: 13, opacity: 0.75 }}>{centerCard.sub2}</div>}
 
               {centerCard.achieved && <div style={{ marginTop: 10, fontWeight: 900 }}>✅ 目標達成！</div>}
+
+              <div style={{ marginTop: 8, fontSize: 11, opacity: 0.55 }}>長押しで「総資産 目標」を編集</div>
             </div>
           </button>
 
-          {/* 周囲リング */}
-          {orbitItems.map((item, idx) => {
-            const count = orbitItems.length;
+          {/* 上：返済（固定位置） */}
+          <button
+            type="button"
+            {...lpDebt}
+            onClick={() => setFocused({ kind: "debt" })}
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: isMobile ? 70 : 90,
+              transform: "translateX(-50%)",
+              width: smallSize,
+              height: smallSize,
+              borderRadius: 999,
+              border: "1px solid #e5e5e5",
+              background: "#fff",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              textAlign: "center",
+              overflow: "visible",
+              cursor: "pointer",
+              boxShadow: debtAchieved
+                ? "0 0 28px rgba(34,197,94,0.45)"
+                : "0 10px 25px rgba(0,0,0,0.05)",
+              zIndex: 2,
+            }}
+            title="タップ：表示 / 長押し：返済総額編集"
+          >
+            <Ring size={smallSize} stroke={strokeSmall} outward={outwardSmall} progress={debtRingProgress} color="#d1d5db" />
+            <CharaBadge kind="mofu" />
+            <div style={{ zIndex: 2 }}>
+              <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>返済</div>
+              <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900 }}>{yen(repaidTotal)}円</div>
+              <div style={{ marginTop: 4, fontSize: 11, opacity: 0.6 }}>(累計)</div>
+              <div style={{ marginTop: 6, fontSize: 11, opacity: 0.55 }}>長押しで「返済総額」編集</div>
+            </div>
+          </button>
 
-            // ✅ 常に上スタート（横並びに見えにくくする）
-            const deg = -90 + (360 / count) * idx;
-            const rad = (deg * Math.PI) / 180;
+          {/* 下：貯蓄（固定位置） */}
+          <button
+            type="button"
+            {...lpSave}
+            onClick={() => setFocused({ kind: "save" })}
+            style={{
+              position: "absolute",
+              left: "50%",
+              bottom: isMobile ? 55 : 85,
+              transform: "translateX(-50%)",
+              width: smallSize,
+              height: smallSize,
+              borderRadius: 999,
+              border: "1px solid #e5e5e5",
+              background: "#fff",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              textAlign: "center",
+              overflow: "visible",
+              cursor: "pointer",
+              boxShadow: saveAchieved
+                ? "0 0 28px rgba(34,197,94,0.45)"
+                : "0 10px 25px rgba(0,0,0,0.05)",
+              zIndex: 2,
+            }}
+            title="タップ：表示 / 長押し：今月貯金目標編集"
+          >
+            <Ring size={smallSize} stroke={strokeSmall} outward={outwardSmall} progress={saveRingProgress} color="#22c55e" />
+            <CharaBadge kind="hina" />
+            <div style={{ zIndex: 2 }}>
+              <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>貯蓄</div>
+              <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900 }}>{yen(savedThisMonth)}円</div>
+              <div style={{ marginTop: 4, fontSize: 11, opacity: 0.6 }}>今月</div>
+              <div style={{ marginTop: 6, fontSize: 11, opacity: 0.55 }}>長押しで「今月目標」編集</div>
+            </div>
+          </button>
 
-            const x = Math.cos(rad) * orbitRadius;
-            const y = Math.sin(rad) * orbitRadius;
+          {/* 追加リング（周囲）…今回は“優先度低”なので表示だけ維持 */}
+          {orbitItems
+            .filter((x) => x.kind === "extra")
+            .map((item, idx) => {
+              const count = Math.max(1, orbitItems.filter((x) => x.kind === "extra").length);
+              const deg = -90 + (360 / count) * idx;
+              const rad = (deg * Math.PI) / 180;
 
-            let title = "";
-            let value = 0;
-            let progress = 0;
-            let color = "#f3f4f6";
-            let sub = "";
-            let achieved = false;
+              const x = Math.cos(rad) * orbitRadius;
+              const y = Math.sin(rad) * orbitRadius;
 
-            // ✅ キャラ種別（今は後回しOK）
-            let chara: "mofu" | "hina" | null = null;
-
-            if (item.kind === "debt") {
-              title = "返済";
-              value = repaidTotal;
-              progress = debtRingProgress;
-              color = "#d1d5db";
-              sub = "(累計)";
-              achieved = debtAchieved;
-              chara = "mofu";
-            } else if (item.kind === "save") {
-              title = "貯蓄";
-              value = savedThisMonth;
-              progress = saveRingProgress;
-              color = "#22c55e";
-              sub = "今月";
-              achieved = saveAchieved;
-              chara = "hina";
-            } else {
-              const r = extraRings.find((x) => x.id === item.id);
-              title = r?.title ?? "追加";
-              value = r?.current ?? 0;
-              progress = r && r.target > 0 ? clamp01(r.current / r.target) : 0;
-              color = r?.color ?? "#60a5fa";
-              achieved = r && r.target > 0 ? r.current >= r.target : false;
+              const r = extraRings.find((z) => z.id === (item as any).id);
+              const title = r?.title ?? "追加";
+              const value = r?.current ?? 0;
+              const progress = r && r.target > 0 ? clamp01(r.current / r.target) : 0;
+              const color = r?.color ?? "#60a5fa";
 
               const resolved = resolveChara(title, r?.charMode);
-              chara = resolved === "mofu" ? "mofu" : resolved === "hina" ? "hina" : null;
-            }
+              const chara = resolved === "mofu" ? "mofu" : resolved === "hina" ? "hina" : null;
 
-            const isPicked = pickedKey === item.key;
+              const isPicked = pickedKey === item.key;
 
-            const openEditForItem = () => {
-              if (item.kind === "debt") setEditTarget({ kind: "debt" });
-              else if (item.kind === "save") setEditTarget({ kind: "save" });
-              else setEditTarget({ kind: "extra", id: item.id });
-            };
-
-            const shortPressForItem = () => {
-              // ✅ まずズーム
-              if (item.kind === "debt") setFocused({ kind: "debt" });
-              else if (item.kind === "save") setFocused({ kind: "save" });
-              else setFocused({ kind: "extra", id: item.id });
-
-              // ✅ 入れ替え（2回タップ）
-              if (pickedKey === null) {
-                setPickedKey(item.key);
-              } else {
-                swapByKey(pickedKey, item.key);
-                setPickedKey(null);
-              }
-            };
-
-            return (
-              <button
-                key={item.key}
-                type="button"
-                onPointerDown={() => lp.start(openEditForItem)}
-                onPointerUp={() => lp.end(shortPressForItem)}
-                onPointerCancel={lp.cancel}
-                style={{
-                  position: "absolute",
-                  left: "50%",
-                  top: "50%",
-                  transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`,
-                  width: smallSize,
-                  height: smallSize,
-                  borderRadius: 999,
-                  border: isPicked ? "3px solid #111" : "1px solid #e5e5e5",
-                  background: "#fff",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  textAlign: "center",
-                  overflow: "visible",
-                  cursor: "pointer",
-                  boxShadow: achieved
-                    ? "0 0 28px rgba(34,197,94,0.45)"
-                    : "0 10px 25px rgba(0,0,0,0.05)",
-                  zIndex: 2,
-                  touchAction: "manipulation",
-                }}
-                title="短押し：ズーム/入れ替え  長押し：編集"
-              >
-                <Ring size={smallSize} stroke={strokeSmall} outward={outwardSmall} progress={progress} color={color} />
-
-                {/* ✅ キャラバッジ（後でONにしてOK）
-                    {chara && <CharaBadge kind={chara} />} */}
-
-                <div style={{ zIndex: 2 }}>
-                  <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>{title}</div>
-                  <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900 }}>{yen(value)}円</div>
-                  {sub && <div style={{ marginTop: 4, fontSize: 11, opacity: 0.6 }}>{sub}</div>}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-
-        <div style={{ marginTop: 8, fontSize: 12, opacity: 0.7, textAlign: "center" }}>
-          位置変更：リングを「1回目タップで選択」→「2回目タップで入れ替え」／ 編集：リングを長押し（0.8秒）
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => {
+                    if (pickedKey === null) setPickedKey(item.key);
+                    else {
+                      swapByKey(pickedKey, item.key);
+                      setPickedKey(null);
+                    }
+                    setActiveExtraId((item as any).id);
+                  }}
+                  style={{
+                    position: "absolute",
+                    left: "50%",
+                    top: "50%",
+                    transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`,
+                    width: smallSize,
+                    height: smallSize,
+                    borderRadius: 999,
+                    border: isPicked ? "3px solid #111" : "1px solid #e5e5e5",
+                    background: "#fff",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    textAlign: "center",
+                    overflow: "visible",
+                    cursor: "pointer",
+                    boxShadow: "0 10px 25px rgba(0,0,0,0.05)",
+                    zIndex: 1,
+                  }}
+                >
+                  <Ring size={smallSize} stroke={strokeSmall} outward={outwardSmall} progress={progress} color={color} />
+                  {chara && <CharaBadge kind={chara} />}
+                  <div style={{ zIndex: 2 }}>
+                    <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>{title}</div>
+                    <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900 }}>{yen(value)}円</div>
+                  </div>
+                </button>
+              );
+            })}
         </div>
 
         {/* 追加ボタン */}
@@ -1293,51 +1069,15 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             ＋ リング追加 {canAddExtra ? "" : "(上限)"}
           </button>
         </div>
-      </div>
 
-      {/* ✅ 編集モーダル（常駐表示しない） */}
-      {editTarget && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.35)",
-            zIndex: 1000,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 14,
-          }}
-          onClick={() => closeEdit({ cancelNew: true })}
-        >
-          <div
-            style={{
-              width: "100%",
-              maxWidth: 520,
-              background: "#fff",
-              borderRadius: 14,
-              border: "1px solid rgba(0,0,0,0.08)",
-              boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
-              padding: 14,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* header */}
+        {/* 追加リング編集（既存のまま：今回は触らない） */}
+        {activeExtra && (
+          <div style={{ border: "1px solid #eee", borderRadius: 12, padding: 12, background: "#fff", marginTop: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ fontWeight: 900, fontSize: 16, flex: 1 }}>
-                {editTarget.kind === "asset"
-                  ? "編集：総資産"
-                  : editTarget.kind === "debt"
-                  ? "編集：返済"
-                  : editTarget.kind === "save"
-                  ? "編集：貯蓄"
-                  : "編集：追加リング"}
-              </div>
+              <div style={{ fontWeight: 900, flex: 1 }}>編集：{activeExtra.title}</div>
               <button
                 type="button"
-                onClick={() => closeEdit({ cancelNew: true })}
+                onClick={() => removeExtraRing(activeExtra.id)}
                 style={{
                   padding: "8px 10px",
                   borderRadius: 10,
@@ -1347,263 +1087,223 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                   fontSize: 12,
                 }}
               >
-                閉じる
+                削除
               </button>
             </div>
 
-            <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-              {/* 固定リング */}
-              {(editTarget.kind === "asset" || editTarget.kind === "debt" || editTarget.kind === "save") && (
-                <>
-                  {editTarget.kind === "asset" && (
-                    <label style={{ fontSize: 12, opacity: 0.8 }}>
-                      総資産 目標
-                      <input
-                        value={draftGoal.targetBalanceStr}
-                        onChange={(e) => setDraftGoal((p) => ({ ...p, targetBalanceStr: e.target.value }))}
-                        inputMode="numeric"
-                        style={{
-                          width: "100%",
-                          padding: 12,
-                          borderRadius: 10,
-                          border: "1px solid #ccc",
-                          marginTop: 6,
-                        }}
-                      />
-                      <div style={{ marginTop: 6, fontSize: 11, opacity: 0.65 }}>
-                        目標まであと：{yen(Math.max(0, toNum(draftGoal.targetBalanceStr) - summary.balance))}円
-                      </div>
-                    </label>
-                  )}
+            <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+              <label style={{ fontSize: 12, opacity: 0.75 }}>
+                タイトル
+                <input
+                  value={activeExtra.title}
+                  onChange={(e) => updateExtraRing(activeExtra.id, { title: e.target.value.slice(0, 24) })}
+                  style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ccc", marginTop: 6 }}
+                />
+              </label>
 
-                  {editTarget.kind === "debt" && (
-                    <label style={{ fontSize: 12, opacity: 0.8 }}>
-                      返済総額（目標）
-                      <input
-                        value={draftGoal.debtTotalStr}
-                        onChange={(e) => setDraftGoal((p) => ({ ...p, debtTotalStr: e.target.value }))}
-                        inputMode="numeric"
-                        style={{
-                          width: "100%",
-                          padding: 12,
-                          borderRadius: 10,
-                          border: "1px solid #ccc",
-                          marginTop: 6,
-                        }}
-                      />
-                      <div style={{ marginTop: 6, fontSize: 11, opacity: 0.65 }}>
-                        返済累計：{yen(repaidTotal)}円 / 残り：{yen(Math.max(0, toNum(draftGoal.debtTotalStr) - repaidTotal))}円
-                      </div>
-                    </label>
-                  )}
-
-                  {editTarget.kind === "save" && (
-                    <label style={{ fontSize: 12, opacity: 0.8 }}>
-                      今月の貯金目標
-                      <input
-                        value={draftGoal.monthlySaveTargetStr}
-                        onChange={(e) => setDraftGoal((p) => ({ ...p, monthlySaveTargetStr: e.target.value }))}
-                        inputMode="numeric"
-                        style={{
-                          width: "100%",
-                          padding: 12,
-                          borderRadius: 10,
-                          border: "1px solid #ccc",
-                          marginTop: 6,
-                        }}
-                      />
-                      <div style={{ marginTop: 6, fontSize: 11, opacity: 0.65 }}>
-                        目標差：{yen(Math.max(0, toNum(draftGoal.monthlySaveTargetStr) - summary.balance))}円
-                      </div>
-                    </label>
-                  )}
-                </>
-              )}
-
-              {/* 追加リング */}
-              {editTarget.kind === "extra" && draftExtra && (
-                <>
-                  <label style={{ fontSize: 12, opacity: 0.8 }}>
-                    タイトル
-                    <input
-                      value={draftExtra.title}
-                      onChange={(e) => setDraftExtra((p) => (p ? { ...p, title: e.target.value } : p))}
-                      style={{
-                        width: "100%",
-                        padding: 12,
-                        borderRadius: 10,
-                        border: "1px solid #ccc",
-                        marginTop: 6,
-                      }}
-                    />
-                  </label>
-
-                  <label style={{ fontSize: 12, opacity: 0.8 }}>
-                    現在値（手入力）
-                    <input
-                      value={draftExtra.currentStr}
-                      onChange={(e) => setDraftExtra((p) => (p ? { ...p, currentStr: e.target.value } : p))}
-                      inputMode="numeric"
-                      style={{
-                        width: "100%",
-                        padding: 12,
-                        borderRadius: 10,
-                        border: "1px solid #ccc",
-                        marginTop: 6,
-                      }}
-                    />
-                  </label>
-
-                  <label style={{ fontSize: 12, opacity: 0.8 }}>
-                    目標値
-                    <input
-                      value={draftExtra.targetStr}
-                      onChange={(e) => setDraftExtra((p) => (p ? { ...p, targetStr: e.target.value } : p))}
-                      inputMode="numeric"
-                      style={{
-                        width: "100%",
-                        padding: 12,
-                        borderRadius: 10,
-                        border: "1px solid #ccc",
-                        marginTop: 6,
-                      }}
-                    />
-                    <div style={{ marginTop: 6, fontSize: 11, opacity: 0.65 }}>
-                      目標まであと：{yen(Math.max(0, toNum(draftExtra.targetStr) - toNum(draftExtra.currentStr)))}円
-                    </div>
-                  </label>
-
-                  <label style={{ fontSize: 12, opacity: 0.8 }}>
-                    リング色（HEX）
-                    <input
-                      value={draftExtra.color}
-                      onChange={(e) => setDraftExtra((p) => (p ? { ...p, color: e.target.value } : p))}
-                      style={{
-                        width: "100%",
-                        padding: 12,
-                        borderRadius: 10,
-                        border: "1px solid #ccc",
-                        marginTop: 6,
-                      }}
-                    />
-                  </label>
-
-                  <label style={{ fontSize: 12, opacity: 0.8 }}>
-                    キャラ（後で反映でもOK）
-                    <select
-                      value={(draftExtra.charMode ?? "auto") as CharaMode}
-                      onChange={(e) => setDraftExtra((p) => (p ? { ...p, charMode: e.target.value as CharaMode } : p))}
-                      style={{
-                        width: "100%",
-                        padding: 12,
-                        borderRadius: 10,
-                        border: "1px solid #ccc",
-                        marginTop: 6,
-                        background: "#fff",
-                      }}
-                    >
-                      <option value="auto">自動（タイトルで判定）</option>
-                      <option value="mofu">モフ（固定）</option>
-                      <option value="hina">ひな（固定）</option>
-                      <option value="none">表示しない</option>
-                    </select>
-                    <div style={{ marginTop: 6, fontSize: 11, opacity: 0.65 }}>
-                      自動判定：銀行/返済系→モフ、投資/積立系→ひな（タイトルに含まれる単語で判定）
-                    </div>
-                  </label>
-
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (editTarget.kind === "extra") {
-                          const ok = confirm("この追加リングを削除しますか？");
-                          if (ok) {
-                            removeExtraRing(editTarget.id);
-                            setEditTarget(null);
-                          }
-                        }
-                      }}
-                      style={{
-                        padding: "10px 12px",
-                        borderRadius: 10,
-                        border: "1px solid #ddd",
-                        background: "#fff",
-                        cursor: "pointer",
-                        fontSize: 12,
-                      }}
-                    >
-                      削除
-                    </button>
-                  </div>
-                </>
-              )}
-
-              {/* footer */}
-              <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
-                <button
-                  type="button"
-                  onClick={() => closeEdit({ cancelNew: true })}
+              <label style={{ fontSize: 12, opacity: 0.75 }}>
+                キャラ（追加リング）
+                <select
+                  value={(activeExtra.charMode ?? "auto") as CharaMode}
+                  onChange={(e) => updateExtraRing(activeExtra.id, { charMode: e.target.value as CharaMode })}
                   style={{
-                    flex: 1,
-                    padding: 12,
-                    borderRadius: 12,
+                    width: "100%",
+                    padding: 10,
+                    borderRadius: 10,
                     border: "1px solid #ccc",
+                    marginTop: 6,
                     background: "#fff",
-                    cursor: "pointer",
-                    fontWeight: 900,
                   }}
                 >
-                  キャンセル
-                </button>
-                <button
-                  type="button"
-                  onClick={saveEdit}
-                  style={{
-                    flex: 1,
-                    padding: 12,
-                    borderRadius: 12,
-                    border: "1px solid #111",
-                    background: "#111",
-                    color: "#fff",
-                    cursor: "pointer",
-                    fontWeight: 900,
-                  }}
-                >
-                  保存
-                </button>
-              </div>
+                  <option value="auto">自動（タイトルで判定）</option>
+                  <option value="mofu">モフ（固定）</option>
+                  <option value="hina">ひな（固定）</option>
+                  <option value="none">表示しない</option>
+                </select>
+              </label>
 
-              <div style={{ fontSize: 11, opacity: 0.6 }}>
-                ※保存すると、この端末の localStorage に反映されます（リロードしても保持）
+              <label style={{ fontSize: 12, opacity: 0.75 }}>
+                現在値（手入力）
+                <input
+                  value={String(activeExtra.current)}
+                  inputMode="numeric"
+                  onChange={(e) =>
+                    updateExtraRing(activeExtra.id, { current: Number(e.target.value.replace(/,/g, "")) || 0 })
+                  }
+                  style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ccc", marginTop: 6 }}
+                />
+              </label>
+
+              <label style={{ fontSize: 12, opacity: 0.75 }}>
+                目標値
+                <input
+                  value={String(activeExtra.target)}
+                  inputMode="numeric"
+                  onChange={(e) =>
+                    updateExtraRing(activeExtra.id, { target: Number(e.target.value.replace(/,/g, "")) || 0 })
+                  }
+                  style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ccc", marginTop: 6 }}
+                />
+              </label>
+
+              <label style={{ fontSize: 12, opacity: 0.75 }}>
+                リング色（HEX）
+                <input
+                  value={activeExtra.color}
+                  onChange={(e) => updateExtraRing(activeExtra.id, { color: e.target.value.slice(0, 16) })}
+                  style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ccc", marginTop: 6 }}
+                />
+              </label>
+
+              <div style={{ fontSize: 12, opacity: 0.75 }}>
+                進捗：{" "}
+                {activeExtra.target > 0
+                  ? `${(clamp01(activeExtra.current / activeExtra.target) * 100).toFixed(1)}%`
+                  : "—"}
+                {activeExtra.target > 0 && activeExtra.current >= activeExtra.target ? " ✅ 目標達成！" : ""}
               </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ✅ 固定3つの長押し編集モーダル */}
+      {fixedEdit && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 9999,
+          }}
+          onClick={closeFixedEdit}
+        >
+          <div
+            style={{
+              width: "min(520px, 96vw)",
+              background: "#fff",
+              borderRadius: 16,
+              padding: 16,
+              boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 10 }}>
+              {fixedEdit === "asset" ? "総資産 目標" : fixedEdit === "save" ? "今月の貯金目標" : "返済総額"}
+            </div>
+
+            <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>円（数字）</div>
+            <input
+              value={fixedDraft.value}
+              onChange={(e) => setFixedDraft({ value: e.target.value })}
+              inputMode="numeric"
+              style={{
+                width: "100%",
+                padding: 12,
+                borderRadius: 12,
+                border: "1px solid #ddd",
+                fontSize: 16,
+              }}
+              placeholder="例) 200000"
+            />
+
+            <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+              <button
+                type="button"
+                onClick={saveFixedEdit}
+                style={{
+                  padding: "12px 14px",
+                  borderRadius: 12,
+                  border: "1px solid #111",
+                  background: "#111",
+                  color: "#fff",
+                  fontWeight: 900,
+                  width: 140,
+                  cursor: "pointer",
+                }}
+              >
+                保存
+              </button>
+              <button
+                type="button"
+                onClick={closeFixedEdit}
+                style={{
+                  padding: "12px 14px",
+                  borderRadius: 12,
+                  border: "1px solid #ddd",
+                  background: "#fff",
+                  color: "#333",
+                  fontWeight: 900,
+                  width: 140,
+                  cursor: "pointer",
+                }}
+              >
+                キャンセル
+              </button>
+            </div>
+
+            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.65 }}>
+              ※保存すると下部の「目標設定」と同じ値が更新され、リング表示も即反映されます
             </div>
           </div>
         </div>
       )}
 
-      {/* ✅ 年間予測（ざっくり） */}
+      {/* ✅ 目標入力（3つ） ※いまは残す。後で“この枠いらない”なら削除してOK */}
       <div style={{ border: "1px solid #eee", borderRadius: 12, padding: 14, marginBottom: 14, marginTop: 16 }}>
-        <div style={{ fontSize: 12, opacity: 0.7 }}>年間予測（ざっくり）</div>
-        <div style={{ marginTop: 6, fontWeight: 900 }}>
-          {year}年末の予測残高：{yen(Math.round(predictedYearEndBalance))}円
-        </div>
-        <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
-          直近3ヶ月の平均貯金：{yen(Math.round(recent3Avg))}円 / 月
-        </div>
+        <div style={{ fontWeight: 900, marginBottom: 10 }}>目標設定（リロードしても保持）</div>
 
-        <div
-          style={{
-            marginTop: 10,
-            padding: 10,
-            borderRadius: 10,
-            border: "1px solid #eee",
-            background: dangerLevel === "danger" ? "#fff0f0" : dangerLevel === "warning" ? "#fff7ed" : "#f0fff4",
-            color: dangerLevel === "danger" ? "#b42318" : dangerLevel === "warning" ? "#9a3412" : "#166534",
-            fontWeight: 800,
-          }}
-        >
-          {dangerText}
+        <div style={{ display: "grid", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>総資産 目標（任意）</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                value={targetBalanceStr}
+                onChange={(e) => setTargetBalanceStr(e.target.value)}
+                inputMode="numeric"
+                style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #ccc" }}
+              />
+              <span style={{ opacity: 0.7 }}>円</span>
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>返済総額（任意）</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                value={debtTotalStr}
+                onChange={(e) => setDebtTotalStr(e.target.value)}
+                inputMode="numeric"
+                style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #ccc" }}
+              />
+              <span style={{ opacity: 0.7 }}>円</span>
+            </div>
+            <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
+              返済累計：{yen(repaidTotal)}円 / 残り：{yen(remainingDebt)}円
+              <br />
+              ※カテゴリに「返済」を含む支出を返済扱い
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>今月の貯金目標（任意）</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                value={monthlySaveTargetStr}
+                onChange={(e) => setMonthlySaveTargetStr(e.target.value)}
+                inputMode="numeric"
+                style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #ccc" }}
+              />
+              <span style={{ opacity: 0.7 }}>円</span>
+            </div>
+            <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>目標差：{yen(remainToMonthlySave)}円</div>
+          </div>
         </div>
       </div>
 
