@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Transaction, TxType } from "./types";
 import { getOrCreateUserKey } from "../lib/userKey";
 
@@ -25,15 +25,15 @@ function toYMD(dateLike: string) {
 }
 
 function normalizeAmountInput(s: string) {
-  const half = s.replace(/[０-９]/g, (ch) =>
-    String(ch.charCodeAt(0) - 0xfee0)
-  );
+  const half = s.replace(/[０-９]/g, (ch) => String(ch.charCodeAt(0) - 0xfee0));
   return half.replace(/,/g, "");
 }
 
 function normalizeUserKeyInput(s: string) {
   return s.trim().slice(0, 64);
 }
+
+type ToastKind = "mofu" | "hina";
 
 export default function TransactionForm({
   onAdded,
@@ -43,14 +43,10 @@ export default function TransactionForm({
   categorySuggestions = [],
 }: Props) {
   const [type, setType] = useState<TxType>(editing?.type ?? "expense");
-  const [amountStr, setAmountStr] = useState(
-    editing ? String(editing.amount) : ""
-  );
+  const [amountStr, setAmountStr] = useState(editing ? String(editing.amount) : "");
   const [category, setCategory] = useState(editing?.category ?? "");
   const [occurredAt, setOccurredAt] = useState(
-    editing?.occurredAt
-      ? toYMD(editing.occurredAt)
-      : toYMD(new Date().toISOString())
+    editing?.occurredAt ? toYMD(editing.occurredAt) : toYMD(new Date().toISOString())
   );
   const [loading, setLoading] = useState(false);
 
@@ -59,11 +55,7 @@ export default function TransactionForm({
     setType(editing?.type ?? "expense");
     setAmountStr(editing ? String(editing.amount) : "");
     setCategory(editing?.category ?? "");
-    setOccurredAt(
-      editing?.occurredAt
-        ? toYMD(editing.occurredAt)
-        : toYMD(new Date().toISOString())
-    );
+    setOccurredAt(editing?.occurredAt ? toYMD(editing.occurredAt) : toYMD(new Date().toISOString()));
   }, [editing]);
 
   // --- userKey UI（ローカル開発だけ）
@@ -95,6 +87,51 @@ export default function TransactionForm({
     setUserKeyInput(next);
     alert("再生成しました。ページをリロードすると一覧取得が切り替わります。");
   };
+
+  // =========================
+  // ✅ 保存成功トースト（チビキャラ + 一言）
+  // =========================
+  const [toast, setToast] = useState<null | { kind: ToastKind; text: string }>(null);
+  const toastTimer = useRef<number | null>(null);
+
+  function clearToast() {
+    setToast(null);
+    if (toastTimer.current) {
+      window.clearTimeout(toastTimer.current);
+      toastTimer.current = null;
+    }
+  }
+
+  function showToast(kind: ToastKind, text: string) {
+    setToast({ kind, text });
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 2000);
+  }
+
+  // 判定（カテゴリ/タイプ）
+  function decideToast(tt: TxType, cat: string) {
+    const c = (cat ?? "").trim().toLowerCase();
+
+    // 返済（支出 + 返済を含む）
+    if (tt === "expense" && c.includes("返済")) {
+      return { kind: "mofu" as const, text: "借金も計画的に、な。" };
+    }
+
+    // 投資系
+    const investWords = ["投資", "nisa", "ニーサ", "株", "積立", "つみたて", "資産", "運用", "配当"];
+    if (investWords.some((w) => c.includes(w))) {
+      return { kind: "hina" as const, text: "未来のためにありがとう！" };
+    }
+
+    // それ以外（とりあえず）
+    return { kind: "mofu" as const, text: "未来のためにありがとう！" };
+  }
+
+  useEffect(() => {
+    return () => {
+      if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    };
+  }, []);
 
   async function handleSubmit() {
     const normalized = normalizeAmountInput(amountStr);
@@ -134,6 +171,11 @@ export default function TransactionForm({
         }
 
         const updated: Transaction = await res.json();
+
+        // ✅ 保存成功：チビキャラ + 一言
+        const t1 = decideToast(type, category.trim());
+        showToast(t1.kind, t1.text);
+
         onUpdated?.(updated);
       } else {
         const res = await fetch("/api/transactions", {
@@ -156,6 +198,11 @@ export default function TransactionForm({
         }
 
         const created: Transaction = await res.json();
+
+        // ✅ 保存成功：チビキャラ + 一言
+        const t1 = decideToast(type, category.trim());
+        showToast(t1.kind, t1.text);
+
         onAdded?.(created);
 
         setAmountStr("");
@@ -178,6 +225,36 @@ export default function TransactionForm({
         marginBottom: 16,
       }}
     >
+      {/* ✅ 保存成功トースト（タップで閉じる） */}
+      {toast && (
+        <button
+          type="button"
+          onClick={clearToast}
+          style={{
+            display: "flex",
+            gap: 10,
+            alignItems: "center",
+            padding: "10px 12px",
+            borderRadius: 12,
+            border: "1px solid rgba(0,0,0,0.08)",
+            background: "rgba(255,255,255,0.95)",
+            boxShadow: "0 12px 30px rgba(0,0,0,0.12)",
+            marginBottom: 12,
+            cursor: "pointer",
+            width: "100%",
+          }}
+          aria-label="toast"
+        >
+          <img
+            src={toast.kind === "mofu" ? "/mofu-chibi.png" : "/hina-chibi.png"}
+            alt={toast.kind}
+            style={{ width: 46, height: 46, borderRadius: 999 }}
+          />
+          <div style={{ fontWeight: 900 }}>{toast.text}</div>
+          <div style={{ marginLeft: "auto", opacity: 0.5, fontSize: 12 }}>×</div>
+        </button>
+      )}
+
       {/* ✅ userKey UI（ローカルだけ表示） */}
       {SHOW_USERKEY_UI && (
         <div
@@ -188,9 +265,7 @@ export default function TransactionForm({
             marginBottom: 12,
           }}
         >
-          <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
-            userKey（この端末のデータ切替・デモ用）
-          </div>
+          <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>userKey（この端末のデータ切替・デモ用）</div>
           <input
             value={userKeyInput}
             onChange={(e) => setUserKeyInput(e.target.value)}
@@ -315,14 +390,7 @@ export default function TransactionForm({
         />
 
         {categorySuggestions.length > 0 && (
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 8,
-              marginTop: 10,
-            }}
-          >
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
             {categorySuggestions.map((c) => (
               <button
                 key={c}
