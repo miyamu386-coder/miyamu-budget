@@ -19,12 +19,10 @@ type Summary = {
 function calcSummary(transactions: Transaction[]): Summary {
   let income = 0;
   let expense = 0;
-
   for (const t of transactions) {
     if (t.type === "income") income += t.amount;
     else expense += t.amount;
   }
-
   return { income, expense, balance: income - expense };
 }
 
@@ -113,14 +111,7 @@ function Ring({
       }}
       viewBox={`0 0 ${full} ${full}`}
     >
-      <circle
-        cx={cx}
-        cy={cy}
-        r={r}
-        fill="none"
-        stroke={trackColor}
-        strokeWidth={stroke}
-      />
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke={trackColor} strokeWidth={stroke} />
       <circle
         cx={cx}
         cy={cy}
@@ -140,7 +131,7 @@ function Ring({
 
 /** =========================
  * 追加リング（最大8）
- * slot: 周囲の配置位置（0=返済固定, 1=貯蓄固定, 2〜=追加リング）
+ * pos: 周囲リングの並び位置（入れ替え保持）
  * ========================= */
 type ExtraRing = {
   id: string;
@@ -149,20 +140,24 @@ type ExtraRing = {
   target: number;
   color: string;
   offsetDeg?: number;
-  slot?: number; // ✅ 追加
+  pos?: number;
 };
+
+type Focused =
+  | { kind: "asset" }
+  | { kind: "debt" }
+  | { kind: "save" }
+  | { kind: "extra"; id: string }
+  | null;
 
 function makeId() {
   return `ring_${Math.random().toString(36).slice(2, 9)}_${Date.now()}`;
 }
 
 const MAX_EXTRA_RINGS = 8;
-const SLOT_COUNT = 2 + MAX_EXTRA_RINGS; // 返済/貯蓄 + 追加最大8 = 10
 
 export default function TransactionsClient({ initialTransactions }: Props) {
-  const [transactions, setTransactions] = useState<Transaction[]>(
-    initialTransactions ?? []
-  );
+  const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions ?? []);
   const [editing, setEditing] = useState<Transaction | null>(null);
 
   // ✅ userKey
@@ -299,8 +294,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   // 今月貯蓄進捗
   const savedThisMonth = summary.balance;
   const remainToMonthlySave = Math.max(0, monthlySaveTarget - savedThisMonth);
-  const progressMonthlySave =
-    monthlySaveTarget > 0 ? clamp01(savedThisMonth / monthlySaveTarget) : 0;
+  const progressMonthlySave = monthlySaveTarget > 0 ? clamp01(savedThisMonth / monthlySaveTarget) : 0;
 
   // 返済扱い：カテゴリに「返済」を含む支出
   const isRepayment = (t: Transaction) => {
@@ -385,104 +379,128 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   }, []);
 
   // =========================
-  // ✅ 追加リング localStorage（userKey別）
-  //   - v2: slot対応
-  //   - v1/v2どちらでも救済読み込み
+  // ✅ 追加リング + レイアウト永続化（初期3→追加で増える）
   // =========================
-  const extrasStorageKeyV2 = useMemo(() => {
+  const extrasStorageKey = useMemo(() => {
     const k = userKey || "anonymous";
-    return `miyamu_maker_extra_rings_v2:${k}`;
+    return `miyamu_maker_extra_rings_v3:${k}`;
   }, [userKey]);
 
-  const extrasStorageKeyV1 = useMemo(() => {
+  const layoutStorageKey = useMemo(() => {
     const k = userKey || "anonymous";
-    return `miyamu_maker_extra_rings_v1:${k}`;
+    return `miyamu_maker_ring_layout_v1:${k}`; // debtPos/savePos + extras pos
   }, [userKey]);
 
   const [extraRings, setExtraRings] = useState<ExtraRing[]>([]);
   const [activeExtraId, setActiveExtraId] = useState<string | null>(null);
 
-  // ✅ タップ入れ替え：選択中slot
-  const [pickedSlot, setPickedSlot] = useState<number | null>(null);
+  // ✅ 周囲2つ（返済/貯蓄）も入れ替えOKにするため pos を持たせる
+  const [debtPos, setDebtPos] = useState<number>(0);
+  const [savePos, setSavePos] = useState<number>(1);
 
-  // slotの空きを探す（追加用/補正用）
-  const findNextFreeSlot = (rings: ExtraRing[]) => {
-    const used = new Set(
-      rings.map((r) => r.slot).filter((x): x is number => typeof x === "number")
-    );
-    let slot = 2; // 0,1は固定
-    while (used.has(slot)) slot++;
-    return slot;
+  // ✅ 2回タップ入れ替え
+  const [pickedKey, setPickedKey] = useState<string | null>(null);
+
+  // ✅ 中央ズーム
+  const [focused, setFocused] = useState<Focused>(null);
+
+  // 次の空きpos（表示してる個数=2+extrasCount の範囲で）
+  const findNextFreePos = (dPos: number, sPos: number, rings: ExtraRing[], count: number) => {
+    const used = new Set<number>([dPos, sPos]);
+    for (const r of rings) if (typeof r.pos === "number") used.add(r.pos);
+
+    for (let i = 0; i < count + 5; i++) {
+      const p = i % count;
+      if (!used.has(p)) return p;
+    }
+    return 0;
   };
 
-  // ✅ userKey確定後にロード（slotが無い古いデータも救済）
+  // ✅ 初回ロード（extras + layout）
   useEffect(() => {
     if (!userKey) return;
 
-    const load = (key: string) => {
-      try {
-        const raw = localStorage.getItem(key);
-        if (!raw) return null;
+    let loadedExtras: ExtraRing[] = [];
+    try {
+      const raw = localStorage.getItem(extrasStorageKey);
+      if (raw) {
         const arr = JSON.parse(raw) as ExtraRing[];
-        if (!Array.isArray(arr)) return null;
-        return arr;
-      } catch {
-        return null;
+        if (Array.isArray(arr)) {
+          loadedExtras = arr
+            .filter((x) => x && typeof x.id === "string")
+            .slice(0, MAX_EXTRA_RINGS)
+            .map((x) => ({
+              ...x,
+              current: Number(x.current) || 0,
+              target: Number(x.target) || 0,
+              color: x.color || "#60a5fa",
+            }));
+        }
       }
-    };
-
-    const v2 = load(extrasStorageKeyV2);
-    const v1 = v2 ? null : load(extrasStorageKeyV1);
-    const source = v2 ?? v1;
-
-    if (!source) {
-      setExtraRings([]);
-      setActiveExtraId(null);
-      setPickedSlot(null);
-      return;
+    } catch (e) {
+      console.warn("extra rings load failed", e);
     }
 
-    let safe = source
-      .filter((x) => x && typeof x.id === "string")
-      .slice(0, MAX_EXTRA_RINGS)
-      .map((x) => ({
-        ...x,
-        title: (x.title ?? "").toString().slice(0, 24) || "追加リング",
-        current: Number((x as any).current) || 0,
-        target: Number((x as any).target) || 0,
-        color: (x.color ?? "#60a5fa").toString(),
-        offsetDeg: typeof x.offsetDeg === "number" ? x.offsetDeg : -90,
-        slot: typeof x.slot === "number" ? x.slot : undefined,
-      }));
-
-    // ✅ slotが無いものに自動でslotを割り当て（重複も直す）
-    const used = new Set<number>([0, 1]);
-    safe = safe.map((r) => {
-      let slot = typeof r.slot === "number" && r.slot >= 2 ? r.slot : undefined;
-
-      if (slot === undefined || used.has(slot)) {
-        slot = findNextFreeSlot(
-          safe.map((x) => ({ ...x, slot: x.id === r.id ? undefined : x.slot }))
-        );
+    let ld = 0;
+    let ls = 1;
+    try {
+      const raw2 = localStorage.getItem(layoutStorageKey);
+      if (raw2) {
+        const obj = JSON.parse(raw2) as { debtPos?: number; savePos?: number };
+        if (typeof obj.debtPos === "number") ld = obj.debtPos;
+        if (typeof obj.savePos === "number") ls = obj.savePos;
       }
-      used.add(slot);
-      return { ...r, slot };
+    } catch (e) {
+      console.warn("layout load failed", e);
+    }
+
+    const count = 2 + loadedExtras.length;
+    const norm = (p: number) => ((Math.round(p) % count) + count) % count;
+
+    ld = norm(ld);
+    ls = norm(ls);
+
+    // debt/save が被ったら救済
+    if (ld === ls) ls = norm(ls + 1);
+
+    // extras のpos救済（重複も直す）
+    const used = new Set<number>([ld, ls]);
+    const fixedExtras = loadedExtras.map((r) => {
+      let p = typeof r.pos === "number" ? norm(r.pos) : -1;
+      if (p < 0 || used.has(p)) {
+        p = findNextFreePos(ld, ls, loadedExtras, count);
+      }
+      used.add(p);
+      return { ...r, pos: p };
     });
 
-    setExtraRings(safe);
-    setActiveExtraId((cur) => cur ?? safe[0]?.id ?? null);
-    setPickedSlot(null);
-  }, [userKey, extrasStorageKeyV2, extrasStorageKeyV1]);
+    setDebtPos(ld);
+    setSavePos(ls);
+    setExtraRings(fixedExtras);
+    setActiveExtraId((cur) => cur ?? fixedExtras[0]?.id ?? null);
+    setPickedKey(null);
+    setFocused(null);
+  }, [userKey, extrasStorageKey, layoutStorageKey]);
 
-  // ✅ 保存（v2に保存）
+  // ✅ 保存（extras）
   useEffect(() => {
     if (!userKey) return;
     try {
-      localStorage.setItem(extrasStorageKeyV2, JSON.stringify(extraRings));
+      localStorage.setItem(extrasStorageKey, JSON.stringify(extraRings));
     } catch (e) {
       console.warn("extra rings save failed", e);
     }
-  }, [userKey, extrasStorageKeyV2, extraRings]);
+  }, [userKey, extrasStorageKey, extraRings]);
+
+  // ✅ 保存（layout）
+  useEffect(() => {
+    if (!userKey) return;
+    try {
+      localStorage.setItem(layoutStorageKey, JSON.stringify({ debtPos, savePos }));
+    } catch (e) {
+      console.warn("layout save failed", e);
+    }
+  }, [userKey, layoutStorageKey, debtPos, savePos]);
 
   const canAddExtra = extraRings.length < MAX_EXTRA_RINGS;
 
@@ -491,9 +509,23 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       alert(`追加リングは最大${MAX_EXTRA_RINGS}個までです`);
       return;
     }
-    const n = extraRings.length + 1;
-    const slot = findNextFreeSlot(extraRings);
 
+    // ✅ 追加後の表示数
+    const nextCount = 2 + (extraRings.length + 1);
+    const norm = (p: number) => ((Math.round(p) % nextCount) + nextCount) % nextCount;
+
+    const nd = norm(debtPos);
+    const ns = norm(savePos);
+
+    // 既存extrasもnextCountに合わせて軽く補正
+    const normalizedExtras = extraRings.map((r) => ({
+      ...r,
+      pos: typeof r.pos === "number" ? norm(r.pos) : r.pos,
+    }));
+
+    const pos = findNextFreePos(nd, ns, normalizedExtras, nextCount);
+
+    const n = normalizedExtras.length + 1;
     const next: ExtraRing = {
       id: makeId(),
       title: `追加リング${n}`,
@@ -501,29 +533,27 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       target: 100000,
       color: "#60a5fa",
       offsetDeg: -90,
-      slot,
+      pos,
     };
 
-    setExtraRings((prev) => [...prev, next]);
+    setDebtPos(nd);
+    setSavePos(ns);
+    setExtraRings([...normalizedExtras, next]);
     setActiveExtraId(next.id);
+
+    // ✅ 追加したら中央ズームして編集しやすく
+    setFocused({ kind: "extra", id: next.id });
   };
 
   const removeExtraRing = (id: string) => {
-    setExtraRings((prev) => {
-      const next = prev.filter((x) => x.id !== id);
-      setActiveExtraId((cur) => {
-        if (cur !== id) return cur;
-        return next[0]?.id ?? null;
-      });
-      return next;
-    });
-    setPickedSlot(null);
+    setExtraRings((prev) => prev.filter((x) => x.id !== id));
+    setActiveExtraId((cur) => (cur === id ? null : cur));
+    setPickedKey(null);
+    if (focused?.kind === "extra" && focused.id === id) setFocused(null);
   };
 
   const updateExtraRing = (id: string, patch: Partial<ExtraRing>) => {
-    setExtraRings((prev) =>
-      prev.map((x) => (x.id === id ? { ...x, ...patch } : x))
-    );
+    setExtraRings((prev) => prev.map((x) => (x.id === id ? { ...x, ...patch } : x)));
   };
 
   const activeExtra = useMemo(() => {
@@ -531,42 +561,69 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     return extraRings.find((x) => x.id === activeExtraId) ?? null;
   }, [extraRings, activeExtraId]);
 
-  // ✅ slot -> entry
-  const slotMap = useMemo(() => {
-    const map = new Map<number, { kind: "debt" | "save" | "extra"; id: string }>();
-    map.set(0, { kind: "debt", id: "debt" });
-    map.set(1, { kind: "save", id: "save" });
+  // ✅ 周囲リングリスト（空きは出さない → 初期は返済/貯蓄の2個だけ、追加で増える）
+  type OrbitItem =
+    | { key: "debt"; kind: "debt"; pos: number }
+    | { key: "save"; kind: "save"; pos: number }
+    | { key: string; kind: "extra"; id: string; pos: number };
+
+  const orbitItems: OrbitItem[] = useMemo(() => {
+    const items: OrbitItem[] = [
+      { key: "debt", kind: "debt", pos: debtPos },
+      { key: "save", kind: "save", pos: savePos },
+    ];
 
     for (const r of extraRings) {
-      if (typeof r.slot === "number") {
-        map.set(r.slot, { kind: "extra", id: r.id });
-      }
+      items.push({ key: r.id, kind: "extra", id: r.id, pos: typeof r.pos === "number" ? r.pos : 9999 });
     }
-    return map;
-  }, [extraRings]);
 
-  // ✅ slot入れ替え（追加リング同士のみ）
-  const swapSlots = (a: number, b: number) => {
-    const fixed = new Set([0, 1]);
-    if (fixed.has(a) || fixed.has(b)) return;
+    // pos順（時計回り）
+    items.sort((a, b) => a.pos - b.pos);
+    return items;
+  }, [debtPos, savePos, extraRings]);
 
-    setExtraRings((prev) => {
-      const next = prev.map((r) => ({ ...r }));
-      const ra = next.find((r) => r.slot === a);
-      const rb = next.find((r) => r.slot === b);
+  // ✅ 2回タップ入れ替え（返済/貯蓄/追加 全部OK）
+  const swapByKey = (aKey: string, bKey: string) => {
+    if (aKey === bKey) return;
 
-      if (ra) ra.slot = b;
-      if (rb) rb.slot = a;
+    const getPos = (k: string) => {
+      if (k === "debt") return debtPos;
+      if (k === "save") return savePos;
+      const r = extraRings.find((x) => x.id === k);
+      return typeof r?.pos === "number" ? r.pos : null;
+    };
 
-      return next;
-    });
+    const pa = getPos(aKey);
+    const pb = getPos(bKey);
+    if (pa === null || pb === null) return;
+
+    // A
+    if (aKey === "debt") setDebtPos(pb);
+    else if (aKey === "save") setSavePos(pb);
+    else setExtraRings((prev) => prev.map((r) => (r.id === aKey ? { ...r, pos: pb } : r)));
+
+    // B
+    if (bKey === "debt") setDebtPos(pa);
+    else if (bKey === "save") setSavePos(pa);
+    else setExtraRings((prev) => prev.map((r) => (r.id === bKey ? { ...r, pos: pa } : r)));
   };
 
   // =========================
-  // ✅ 表示サイズ
+  // ✅ サイズ（増えたら中央を少し小さく）+ 周囲半径調整
   // =========================
-  const bigSize = isMobile ? 260 : 360;
-  const smallSize = isMobile ? 140 : 180;
+  const orbitCount = orbitItems.length; // 2..10
+  const baseBig = isMobile ? 260 : 360;
+
+  const centerScale = useMemo(() => {
+    if (!isMobile) return 1;
+    if (orbitCount >= 8) return 0.78;
+    if (orbitCount >= 6) return 0.85;
+    if (orbitCount >= 5) return 0.9;
+    return 1;
+  }, [isMobile, orbitCount]);
+
+  const bigSize = Math.round(baseBig * centerScale);
+  const smallSize = isMobile ? 150 : 190;
 
   const strokeBig = isMobile ? 14 : 16;
   const strokeSmall = isMobile ? 12 : 14;
@@ -574,8 +631,92 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const outwardBig = isMobile ? 10 : 12;
   const outwardSmall = isMobile ? 8 : 10;
 
-  // 周囲配置半径（中央リングの外側に並ぶ距離）
-  const orbitRadius = isMobile ? 220 : 300;
+  const orbitRadius = useMemo(() => {
+    const base = isMobile ? 220 : 300;
+    return base + Math.max(0, orbitCount - 4) * (isMobile ? 10 : 12);
+  }, [isMobile, orbitCount]);
+
+  // ✅ 中央表示（focusedがあれば差し替え）
+  const centerCard = useMemo(() => {
+    if (!focused || focused.kind === "asset") {
+      return {
+        title: "総資産",
+        value: summary.balance,
+        progress: balanceRingProgress,
+        color: "#9ca3af",
+        sub1: `収入 ${yen(summary.income)} / 支出 ${yen(summary.expense)}`,
+        sub2: targetBalance > 0 ? `目標まであと ${yen(remainToTarget)}円` : "",
+        achieved: balanceAchieved,
+        kind: "asset" as const,
+      };
+    }
+
+    if (focused.kind === "debt") {
+      return {
+        title: "返済",
+        value: repaidTotal,
+        progress: debtRingProgress,
+        color: "#d1d5db",
+        sub1: "(累計)",
+        sub2: debtTotal > 0 ? `残り総額 ${yen(remainingDebt)}円` : "",
+        achieved: debtAchieved,
+        kind: "debt" as const,
+      };
+    }
+
+    if (focused.kind === "save") {
+      return {
+        title: "貯蓄",
+        value: savedThisMonth,
+        progress: saveRingProgress,
+        color: "#22c55e",
+        sub1: "今月",
+        sub2: monthlySaveTarget > 0 ? `目標差 ${yen(remainToMonthlySave)}円` : "",
+        achieved: saveAchieved,
+        kind: "save" as const,
+      };
+    }
+
+    const r = extraRings.find((x) => x.id === focused.id);
+    return {
+      title: r?.title ?? "追加リング",
+      value: r?.current ?? 0,
+      progress: r && r.target > 0 ? clamp01(r.current / r.target) : 0,
+      color: r?.color ?? "#60a5fa",
+      sub1: r && r.target > 0 ? `目標まであと ${yen(Math.max(0, r.target - r.current))}円` : "",
+      sub2: "",
+      achieved: r && r.target > 0 ? r.current >= r.target : false,
+      kind: "extra" as const,
+    };
+  }, [
+    focused,
+    summary.balance,
+    summary.income,
+    summary.expense,
+    balanceRingProgress,
+    targetBalance,
+    remainToTarget,
+    balanceAchieved,
+    repaidTotal,
+    debtRingProgress,
+    debtTotal,
+    remainingDebt,
+    debtAchieved,
+    savedThisMonth,
+    saveRingProgress,
+    monthlySaveTarget,
+    remainToMonthlySave,
+    saveAchieved,
+    extraRings,
+  ]);
+
+  // focusedがextraなら編集対象も合わせる
+  useEffect(() => {
+    if (focused?.kind === "extra") setActiveExtraId(focused.id);
+    if (focused?.kind === "asset") setActiveExtraId(null);
+    if (focused?.kind === "debt") setActiveExtraId(null);
+    if (focused?.kind === "save") setActiveExtraId(null);
+  }, [focused]);
 
   return (
     <div>
@@ -699,27 +840,42 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       )}
 
       {/* =========================
-          ✅ 中央：総資産 / 周囲：返済・貯蓄・追加リング（タップ入れ替え）
+          ✅ 中央：総資産（or ズーム内容） / 周囲：返済・貯蓄・追加リング（追加で1つずつ増える）
+          ✅ タップ入れ替え：2回タップでswap
+          ✅ タップズーム：タップしたリングを中央表示
          ========================= */}
       <div style={{ maxWidth: 980, margin: "0 auto" }}>
         <div
           style={{
             position: "relative",
             width: "100%",
-            height: isMobile ? 720 : 820,
+            height: isMobile ? 760 : 860,
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
           }}
         >
-          {/* 中央：総資産（大リング） */}
+          {/* ズーム中の背景クリックで戻る */}
+          {focused && focused.kind !== "asset" && (
+            <button
+              type="button"
+              onClick={() => setFocused(null)}
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: "rgba(0,0,0,0.04)",
+                border: "none",
+                cursor: "pointer",
+                zIndex: 3,
+              }}
+              aria-label="close focus"
+            />
+          )}
+
+          {/* 中央リング */}
           <button
             type="button"
-            onClick={() => {
-              // ✅ 中央を押したら選択解除（誤操作防止）
-              setPickedSlot(null);
-              setActiveExtraId(null);
-            }}
+            onClick={() => setFocused({ kind: "asset" })}
             style={{
               width: bigSize,
               height: bigSize,
@@ -736,119 +892,103 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               top: "50%",
               transform: "translate(-50%, -50%)",
               overflow: "visible",
-              boxShadow: balanceAchieved
+              boxShadow: centerCard.achieved
                 ? "0 0 28px rgba(34,197,94,0.45)"
                 : "0 10px 25px rgba(0,0,0,0.06)",
-              zIndex: 2,
+              zIndex: focused ? 4 : 2,
               cursor: "pointer",
-              padding: 0,
             }}
-            title="中央（選択解除）"
+            title="タップで総資産に戻す"
           >
             <Ring
               size={bigSize}
               stroke={strokeBig}
               outward={outwardBig}
-              progress={balanceRingProgress}
-              color="#9ca3af"
+              progress={centerCard.progress}
+              color={centerCard.color}
             />
-
             <div style={{ zIndex: 2, position: "relative" }}>
-              <div style={{ fontSize: 16, opacity: 0.75, fontWeight: 800 }}>総資産</div>
+              <div style={{ fontSize: 16, opacity: 0.75, fontWeight: 900 }}>{centerCard.title}</div>
               <div
                 style={{
                   fontSize: isMobile ? 44 : 54,
                   fontWeight: 900,
-                  color: summary.balance < 0 ? "#ef4444" : "#111",
+                  color: centerCard.kind === "asset" && summary.balance < 0 ? "#ef4444" : "#111",
                   lineHeight: 1.05,
                 }}
               >
-                {yen(summary.balance)}円
-              </div>
-              <div style={{ marginTop: 10, fontSize: 13, opacity: 0.75 }}>
-                収入 {yen(summary.income)} / 支出 {yen(summary.expense)}
+                {yen(centerCard.value)}円
               </div>
 
-              {targetBalance > 0 && (
-                <div style={{ marginTop: 10, fontSize: 13, opacity: 0.75 }}>
-                  目標まであと {yen(remainToTarget)}円
-                </div>
-              )}
+              {centerCard.sub1 && <div style={{ marginTop: 10, fontSize: 13, opacity: 0.75 }}>{centerCard.sub1}</div>}
+              {centerCard.sub2 && <div style={{ marginTop: 8, fontSize: 13, opacity: 0.75 }}>{centerCard.sub2}</div>}
 
-              {balanceAchieved && (
-                <div style={{ marginTop: 10, fontWeight: 900 }}>✅ 目標達成！</div>
-              )}
+              {centerCard.achieved && <div style={{ marginTop: 10, fontWeight: 900 }}>✅ 目標達成！</div>}
             </div>
           </button>
 
-          {/* 周囲：スロット配置（タップ入れ替え） */}
-          {Array.from({ length: SLOT_COUNT }).map((_, slotIdx) => {
-            const deg = -90 + (360 / SLOT_COUNT) * slotIdx;
+          {/* 周囲リング（表示分だけ） */}
+          {orbitItems.map((item, idx) => {
+            const count = orbitItems.length;
+            const deg = -90 + (360 / count) * idx;
             const rad = (deg * Math.PI) / 180;
 
             const x = Math.cos(rad) * orbitRadius;
             const y = Math.sin(rad) * orbitRadius;
 
-            const entry = slotMap.get(slotIdx);
-
-            let title = "空き";
+            let title = "";
             let value = 0;
             let progress = 0;
             let color = "#f3f4f6";
             let sub = "";
             let achieved = false;
 
-            if (entry?.kind === "debt") {
+            if (item.kind === "debt") {
               title = "返済";
               value = repaidTotal;
               progress = debtRingProgress;
               color = "#d1d5db";
               sub = "(累計)";
               achieved = debtAchieved;
-            } else if (entry?.kind === "save") {
+            } else if (item.kind === "save") {
               title = "貯蓄";
               value = savedThisMonth;
               progress = saveRingProgress;
               color = "#22c55e";
               sub = "今月";
               achieved = saveAchieved;
-            } else if (entry?.kind === "extra") {
-              const r = extraRings.find((x) => x.id === entry.id);
-              if (r) {
-                title = r.title;
-                value = r.current;
-                progress = r.target > 0 ? clamp01(r.current / r.target) : 0;
-                color = r.color;
-                achieved = r.target > 0 ? r.current >= r.target : false;
-              }
+            } else {
+              const r = extraRings.find((x) => x.id === item.id);
+              title = r?.title ?? "追加";
+              value = r?.current ?? 0;
+              progress = r && r.target > 0 ? clamp01(r.current / r.target) : 0;
+              color = r?.color ?? "#60a5fa";
+              achieved = r && r.target > 0 ? r.current >= r.target : false;
             }
 
-            const fixed = slotIdx === 0 || slotIdx === 1;
-            const isPicked = pickedSlot === slotIdx;
+            const isPicked = pickedKey === item.key;
 
             return (
               <button
-                key={`slot_${slotIdx}`}
+                key={item.key}
                 type="button"
                 onClick={() => {
-                  // ✅ 固定スロットでも「反応」はさせる（選択解除）
-                  if (fixed) {
-                    setPickedSlot(null);
-                    setActiveExtraId(null);
-                    return;
-                  }
+                  // ✅ まずズーム
+                  if (item.kind === "debt") setFocused({ kind: "debt" });
+                  else if (item.kind === "save") setFocused({ kind: "save" });
+                  else setFocused({ kind: "extra", id: item.id });
 
-                  // 1回目タップ：選択
-                  if (pickedSlot === null) {
-                    setPickedSlot(slotIdx);
+                  // ✅ 入れ替え（2回タップ）
+                  if (pickedKey === null) {
+                    setPickedKey(item.key);
                   } else {
-                    // 2回目タップ：swap
-                    swapSlots(pickedSlot, slotIdx);
-                    setPickedSlot(null);
+                    swapByKey(pickedKey, item.key);
+                    setPickedKey(null);
                   }
 
-                  // 追加リングなら編集対象にする
-                  if (entry?.kind === "extra") setActiveExtraId(entry.id);
+                  // ✅ 編集対象（追加リングのみ）
+                  if (item.kind === "extra") setActiveExtraId(item.id);
+                  else setActiveExtraId(null);
                 }}
                 style={{
                   position: "absolute",
@@ -858,11 +998,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                   width: smallSize,
                   height: smallSize,
                   borderRadius: 999,
-                  border: fixed
-                    ? "1px solid #e5e5e5"
-                    : isPicked
-                    ? "3px solid #111"
-                    : "1px solid #e5e5e5",
+                  border: isPicked ? "3px solid #111" : "1px solid #e5e5e5",
                   background: "#fff",
                   display: "flex",
                   flexDirection: "column",
@@ -870,34 +1006,18 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                   justifyContent: "center",
                   textAlign: "center",
                   overflow: "visible",
-                  cursor: fixed ? "pointer" : "pointer",
+                  cursor: "pointer",
                   boxShadow: achieved
                     ? "0 0 28px rgba(34,197,94,0.45)"
                     : "0 10px 25px rgba(0,0,0,0.05)",
-                  zIndex: 1,
-                  opacity: entry ? 1 : 0.55,
-                  padding: 0,
+                  zIndex: 2,
                 }}
-                title={
-                  fixed
-                    ? "固定リング（タップで選択解除）"
-                    : pickedSlot === null
-                    ? "タップで選択"
-                    : "タップで移動（入れ替え）"
-                }
+                title={pickedKey === null ? "タップで選択→次をタップで入れ替え" : "タップで入れ替え"}
               >
-                <Ring
-                  size={smallSize}
-                  stroke={strokeSmall}
-                  outward={outwardSmall}
-                  progress={progress}
-                  color={color}
-                />
+                <Ring size={smallSize} stroke={strokeSmall} outward={outwardSmall} progress={progress} color={color} />
                 <div style={{ zIndex: 2 }}>
                   <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>{title}</div>
-                  <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900 }}>
-                    {yen(value)}円
-                  </div>
+                  <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900 }}>{yen(value)}円</div>
                   {sub && <div style={{ marginTop: 4, fontSize: 11, opacity: 0.6 }}>{sub}</div>}
                 </div>
               </button>
@@ -905,12 +1025,11 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           })}
         </div>
 
-        {/* ✅ 操作説明 */}
         <div style={{ marginTop: 8, fontSize: 12, opacity: 0.7, textAlign: "center" }}>
-          追加リング：1回目タップで選択 → 2回目タップで入れ替え（返済/貯蓄は固定・タップで選択解除）
+          位置変更：リングを「1回目タップで選択」→「2回目タップで入れ替え」／ 表示：タップしたリングは中央ズーム
         </div>
 
-        {/* ✅ 追加リングボタン */}
+        {/* 追加ボタン */}
         <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
           <button
             type="button"
@@ -931,17 +1050,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           </button>
         </div>
 
-        {/* ✅ 追加リング編集（編集内容は即 state 更新 → 上の円にも即反映） */}
+        {/* 追加リング編集（ズーム中でも編集可能） */}
         {activeExtra && (
-          <div
-            style={{
-              border: "1px solid #eee",
-              borderRadius: 12,
-              padding: 12,
-              background: "#fff",
-              marginTop: 14,
-            }}
-          >
+          <div style={{ border: "1px solid #eee", borderRadius: 12, padding: 12, background: "#fff", marginTop: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{ fontWeight: 900, flex: 1 }}>編集：{activeExtra.title}</div>
               <button
@@ -965,16 +1076,8 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 タイトル
                 <input
                   value={activeExtra.title}
-                  onChange={(e) =>
-                    updateExtraRing(activeExtra.id, { title: e.target.value.slice(0, 24) })
-                  }
-                  style={{
-                    width: "100%",
-                    padding: 10,
-                    borderRadius: 10,
-                    border: "1px solid #ccc",
-                    marginTop: 6,
-                  }}
+                  onChange={(e) => updateExtraRing(activeExtra.id, { title: e.target.value.slice(0, 24) })}
+                  style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ccc", marginTop: 6 }}
                 />
               </label>
 
@@ -984,17 +1087,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                   value={String(activeExtra.current)}
                   inputMode="numeric"
                   onChange={(e) =>
-                    updateExtraRing(activeExtra.id, {
-                      current: Number(e.target.value.replace(/,/g, "")) || 0,
-                    })
+                    updateExtraRing(activeExtra.id, { current: Number(e.target.value.replace(/,/g, "")) || 0 })
                   }
-                  style={{
-                    width: "100%",
-                    padding: 10,
-                    borderRadius: 10,
-                    border: "1px solid #ccc",
-                    marginTop: 6,
-                  }}
+                  style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ccc", marginTop: 6 }}
                 />
               </label>
 
@@ -1004,17 +1099,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                   value={String(activeExtra.target)}
                   inputMode="numeric"
                   onChange={(e) =>
-                    updateExtraRing(activeExtra.id, {
-                      target: Number(e.target.value.replace(/,/g, "")) || 0,
-                    })
+                    updateExtraRing(activeExtra.id, { target: Number(e.target.value.replace(/,/g, "")) || 0 })
                   }
-                  style={{
-                    width: "100%",
-                    padding: 10,
-                    borderRadius: 10,
-                    border: "1px solid #ccc",
-                    marginTop: 6,
-                  }}
+                  style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ccc", marginTop: 6 }}
                 />
               </label>
 
@@ -1022,16 +1109,8 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 リング色（HEX）
                 <input
                   value={activeExtra.color}
-                  onChange={(e) =>
-                    updateExtraRing(activeExtra.id, { color: e.target.value.slice(0, 16) })
-                  }
-                  style={{
-                    width: "100%",
-                    padding: 10,
-                    borderRadius: 10,
-                    border: "1px solid #ccc",
-                    marginTop: 6,
-                  }}
+                  onChange={(e) => updateExtraRing(activeExtra.id, { color: e.target.value.slice(0, 16) })}
+                  style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ccc", marginTop: 6 }}
                 />
               </label>
 
@@ -1042,6 +1121,22 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                   : "—"}
                 {activeExtra.target > 0 && activeExtra.current >= activeExtra.target ? " ✅ 目標達成！" : ""}
               </div>
+
+              <button
+                type="button"
+                onClick={() => setFocused(null)}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #ccc",
+                  background: "#fff",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: 900,
+                }}
+              >
+                ズーム解除（戻る）
+              </button>
             </div>
           </div>
         )}
@@ -1116,17 +1211,8 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             borderRadius: 10,
             border: "1px solid #eee",
             background:
-              dangerLevel === "danger"
-                ? "#fff0f0"
-                : dangerLevel === "warning"
-                ? "#fff7ed"
-                : "#f0fff4",
-            color:
-              dangerLevel === "danger"
-                ? "#b42318"
-                : dangerLevel === "warning"
-                ? "#9a3412"
-                : "#166534",
+              dangerLevel === "danger" ? "#fff0f0" : dangerLevel === "warning" ? "#fff7ed" : "#f0fff4",
+            color: dangerLevel === "danger" ? "#b42318" : dangerLevel === "warning" ? "#9a3412" : "#166534",
             fontWeight: 800,
           }}
         >
@@ -1161,4 +1247,4 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       />
     </div>
   );
-}
+}？
