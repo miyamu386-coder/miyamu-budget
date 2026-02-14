@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import TransactionForm from "./TransactionForm";
 import TransactionList from "./TransactionList";
 import type { Transaction } from "./types";
@@ -45,11 +45,19 @@ function addMonths(ym: string, delta: number) {
 }
 
 function yen(n: number) {
-  return n.toLocaleString("ja-JP");
+  return (n || 0).toLocaleString("ja-JP");
 }
 
 function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
+}
+
+function todayYMD() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
 }
 
 // ✅ 本番(Vercel)では userKey UI を出さない（ローカル開発だけ表示）
@@ -130,30 +138,32 @@ function Ring({
 }
 
 type CharaMode = "auto" | "mofu" | "hina" | "none";
+type RingMode = "both" | "income_only" | "expense_only";
 
 type ExtraRing = {
-  id: string;
+  id: string; // UI用
+  ringKey: string; // ✅ データ識別（B案）
   title: string;
-  current: number;
-  target: number;
+  mode: RingMode;
   color: string;
-  offsetDeg?: number;
-  pos?: number;
   charMode?: CharaMode;
 };
-
-type Focused =
-  | { kind: "asset" }
-  | { kind: "debt" }
-  | { kind: "save" }
-  | { kind: "extra"; id: string }
-  | null;
 
 function makeId() {
   return `ring_${Math.random().toString(36).slice(2, 9)}_${Date.now()}`;
 }
 
 const MAX_EXTRA_RINGS = 8;
+
+// =========================
+// ✅ ringKey → category に入れる（B案）
+// =========================
+function ringCategory(ringKey: string) {
+  return `ring:${ringKey}`;
+}
+
+const FIXED_DEBT_KEY = "debt";
+const FIXED_SAVE_KEY = "save";
 
 function pickCharaAuto(title: string): Exclude<CharaMode, "auto"> {
   const t = (title ?? "").toLowerCase();
@@ -175,7 +185,6 @@ function pickCharaAuto(title: string): Exclude<CharaMode, "auto"> {
     "税",
     "年金",
   ];
-
   const hinaWords = ["投資", "nisa", "ニーサ", "株", "積立", "つみたて", "資産", "運用", "配当"];
 
   if (mofuWords.some((w) => t.includes(w))) return "mofu";
@@ -189,7 +198,7 @@ function resolveChara(title: string, mode?: CharaMode): Exclude<CharaMode, "auto
 }
 
 function CharaBadge({ kind }: { kind: "mofu" | "hina" }) {
-  // ✅ 今は chibi を使う（あなたの言ってたやつ）
+  // ✅ 今は chibi を使う
   const src = kind === "mofu" ? "/icons/mofu-chibi.png" : "/icons/hina-chibi.png";
   return (
     <img
@@ -211,30 +220,52 @@ function CharaBadge({ kind }: { kind: "mofu" | "hina" }) {
   );
 }
 
-// ✅ 長押し（スマホ対応）
+// ✅ 長押し（iOS優先で touch も拾う）
 function useLongPress(onLongPress: () => void, ms = 650) {
   const timer = useRef<number | null>(null);
+  const fired = useRef(false);
 
   const clear = () => {
     if (timer.current) window.clearTimeout(timer.current);
     timer.current = null;
   };
 
-  const onPointerDown = () => {
+  const start = () => {
+    fired.current = false;
     clear();
     timer.current = window.setTimeout(() => {
+      fired.current = true;
       onLongPress();
     }, ms);
   };
 
-  const onPointerUp = () => clear();
-  const onPointerCancel = () => clear();
-  const onPointerLeave = () => clear();
+  const end = () => clear();
 
-  return { onPointerDown, onPointerUp, onPointerCancel, onPointerLeave };
+  // クリック等の誤反応を抑える（長押し後のclickを無視したい時に使う）
+  const shouldIgnoreClick = () => fired.current;
+
+  return {
+    onPointerDown: start,
+    onPointerUp: end,
+    onPointerCancel: end,
+    onPointerLeave: end,
+    onTouchStart: start,
+    onTouchEnd: end,
+    onTouchCancel: end,
+    shouldIgnoreClick,
+  };
 }
 
-type FixedEditKind = "asset" | "save" | "debt" | null;
+// =========================
+// ✅ 長押し入力モーダル
+// =========================
+type QuickAddTarget =
+  | { kind: "debt" }
+  | { kind: "save" }
+  | { kind: "extra"; id: string }
+  | null;
+
+type TxType = "income" | "expense";
 
 export default function TransactionsClient({ initialTransactions }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions ?? []);
@@ -264,7 +295,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           setTransactions([]);
           return;
         }
-
         setTransactions(Array.isArray(data) ? data : []);
       } catch (e) {
         console.error(e);
@@ -311,7 +341,8 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     });
   }, [transactions, selectedYm]);
 
-  const summary = useMemo(() => calcSummary(monthTransactions), [monthTransactions]);
+  // ✅ 全体サマリ（履歴表示や中央のサブ情報に使う）
+  const monthSummary = useMemo(() => calcSummary(monthTransactions), [monthTransactions]);
 
   // ✅ カテゴリ候補
   const categorySuggestions = useMemo(() => {
@@ -325,6 +356,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
   // =========================
   // ✅ 目標値 localStorage（userKey別）
+  //    ※いまは「目標」は残す（中央の達成表示用）
   // =========================
   const goalsStorageKey = useMemo(() => {
     const k = userKey || "anonymous";
@@ -367,33 +399,119 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const monthlySaveTarget = Number(monthlySaveTargetStr.replace(/,/g, "")) || 0;
   const debtTotal = Number(debtTotalStr.replace(/,/g, "")) || 0;
 
-  // 残高進捗
-  const remainToTarget = Math.max(0, targetBalance - summary.balance);
-  const progressToTarget = targetBalance > 0 ? clamp01(summary.balance / targetBalance) : 0;
+  // =========================
+  // ✅ 追加リング（タブ + 永続化）
+  // =========================
+  const extrasStorageKey = useMemo(() => {
+    const k = userKey || "anonymous";
+    return `miyamu_maker_extra_rings_v4:${k}`;
+  }, [userKey]);
 
-  // 今月貯蓄進捗
-  const savedThisMonth = summary.balance;
-  const remainToMonthlySave = Math.max(0, monthlySaveTarget - savedThisMonth);
-  const progressMonthlySave = monthlySaveTarget > 0 ? clamp01(savedThisMonth / monthlySaveTarget) : 0;
+  const [extraRings, setExtraRings] = useState<ExtraRing[]>([]);
+  const [activeTab, setActiveTab] = useState<{ kind: "debt" | "save" | "extra"; id?: string }>({ kind: "debt" });
 
-  // 返済扱い：カテゴリに「返済」を含む支出
-  const isRepayment = (t: Transaction) => {
-    const c = (t.category ?? "").trim();
-    return t.type === "expense" && c.includes("返済");
+  useEffect(() => {
+    if (!userKey) return;
+    try {
+      const raw = localStorage.getItem(extrasStorageKey);
+      if (!raw) return;
+      const arr = JSON.parse(raw) as ExtraRing[];
+      if (!Array.isArray(arr)) return;
+
+      const fixed = arr
+        .filter((x) => x && typeof x.id === "string")
+        .slice(0, MAX_EXTRA_RINGS)
+        .map((x) => ({
+          id: x.id,
+          ringKey: typeof x.ringKey === "string" ? x.ringKey : x.id, // 旧データ救済
+          title: String(x.title ?? "追加リング"),
+          mode: (x.mode ?? "both") as RingMode,
+          color: x.color || "#60a5fa",
+          charMode: (x.charMode ?? "auto") as CharaMode,
+        }));
+
+      setExtraRings(fixed);
+
+      // タブがextraを指してるのに消えてたら戻す
+      setActiveTab((cur) => {
+        if (cur.kind !== "extra") return cur;
+        const exists = fixed.some((r) => r.id === cur.id);
+        return exists ? cur : { kind: "debt" };
+      });
+    } catch (e) {
+      console.warn("extra rings load failed", e);
+    }
+  }, [userKey, extrasStorageKey]);
+
+  useEffect(() => {
+    if (!userKey) return;
+    try {
+      localStorage.setItem(extrasStorageKey, JSON.stringify(extraRings));
+    } catch (e) {
+      console.warn("extra rings save failed", e);
+    }
+  }, [userKey, extrasStorageKey, extraRings]);
+
+  const canAddExtra = extraRings.length < MAX_EXTRA_RINGS;
+
+  // =========================
+  // ✅ 「リング別集計」(B案)
+  // =========================
+  const sumByCategory = useMemo(() => {
+    // monthTransactions を category ごとに合算
+    const map = new Map<string, { income: number; expense: number }>();
+    for (const t of monthTransactions) {
+      const cat = (t.category ?? "").trim();
+      if (!cat) continue;
+      const cur = map.get(cat) ?? { income: 0, expense: 0 };
+      if (t.type === "income") cur.income += t.amount;
+      else cur.expense += t.amount;
+      map.set(cat, cur);
+    }
+    return map;
+  }, [monthTransactions]);
+
+  const getRingSums = (ringKey: string) => {
+    const cat = ringCategory(ringKey);
+    const s = sumByCategory.get(cat) ?? { income: 0, expense: 0 };
+    const balance = s.income - s.expense; // ✅ ①ルール
+    return { ...s, balance };
   };
 
-  const repaidTotal = useMemo(() => {
-    return transactions.reduce((sum, t) => (isRepayment(t) ? sum + t.amount : sum), 0);
-  }, [transactions]);
+  // 固定リング
+  const debtSums = getRingSums(FIXED_DEBT_KEY); // expense_only想定
+  const saveSums = getRingSums(FIXED_SAVE_KEY); // income_only想定
 
+  // 追加リング
+  const extraSums = useMemo(() => {
+    return extraRings.map((r) => {
+      const s = getRingSums(r.ringKey);
+      return { id: r.id, ringKey: r.ringKey, title: r.title, mode: r.mode, color: r.color, charMode: r.charMode, sums: s };
+    });
+  }, [extraRings, sumByCategory]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 総資産（中央）= 全リング残高の合計
+  const totalAssetBalance = useMemo(() => {
+    let total = 0;
+    total += debtSums.balance;
+    total += saveSums.balance;
+    for (const r of extraSums) total += r.sums.balance;
+    return total;
+  }, [debtSums.balance, saveSums.balance, extraSums]);
+
+  // 進捗（中央は目標に対して、返済は累計支出、貯蓄は累計収入）
+  const progressToTarget = targetBalance > 0 ? clamp01(totalAssetBalance / targetBalance) : 0;
+  const remainToTarget = Math.max(0, targetBalance - totalAssetBalance);
+  const balanceAchieved = targetBalance > 0 ? totalAssetBalance >= targetBalance : false;
+
+  const repaidTotal = debtSums.expense; // ✅ 返済は支出だけ見せる
   const remainingDebt = Math.max(0, debtTotal - repaidTotal);
-
-  const balanceRingProgress = progressToTarget;
   const debtRingProgress = debtTotal > 0 ? clamp01(remainingDebt / debtTotal) : 0;
-  const saveRingProgress = progressMonthlySave;
-
-  const balanceAchieved = targetBalance > 0 ? summary.balance >= targetBalance : false;
   const debtAchieved = debtTotal > 0 ? repaidTotal >= debtTotal : false;
+
+  const savedThisMonth = saveSums.income; // ✅ 貯蓄は収入だけ見せる
+  const remainToMonthlySave = Math.max(0, monthlySaveTarget - savedThisMonth);
+  const saveRingProgress = monthlySaveTarget > 0 ? clamp01(savedThisMonth / monthlySaveTarget) : 0;
   const saveAchieved = monthlySaveTarget > 0 ? savedThisMonth >= monthlySaveTarget : false;
 
   // =========================
@@ -409,55 +527,169 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   }, []);
 
   // =========================
-  // ✅ 追加リング（維持：今回は触らない）
+  // ✅ サイズ（あなたの最新版のまま）
   // =========================
-  const extrasStorageKey = useMemo(() => {
-    const k = userKey || "anonymous";
-    return `miyamu_maker_extra_rings_v3:${k}`;
-  }, [userKey]);
+  const baseBig = isMobile ? 180 : 360;
+  const bigSize = baseBig;
+  const smallSize = isMobile ? 150 : 190;
 
-  const [extraRings, setExtraRings] = useState<ExtraRing[]>([]);
-  const [activeExtraId, setActiveExtraId] = useState<string | null>(null);
+  const strokeBig = isMobile ? 14 : 16;
+  const strokeSmall = isMobile ? 12 : 14;
 
-  useEffect(() => {
-    if (!userKey) return;
-    try {
-      const raw = localStorage.getItem(extrasStorageKey);
-      if (!raw) return;
-      const arr = JSON.parse(raw) as ExtraRing[];
-      if (!Array.isArray(arr)) return;
-      const fixed = arr
-        .filter((x) => x && typeof x.id === "string")
-        .slice(0, MAX_EXTRA_RINGS)
-        .map((x) => ({
-          ...x,
-          current: Number(x.current) || 0,
-          target: Number(x.target) || 0,
-          color: x.color || "#60a5fa",
-          charMode: (x.charMode ?? "auto") as CharaMode,
-        }));
-      setExtraRings(fixed);
-      setActiveExtraId((cur) => cur ?? fixed[0]?.id ?? null);
-    } catch (e) {
-      console.warn("extra rings load failed", e);
+  const outwardBig = isMobile ? 10 : 12;
+  const outwardSmall = isMobile ? 8 : 10;
+
+  // =========================
+  // ✅ 三角配置（中央＋左右下）
+  // =========================
+  const tri = useMemo(() => {
+    const dx = isMobile ? 125 : 210;
+    const dy = isMobile ? 235 : 310;
+    return { dx, dy };
+  }, [isMobile]);
+
+  // =========================
+  // ✅ 長押し：金額入力（B案）
+  // =========================
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [quickTarget, setQuickTarget] = useState<QuickAddTarget>(null);
+  const [quickType, setQuickType] = useState<TxType>("expense");
+  const [quickAmountStr, setQuickAmountStr] = useState("");
+  const [quickDate, setQuickDate] = useState(todayYMD());
+
+  const openQuickAdd = (target: QuickAddTarget, defaultType: TxType) => {
+    setQuickTarget(target);
+    setQuickType(defaultType);
+    setQuickAmountStr("");
+    setQuickDate(todayYMD());
+    setQuickAddOpen(true);
+  };
+
+  const closeQuickAdd = () => {
+    setQuickAddOpen(false);
+    setQuickTarget(null);
+  };
+
+  const getQuickMeta = (): { ringKey: string; title: string; mode: RingMode } | null => {
+    if (!quickTarget) return null;
+    if (quickTarget.kind === "debt") return { ringKey: FIXED_DEBT_KEY, title: "返済", mode: "expense_only" };
+    if (quickTarget.kind === "save") return { ringKey: FIXED_SAVE_KEY, title: "貯蓄", mode: "income_only" };
+    const r = extraRings.find((x) => x.id === quickTarget.id);
+    if (!r) return null;
+    return { ringKey: r.ringKey, title: r.title, mode: r.mode };
+  };
+
+  const createTransaction = async (payload: {
+    type: TxType;
+    amount: number;
+    occurredAt: string;
+    category: string;
+  }) => {
+    const res = await fetch("/api/transactions", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-user-key": userKey,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(JSON.stringify(data ?? { error: "POST failed" }));
+    return data as Transaction;
+  };
+
+  const saveQuickAdd = async () => {
+    const meta = getQuickMeta();
+    if (!meta) {
+      alert("リング情報が見つかりませんでした");
+      return;
     }
-  }, [userKey, extrasStorageKey]);
 
-  useEffect(() => {
-    if (!userKey) return;
-    try {
-      localStorage.setItem(extrasStorageKey, JSON.stringify(extraRings));
-    } catch (e) {
-      console.warn("extra rings save failed", e);
+    const amount = Number(String(quickAmountStr).replace(/,/g, "").trim()) || 0;
+    if (amount <= 0) {
+      alert("金額を入力してください");
+      return;
     }
-  }, [userKey, extrasStorageKey, extraRings]);
 
-  const activeExtra = useMemo(() => {
-    if (!activeExtraId) return null;
-    return extraRings.find((x) => x.id === activeExtraId) ?? null;
-  }, [extraRings, activeExtraId]);
+    // モード制限
+    if (meta.mode === "income_only") setQuickType("income");
+    if (meta.mode === "expense_only") setQuickType("expense");
 
-  // ✅ 固定リング長押し編集モーダル
+    const type: TxType =
+      meta.mode === "income_only" ? "income" : meta.mode === "expense_only" ? "expense" : quickType;
+
+    try {
+      const tx = await createTransaction({
+        type,
+        amount,
+        occurredAt: quickDate,
+        category: ringCategory(meta.ringKey), // ✅ B案：ringId を category に入れる
+      });
+
+      // 追加 → 即反映
+      setTransactions((prev) => [tx, ...prev]);
+      closeQuickAdd();
+    } catch (e) {
+      console.error(e);
+      alert("保存に失敗しました（ネットワーク or API）。Vercel Logsも確認してね。");
+    }
+  };
+
+  // =========================
+  // ✅ 追加リング作成（タブ）
+  // =========================
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createTitle, setCreateTitle] = useState("生活費");
+  const [createMode, setCreateMode] = useState<RingMode>("both");
+
+  const openCreate = () => {
+    if (!canAddExtra) {
+      alert(`追加リングは最大${MAX_EXTRA_RINGS}個までです`);
+      return;
+    }
+    setCreateTitle("生活費");
+    setCreateMode("both");
+    setCreateOpen(true);
+  };
+
+  const saveCreate = () => {
+    if (!canAddExtra) return;
+
+    const title = String(createTitle).trim().slice(0, 24) || "追加リング";
+    const id = makeId();
+    const ringKey = makeId(); // ✅ データ識別用（表示名変更しても崩れない）
+
+    const next: ExtraRing = {
+      id,
+      ringKey,
+      title,
+      mode: createMode,
+      color: "#60a5fa",
+      charMode: "auto",
+    };
+
+    setExtraRings((prev) => [...prev, next]);
+    setActiveTab({ kind: "extra", id: next.id });
+    setCreateOpen(false);
+  };
+
+  const removeExtraRing = (id: string) => {
+    setExtraRings((prev) => prev.filter((x) => x.id !== id));
+    setActiveTab((cur) => {
+      if (cur.kind !== "extra") return cur;
+      if (cur.id !== id) return cur;
+      return { kind: "debt" };
+    });
+  };
+
+  // =========================
+  // ✅ 固定3つ：長押し割り当て
+  // - 中央：目標編集（今は維持）
+  // - 返済：支出入力
+  // - 貯蓄：収入入力
+  // =========================
+  type FixedEditKind = "asset" | "save" | "debt" | null;
   const [fixedEdit, setFixedEdit] = useState<FixedEditKind>(null);
   const [fixedDraft, setFixedDraft] = useState<{ value: string }>({ value: "" });
 
@@ -479,57 +711,56 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
   const closeFixedEdit = () => setFixedEdit(null);
 
-  // ✅ 長押しハンドラ（固定3つ）
   const lpAsset = useLongPress(() => openFixedEdit("asset"));
-  const lpDebt = useLongPress(() => openFixedEdit("debt"));
-  const lpSave = useLongPress(() => openFixedEdit("save"));
+  const lpDebt = useLongPress(() => openQuickAdd({ kind: "debt" }, "expense"));
+  const lpSave = useLongPress(() => openQuickAdd({ kind: "save" }, "income"));
 
+  // =========================
   // ✅ 中央カード（総資産）
+  // =========================
   const centerCard = useMemo(() => {
     return {
       title: "総資産",
-      value: summary.balance,
-      progress: balanceRingProgress,
+      value: totalAssetBalance,
+      progress: progressToTarget,
       color: "#9ca3af",
-      sub1: `収入 ${yen(summary.income)} / 支出 ${yen(summary.expense)}`,
+      sub1: `収入 ${yen(monthSummary.income)} / 支出 ${yen(monthSummary.expense)}`,
       sub2: targetBalance > 0 ? `目標まであと ${yen(remainToTarget)}円` : "",
       achieved: balanceAchieved,
-      kind: "asset" as const,
     };
-  }, [
-    summary.balance,
-    summary.income,
-    summary.expense,
-    balanceRingProgress,
-    targetBalance,
-    remainToTarget,
-    balanceAchieved,
-  ]);
+  }, [totalAssetBalance, progressToTarget, monthSummary.income, monthSummary.expense, targetBalance, remainToTarget, balanceAchieved]);
 
   // =========================
-  // ✅ サイズ
+  // ✅ タブ（固定2 + 追加）
   // =========================
-  const baseBig = isMobile ? 260 : 360;
-  const bigSize = baseBig;
+  const tabs = useMemo(() => {
+    const base: Array<{ key: string; label: string; kind: "debt" | "save" | "extra"; id?: string; badge?: "mofu" | "hina" | null }> =
+      [
+        { key: "debt", label: "返済", kind: "debt", badge: "mofu" },
+        { key: "save", label: "貯蓄", kind: "save", badge: "hina" },
+      ];
 
-  const smallSize = isMobile ? 150 : 190;
+    for (const r of extraRings) {
+      const resolved = resolveChara(r.title, r.charMode);
+      const badge = resolved === "mofu" ? "mofu" : resolved === "hina" ? "hina" : null;
+      base.push({ key: r.id, label: r.title, kind: "extra", id: r.id, badge });
+    }
+    return base;
+  }, [extraRings]);
 
-  const strokeBig = isMobile ? 14 : 16;
-  const strokeSmall = isMobile ? 12 : 14;
+  const activeExtra = useMemo(() => {
+    if (activeTab.kind !== "extra") return null;
+    return extraRings.find((x) => x.id === activeTab.id) ?? null;
+  }, [activeTab, extraRings]);
 
-  const outwardBig = isMobile ? 10 : 12;
-  const outwardSmall = isMobile ? 8 : 10;
+  const activeExtraComputed = useMemo(() => {
+    if (!activeExtra) return null;
+    return extraSums.find((x) => x.id === activeExtra.id) ?? null;
+  }, [activeExtra, extraSums]);
 
   // =========================
-  // ✅ 「三角配置」座標（中央＋左右下）
+  // ✅ UI
   // =========================
-  const tri = useMemo(() => {
-    // 横に広げると “左右下” がちゃんと三角に見える
-    const dx = isMobile ? 125 : 210; // 左右の広がり
-    const dy = isMobile ? 235 : 310; // 下への落ち幅（中央から）
-    return { dx, dy };
-  }, [isMobile]);
-
   return (
     <div>
       {/* 月切替 */}
@@ -652,10 +883,10 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       )}
 
       {/* =========================
-          ✅ 三角配置（あなたの指定）
-          - 左下：返済
-          - 中央：総資産
-          - 右下：貯蓄
+          ✅ 三角配置（固定）
+          - 左下：返済（長押しで支出入力）
+          - 中央：総資産（長押しで目標編集）
+          - 右下：貯蓄（長押しで収入入力）
          ========================= */}
       <div style={{ maxWidth: 980, margin: "0 auto" }}>
         <div
@@ -688,22 +919,17 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               top: "42%",
               transform: "translate(-50%, -50%)",
               overflow: "visible",
-              boxShadow: centerCard.achieved
-                ? "0 0 28px rgba(34,197,94,0.45)"
-                : "0 10px 25px rgba(0,0,0,0.06)",
+              boxShadow: centerCard.achieved ? "0 0 28px rgba(34,197,94,0.45)" : "0 10px 25px rgba(0,0,0,0.06)",
               zIndex: 2,
               cursor: "pointer",
+              touchAction: "manipulation",
             }}
             title="長押し：目標編集"
+            onClick={(e) => {
+              if (lpAsset.shouldIgnoreClick()) e.preventDefault();
+            }}
           >
-            <Ring
-              size={bigSize}
-              stroke={strokeBig}
-              outward={outwardBig}
-              progress={centerCard.progress}
-              color={centerCard.color}
-            />
-
+            <Ring size={bigSize} stroke={strokeBig} outward={outwardBig} progress={centerCard.progress} color={centerCard.color} />
             <CharaBadge kind="mofu" />
 
             <div style={{ zIndex: 2, position: "relative" }}>
@@ -712,7 +938,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 style={{
                   fontSize: isMobile ? 44 : 54,
                   fontWeight: 900,
-                  color: summary.balance < 0 ? "#ef4444" : "#111",
+                  color: totalAssetBalance < 0 ? "#ef4444" : "#111",
                   lineHeight: 1.05,
                 }}
               >
@@ -728,7 +954,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             </div>
           </button>
 
-          {/* 左下：返済 */}
+          {/* 左下：返済（expenseのみ入力） */}
           <button
             type="button"
             {...lpDebt}
@@ -749,12 +975,14 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               textAlign: "center",
               overflow: "visible",
               cursor: "pointer",
-              boxShadow: debtAchieved
-                ? "0 0 28px rgba(34,197,94,0.45)"
-                : "0 10px 25px rgba(0,0,0,0.05)",
+              boxShadow: debtAchieved ? "0 0 28px rgba(34,197,94,0.45)" : "0 10px 25px rgba(0,0,0,0.05)",
               zIndex: 2,
+              touchAction: "manipulation",
             }}
-            title="長押し：返済総額編集"
+            title="長押し：返済を入力（支出のみ）"
+            onClick={(e) => {
+              if (lpDebt.shouldIgnoreClick()) e.preventDefault();
+            }}
           >
             <Ring size={smallSize} stroke={strokeSmall} outward={outwardSmall} progress={debtRingProgress} color="#d1d5db" />
             <CharaBadge kind="mofu" />
@@ -762,11 +990,11 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>返済</div>
               <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900 }}>{yen(repaidTotal)}円</div>
               <div style={{ marginTop: 4, fontSize: 11, opacity: 0.6 }}>(累計)</div>
-              <div style={{ marginTop: 6, fontSize: 11, opacity: 0.55 }}>長押しで「返済総額」編集</div>
+              <div style={{ marginTop: 6, fontSize: 11, opacity: 0.55 }}>長押しで「返済（支出）」入力</div>
             </div>
           </button>
 
-          {/* 右下：貯蓄 */}
+          {/* 右下：貯蓄（incomeのみ入力） */}
           <button
             type="button"
             {...lpSave}
@@ -787,12 +1015,14 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               textAlign: "center",
               overflow: "visible",
               cursor: "pointer",
-              boxShadow: saveAchieved
-                ? "0 0 28px rgba(34,197,94,0.45)"
-                : "0 10px 25px rgba(0,0,0,0.05)",
+              boxShadow: saveAchieved ? "0 0 28px rgba(34,197,94,0.45)" : "0 10px 25px rgba(0,0,0,0.05)",
               zIndex: 2,
+              touchAction: "manipulation",
             }}
-            title="長押し：今月貯金目標編集"
+            title="長押し：貯蓄を入力（収入のみ）"
+            onClick={(e) => {
+              if (lpSave.shouldIgnoreClick()) e.preventDefault();
+            }}
           >
             <Ring size={smallSize} stroke={strokeSmall} outward={outwardSmall} progress={saveRingProgress} color="#22c55e" />
             <CharaBadge kind="hina" />
@@ -800,13 +1030,428 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>貯蓄</div>
               <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900 }}>{yen(savedThisMonth)}円</div>
               <div style={{ marginTop: 4, fontSize: 11, opacity: 0.6 }}>今月</div>
-              <div style={{ marginTop: 6, fontSize: 11, opacity: 0.55 }}>長押しで「今月目標」編集</div>
+              <div style={{ marginTop: 6, fontSize: 11, opacity: 0.55 }}>長押しで「貯蓄（収入）」入力</div>
             </div>
           </button>
         </div>
+
+        {/* ✅ タブ + 追加リングボタン */}
+        <div style={{ marginTop: 8 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            {tabs.map((t) => {
+              const isActive =
+                (t.kind === "debt" && activeTab.kind === "debt") ||
+                (t.kind === "save" && activeTab.kind === "save") ||
+                (t.kind === "extra" && activeTab.kind === "extra" && activeTab.id === t.id);
+
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setActiveTab(t.kind === "extra" ? { kind: "extra", id: t.id } : { kind: t.kind })}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 999,
+                    border: isActive ? "2px solid #111" : "1px solid #ddd",
+                    background: "#fff",
+                    cursor: "pointer",
+                    fontWeight: 900,
+                    fontSize: 13,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
+                  {t.badge === "mofu" ? "🐾" : t.badge === "hina" ? "🌱" : "➕"}
+                  {t.label}
+                </button>
+              );
+            })}
+
+            <div style={{ flex: 1 }} />
+
+            <button
+              type="button"
+              onClick={openCreate}
+              disabled={!canAddExtra}
+              style={{
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: "1px solid #ccc",
+                background: canAddExtra ? "#fff" : "#f3f4f6",
+                cursor: canAddExtra ? "pointer" : "not-allowed",
+                fontWeight: 900,
+                fontSize: 13,
+              }}
+            >
+              ＋ 追加リング
+            </button>
+          </div>
+
+          {/* ✅ タブ内容（追加リングのみ編集） */}
+          {activeTab.kind === "extra" && activeExtra && activeExtraComputed && (
+            <div style={{ marginTop: 12, border: "1px solid #eee", borderRadius: 12, padding: 12, background: "#fff" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ fontWeight: 900, flex: 1 }}>リング：{activeExtra.title}</div>
+                <button
+                  type="button"
+                  onClick={() => openQuickAdd({ kind: "extra", id: activeExtra.id }, activeExtra.mode === "expense_only" ? "expense" : "income")}
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: 10,
+                    border: "1px solid #111",
+                    background: "#111",
+                    color: "#fff",
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontWeight: 900,
+                  }}
+                >
+                  長押し不要で入力
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeExtraRing(activeExtra.id)}
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: 10,
+                    border: "1px solid #ddd",
+                    background: "#fff",
+                    cursor: "pointer",
+                    fontSize: 12,
+                  }}
+                >
+                  削除
+                </button>
+              </div>
+
+              <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                <label style={{ fontSize: 12, opacity: 0.75 }}>
+                  表示名（後から変えてOK：データは ringId で保持）
+                  <input
+                    value={activeExtra.title}
+                    onChange={(e) =>
+                      setExtraRings((prev) => prev.map((x) => (x.id === activeExtra.id ? { ...x, title: e.target.value.slice(0, 24) } : x)))
+                    }
+                    style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ccc", marginTop: 6 }}
+                  />
+                </label>
+
+                <label style={{ fontSize: 12, opacity: 0.75 }}>
+                  入力モード
+                  <select
+                    value={activeExtra.mode}
+                    onChange={(e) =>
+                      setExtraRings((prev) => prev.map((x) => (x.id === activeExtra.id ? { ...x, mode: e.target.value as RingMode } : x)))
+                    }
+                    style={{
+                      width: "100%",
+                      padding: 10,
+                      borderRadius: 10,
+                      border: "1px solid #ccc",
+                      marginTop: 6,
+                      background: "#fff",
+                    }}
+                  >
+                    <option value="both">収入/支出（両方）</option>
+                    <option value="income_only">収入のみ</option>
+                    <option value="expense_only">支出のみ</option>
+                  </select>
+                </label>
+
+                <div style={{ fontSize: 12, opacity: 0.75 }}>
+                  今月：収入 {yen(activeExtraComputed.sums.income)} / 支出 {yen(activeExtraComputed.sums.expense)} / 残高 {yen(activeExtraComputed.sums.balance)}
+                </div>
+
+                <div style={{ fontSize: 11, opacity: 0.6 }}>
+                  ※このリングのデータは category = {ringCategory(activeExtra.ringKey)} に保存されます（B案）
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* ✅ 固定3つの長押し編集モーダル */}
+      {/* =========================
+          ✅ 長押し入力モーダル（返済/貯蓄/追加リング）
+         ========================= */}
+      {quickAddOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 9999,
+          }}
+          onClick={closeQuickAdd}
+        >
+          <div
+            style={{
+              width: "min(520px, 96vw)",
+              background: "#fff",
+              borderRadius: 16,
+              padding: 16,
+              boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {(() => {
+              const meta = getQuickMeta();
+              if (!meta) return null;
+
+              const mode = meta.mode;
+              const showTabs = mode === "both";
+              const forcedType: TxType = mode === "income_only" ? "income" : mode === "expense_only" ? "expense" : quickType;
+
+              return (
+                <>
+                  <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 10 }}>
+                    入力：{meta.title}
+                  </div>
+
+                  {showTabs && (
+                    <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+                      <button
+                        type="button"
+                        onClick={() => setQuickType("expense")}
+                        style={{
+                          padding: "10px 14px",
+                          borderRadius: 12,
+                          border: quickType === "expense" ? "2px solid #111" : "1px solid #ddd",
+                          background: "#fff",
+                          cursor: "pointer",
+                          fontWeight: 900,
+                          flex: 1,
+                        }}
+                      >
+                        支出
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setQuickType("income")}
+                        style={{
+                          padding: "10px 14px",
+                          borderRadius: 12,
+                          border: quickType === "income" ? "2px solid #111" : "1px solid #ddd",
+                          background: "#fff",
+                          cursor: "pointer",
+                          fontWeight: 900,
+                          flex: 1,
+                        }}
+                      >
+                        収入
+                      </button>
+                    </div>
+                  )}
+
+                  {!showTabs && (
+                    <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 12 }}>
+                      {mode === "income_only" ? "このリングは「収入のみ」入力です" : "このリングは「支出のみ」入力です"}
+                    </div>
+                  )}
+
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <label style={{ fontSize: 12, opacity: 0.75 }}>
+                      発生日
+                      <input
+                        value={quickDate}
+                        onChange={(e) => setQuickDate(e.target.value)}
+                        type="date"
+                        style={{
+                          width: "100%",
+                          padding: 12,
+                          borderRadius: 12,
+                          border: "1px solid #ddd",
+                          fontSize: 14,
+                          marginTop: 6,
+                        }}
+                      />
+                    </label>
+
+                    <label style={{ fontSize: 12, opacity: 0.75 }}>
+                      金額（円）
+                      <input
+                        value={quickAmountStr}
+                        onChange={(e) => setQuickAmountStr(e.target.value)}
+                        inputMode="numeric"
+                        style={{
+                          width: "100%",
+                          padding: 12,
+                          borderRadius: 12,
+                          border: "1px solid #ddd",
+                          fontSize: 16,
+                          marginTop: 6,
+                        }}
+                        placeholder="例) 1200"
+                      />
+                    </label>
+
+                    <div style={{ fontSize: 11, opacity: 0.6 }}>
+                      保存すると「{forcedType === "income" ? "収入" : "支出"}」として追加されます。
+                      <br />
+                      category は自動で {ringCategory(meta.ringKey)} になります（B案）
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+                    <button
+                      type="button"
+                      onClick={saveQuickAdd}
+                      style={{
+                        padding: "12px 14px",
+                        borderRadius: 12,
+                        border: "1px solid #111",
+                        background: "#111",
+                        color: "#fff",
+                        fontWeight: 900,
+                        width: 140,
+                        cursor: "pointer",
+                      }}
+                    >
+                      保存
+                    </button>
+                    <button
+                      type="button"
+                      onClick={closeQuickAdd}
+                      style={{
+                        padding: "12px 14px",
+                        borderRadius: 12,
+                        border: "1px solid #ddd",
+                        background: "#fff",
+                        color: "#333",
+                        fontWeight: 900,
+                        width: 140,
+                        cursor: "pointer",
+                      }}
+                    >
+                      キャンセル
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* =========================
+          ✅ 追加リング作成モーダル
+         ========================= */}
+      {createOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 9999,
+          }}
+          onClick={() => setCreateOpen(false)}
+        >
+          <div
+            style={{
+              width: "min(520px, 96vw)",
+              background: "#fff",
+              borderRadius: 16,
+              padding: 16,
+              boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 10 }}>追加リングを作る</div>
+
+            <label style={{ fontSize: 12, opacity: 0.75 }}>
+              リング名
+              <input
+                value={createTitle}
+                onChange={(e) => setCreateTitle(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: 12,
+                  borderRadius: 12,
+                  border: "1px solid #ddd",
+                  fontSize: 16,
+                  marginTop: 6,
+                }}
+                placeholder="例）生活費 / 第一銀行 / 投資"
+              />
+            </label>
+
+            <label style={{ fontSize: 12, opacity: 0.75, marginTop: 10, display: "block" }}>
+              入力モード
+              <select
+                value={createMode}
+                onChange={(e) => setCreateMode(e.target.value as RingMode)}
+                style={{
+                  width: "100%",
+                  padding: 12,
+                  borderRadius: 12,
+                  border: "1px solid #ddd",
+                  fontSize: 14,
+                  marginTop: 6,
+                  background: "#fff",
+                }}
+              >
+                <option value="both">収入/支出（両方）</option>
+                <option value="income_only">収入のみ</option>
+                <option value="expense_only">支出のみ</option>
+              </select>
+            </label>
+
+            <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+              <button
+                type="button"
+                onClick={saveCreate}
+                style={{
+                  padding: "12px 14px",
+                  borderRadius: 12,
+                  border: "1px solid #111",
+                  background: "#111",
+                  color: "#fff",
+                  fontWeight: 900,
+                  width: 140,
+                  cursor: "pointer",
+                }}
+              >
+                作成
+              </button>
+              <button
+                type="button"
+                onClick={() => setCreateOpen(false)}
+                style={{
+                  padding: "12px 14px",
+                  borderRadius: 12,
+                  border: "1px solid #ddd",
+                  background: "#fff",
+                  color: "#333",
+                  fontWeight: 900,
+                  width: 140,
+                  cursor: "pointer",
+                }}
+              >
+                キャンセル
+              </button>
+            </div>
+
+            <div style={{ marginTop: 10, fontSize: 11, opacity: 0.65 }}>
+              ※作成すると tab に追加されます。データは ringId（ringKey）で保持します（B案）
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ 固定3つの目標編集モーダル（中央長押し） */}
       {fixedEdit && (
         <div
           role="dialog"
@@ -886,15 +1531,11 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 キャンセル
               </button>
             </div>
-
-            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.65 }}>
-              ※保存すると下部の「目標設定」と同じ値が更新され、リング表示も即反映されます
-            </div>
           </div>
         </div>
       )}
 
-      {/* ✅ 目標入力（3つ） */}
+      {/* ✅ 目標入力（3つ）※今は残す（いらなければ後で消す） */}
       <div style={{ border: "1px solid #eee", borderRadius: 12, padding: 14, marginBottom: 14, marginTop: 16 }}>
         <div style={{ fontWeight: 900, marginBottom: 10 }}>目標設定（リロードしても保持）</div>
 
@@ -926,7 +1567,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
               返済累計：{yen(repaidTotal)}円 / 残り：{yen(remainingDebt)}円
               <br />
-              ※カテゴリに「返済」を含む支出を返済扱い
+              ※返済リング（ring:{FIXED_DEBT_KEY}）の支出合計
             </div>
           </div>
 
@@ -942,11 +1583,14 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               <span style={{ opacity: 0.7 }}>円</span>
             </div>
             <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>目標差：{yen(remainToMonthlySave)}円</div>
+            <div style={{ marginTop: 4, fontSize: 11, opacity: 0.6 }}>
+              ※貯蓄リング（ring:{FIXED_SAVE_KEY}）の収入合計
+            </div>
           </div>
         </div>
       </div>
 
-      {/* ✅ 入力フォーム */}
+      {/* ✅ 入力フォーム（残す：必要なら手入力も可能） */}
       <TransactionForm
         editing={editing}
         categorySuggestions={categorySuggestions}
