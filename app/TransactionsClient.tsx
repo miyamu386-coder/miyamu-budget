@@ -632,7 +632,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const outwardSmall = isMobile ? 8 : 10;
 
   const orbitRadius = useMemo(() => {
-    const base = isMobile ? 220 : 300;
+    const base = isMobile ? 180 : 300;
     return base + Math.max(0, orbitCount - 4) * (isMobile ? 10 : 12);
   }, [isMobile, orbitCount]);
 
