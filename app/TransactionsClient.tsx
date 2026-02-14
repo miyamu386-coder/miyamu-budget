@@ -367,24 +367,15 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       : "良好：この調子！";
 
   // =========================
-  // ✅ スマホ判定 + 画面サイズ（はみ出し防止に使う）
+  // ✅ スマホ判定
   // =========================
   const [isMobile, setIsMobile] = useState(false);
-  const [vw, setVw] = useState<number>(0);
-
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 600px)");
-    const apply = () => {
-      setIsMobile(mq.matches);
-      setVw(window.innerWidth || 0);
-    };
+    const apply = () => setIsMobile(mq.matches);
     apply();
     mq.addEventListener?.("change", apply);
-    window.addEventListener("resize", apply);
-    return () => {
-      mq.removeEventListener?.("change", apply);
-      window.removeEventListener("resize", apply);
-    };
+    return () => mq.removeEventListener?.("change", apply);
   }, []);
 
   // =========================
@@ -570,7 +561,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     return extraRings.find((x) => x.id === activeExtraId) ?? null;
   }, [extraRings, activeExtraId]);
 
-  // ✅ 周囲リングリスト（空きは出さない）
+  // ✅ 周囲リングリスト（空きは出さない → 初期は返済/貯蓄の2個だけ、追加で増える）
   type OrbitItem =
     | { key: "debt"; kind: "debt"; pos: number }
     | { key: "save"; kind: "save"; pos: number }
@@ -618,21 +609,33 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   };
 
   // =========================
-  // ✅ サイズ（増えたら中央を少し小さく）
+  // ✅ サイズ（②：スマホは“見やすさ優先”で中央を小さめ）
+  // ✅ 左端切れ対策：楕円配置（横方向だけ縮める）
   // =========================
   const orbitCount = orbitItems.length; // 2..10
-  const baseBig = isMobile ? 260 : 360;
 
-  const centerScale = useMemo(() => {
+  // ②見やすさ：スマホ中央を小さめ（固定寄り）
+  const baseBig = isMobile ? 230 : 360;
+
+  // 周囲も、増えたら少し小さく（8個でも切れにくく）
+  const smallScale = useMemo(() => {
     if (!isMobile) return 1;
     if (orbitCount >= 8) return 0.78;
-    if (orbitCount >= 6) return 0.85;
-    if (orbitCount >= 5) return 0.9;
+    if (orbitCount >= 6) return 0.86;
+    if (orbitCount >= 5) return 0.92;
+    return 1;
+  }, [isMobile, orbitCount]);
+
+  // 中央も少しだけ縮む（やりすぎない）
+  const centerScale = useMemo(() => {
+    if (!isMobile) return 1;
+    if (orbitCount >= 8) return 0.92;
+    if (orbitCount >= 6) return 0.95;
     return 1;
   }, [isMobile, orbitCount]);
 
   const bigSize = Math.round(baseBig * centerScale);
-  const smallSize = isMobile ? 150 : 190;
+  const smallSize = Math.round((isMobile ? 140 : 190) * smallScale);
 
   const strokeBig = isMobile ? 14 : 16;
   const strokeSmall = isMobile ? 12 : 14;
@@ -640,37 +643,21 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const outwardBig = isMobile ? 10 : 12;
   const outwardSmall = isMobile ? 8 : 10;
 
-  // ✅ 周囲半径：画面幅・表示エリア高さから “はみ出さない上限” を作って clamp
-  const orbitRadius = useMemo(() => {
-    const desired = (isMobile ? 180 : 300) + Math.max(0, orbitCount - 4) * (isMobile ? 10 : 12);
+  // まずは縦方向の半径
+  const orbitRadiusY = useMemo(() => {
+    // ②：タップ不要で見える＝無駄に広げない
+    const base = isMobile ? 190 : 300;
+    const grow = Math.max(0, orbitCount - 4) * (isMobile ? 10 : 12);
+    return base + grow;
+  }, [isMobile, orbitCount]);
 
-    const areaH = isMobile ? 760 : 860;
-    const w = vw || (typeof window !== "undefined" ? window.innerWidth : 0);
-
-    // 余白（安全マージン）
-    const margin = 12;
-
-    // 幅/高さから最大半径を計算（リング半径ぶんも引く）
-    const maxByW = w > 0 ? w / 2 - smallSize / 2 - margin : desired;
-    const maxByH = areaH / 2 - smallSize / 2 - margin;
-
-    const maxAllowed = Math.max(80, Math.min(maxByW, maxByH));
-    return Math.min(desired, maxAllowed);
-  }, [isMobile, orbitCount, vw, smallSize]);
-
-  // ✅ モバイルの“初期”を三角っぽくする角度
-  const getOrbitDeg = (idx: number, count: number) => {
-    if (!isMobile) return -90 + (360 / count) * idx;
-
-    // count=2（返済/貯蓄だけ）→ 斜め配置（中心と2点で三角になる）
-    if (count === 2) return -30 + 180 * idx;
-
-    // count=3 → てっぺん開始（綺麗に三角）
-    if (count === 3) return -90 + 120 * idx;
-
-    // それ以外は普通に円周
-    return (360 / count) * idx;
-  };
+  // 左端切れ対策：横方向は潰す（楕円）
+  const orbitRadiusX = useMemo(() => {
+    if (!isMobile) return orbitRadiusY;
+    // 個数が多いほど横を強めに潰す
+    const factor = orbitCount >= 8 ? 0.52 : orbitCount >= 6 ? 0.58 : 0.7;
+    return orbitRadiusY * factor;
+  }, [isMobile, orbitCount, orbitRadiusY]);
 
   // ✅ 中央表示（focusedがあれば差し替え）
   const centerCard = useMemo(() => {
@@ -753,6 +740,15 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     if (focused?.kind === "debt") setActiveExtraId(null);
     if (focused?.kind === "save") setActiveExtraId(null);
   }, [focused]);
+
+  // ✅（重要）スマホの「初期（周囲2個）」は三角に見えるよう角度固定
+  //  - count=2 : 下左(150°) と 下右(30°)
+  //  - count=3 : 上(270°) + 下左(150°) + 下右(30°)
+  const getDegForMobile = (count: number, idx: number) => {
+    if (count === 2) return idx === 0 ? 150 : 30;
+    if (count === 3) return [270, 150, 30][idx] ?? (360 / count) * idx;
+    return -90 + (360 / count) * idx;
+  };
 
   return (
     <div>
@@ -875,12 +871,17 @@ export default function TransactionsClient({ initialTransactions }: Props) {
         </div>
       )}
 
+      {/* =========================
+          ✅ 中央：総資産（or ズーム内容） / 周囲：返済・貯蓄・追加リング（追加で1つずつ増える）
+          ✅ タップ入れ替え：2回タップでswap
+          ✅ タップズーム：タップしたリングを中央表示
+         ========================= */}
       <div style={{ maxWidth: 980, margin: "0 auto" }}>
         <div
           style={{
             position: "relative",
             width: "100%",
-            height: isMobile ? 760 : 860,
+            height: isMobile ? 740 : 860,
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
@@ -942,7 +943,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               <div style={{ fontSize: 16, opacity: 0.75, fontWeight: 900 }}>{centerCard.title}</div>
               <div
                 style={{
-                  fontSize: isMobile ? 44 : 54,
+                  fontSize: isMobile ? 42 : 54,
                   fontWeight: 900,
                   color: centerCard.kind === "asset" && summary.balance < 0 ? "#ef4444" : "#111",
                   lineHeight: 1.05,
@@ -951,8 +952,12 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 {yen(centerCard.value)}円
               </div>
 
-              {centerCard.sub1 && <div style={{ marginTop: 10, fontSize: 13, opacity: 0.75 }}>{centerCard.sub1}</div>}
-              {centerCard.sub2 && <div style={{ marginTop: 8, fontSize: 13, opacity: 0.75 }}>{centerCard.sub2}</div>}
+              {centerCard.sub1 && (
+                <div style={{ marginTop: 10, fontSize: 13, opacity: 0.75 }}>{centerCard.sub1}</div>
+              )}
+              {centerCard.sub2 && (
+                <div style={{ marginTop: 8, fontSize: 13, opacity: 0.75 }}>{centerCard.sub2}</div>
+              )}
 
               {centerCard.achieved && <div style={{ marginTop: 10, fontWeight: 900 }}>✅ 目標達成！</div>}
             </div>
@@ -962,11 +967,13 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           {orbitItems.map((item, idx) => {
             const count = orbitItems.length;
 
-            const deg = getOrbitDeg(idx, count);
+            // ✅ スマホは初期（三角っぽく）見せたい
+            const deg = isMobile ? getDegForMobile(count, idx) : -90 + (360 / count) * idx;
             const rad = (deg * Math.PI) / 180;
 
-            const x = Math.cos(rad) * orbitRadius;
-            const y = Math.sin(rad) * orbitRadius;
+            // ✅ 楕円配置（横だけ縮めて左右の切れを抑える）
+            const x = Math.cos(rad) * orbitRadiusX;
+            const y = Math.sin(rad) * orbitRadiusY;
 
             let title = "";
             let value = 0;
@@ -1049,7 +1056,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 <Ring size={smallSize} stroke={strokeSmall} outward={outwardSmall} progress={progress} color={color} />
                 <div style={{ zIndex: 2 }}>
                   <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>{title}</div>
-                  <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900 }}>{yen(value)}円</div>
+                  <div style={{ fontSize: isMobile ? 24 : 30, fontWeight: 900 }}>{yen(value)}円</div>
                   {sub && <div style={{ marginTop: 4, fontSize: 11, opacity: 0.6 }}>{sub}</div>}
                 </div>
               </button>
