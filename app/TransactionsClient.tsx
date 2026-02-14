@@ -367,15 +367,24 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       : "良好：この調子！";
 
   // =========================
-  // ✅ スマホ判定
+  // ✅ スマホ判定 + 画面サイズ（はみ出し防止に使う）
   // =========================
   const [isMobile, setIsMobile] = useState(false);
+  const [vw, setVw] = useState<number>(0);
+
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 600px)");
-    const apply = () => setIsMobile(mq.matches);
+    const apply = () => {
+      setIsMobile(mq.matches);
+      setVw(window.innerWidth || 0);
+    };
     apply();
     mq.addEventListener?.("change", apply);
-    return () => mq.removeEventListener?.("change", apply);
+    window.addEventListener("resize", apply);
+    return () => {
+      mq.removeEventListener?.("change", apply);
+      window.removeEventListener("resize", apply);
+    };
   }, []);
 
   // =========================
@@ -561,7 +570,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     return extraRings.find((x) => x.id === activeExtraId) ?? null;
   }, [extraRings, activeExtraId]);
 
-  // ✅ 周囲リングリスト（空きは出さない → 初期は返済/貯蓄の2個だけ、追加で増える）
+  // ✅ 周囲リングリスト（空きは出さない）
   type OrbitItem =
     | { key: "debt"; kind: "debt"; pos: number }
     | { key: "save"; kind: "save"; pos: number }
@@ -609,7 +618,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   };
 
   // =========================
-  // ✅ サイズ（増えたら中央を少し小さく）+ 周囲半径調整
+  // ✅ サイズ（増えたら中央を少し小さく）
   // =========================
   const orbitCount = orbitItems.length; // 2..10
   const baseBig = isMobile ? 260 : 360;
@@ -631,10 +640,37 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const outwardBig = isMobile ? 10 : 12;
   const outwardSmall = isMobile ? 8 : 10;
 
+  // ✅ 周囲半径：画面幅・表示エリア高さから “はみ出さない上限” を作って clamp
   const orbitRadius = useMemo(() => {
-    const base = isMobile ? 180 : 300;
-    return base + Math.max(0, orbitCount - 4) * (isMobile ? 10 : 12);
-  }, [isMobile, orbitCount]);
+    const desired = (isMobile ? 180 : 300) + Math.max(0, orbitCount - 4) * (isMobile ? 10 : 12);
+
+    const areaH = isMobile ? 760 : 860;
+    const w = vw || (typeof window !== "undefined" ? window.innerWidth : 0);
+
+    // 余白（安全マージン）
+    const margin = 12;
+
+    // 幅/高さから最大半径を計算（リング半径ぶんも引く）
+    const maxByW = w > 0 ? w / 2 - smallSize / 2 - margin : desired;
+    const maxByH = areaH / 2 - smallSize / 2 - margin;
+
+    const maxAllowed = Math.max(80, Math.min(maxByW, maxByH));
+    return Math.min(desired, maxAllowed);
+  }, [isMobile, orbitCount, vw, smallSize]);
+
+  // ✅ モバイルの“初期”を三角っぽくする角度
+  const getOrbitDeg = (idx: number, count: number) => {
+    if (!isMobile) return -90 + (360 / count) * idx;
+
+    // count=2（返済/貯蓄だけ）→ 斜め配置（中心と2点で三角になる）
+    if (count === 2) return -30 + 180 * idx;
+
+    // count=3 → てっぺん開始（綺麗に三角）
+    if (count === 3) return -90 + 120 * idx;
+
+    // それ以外は普通に円周
+    return (360 / count) * idx;
+  };
 
   // ✅ 中央表示（focusedがあれば差し替え）
   const centerCard = useMemo(() => {
@@ -839,11 +875,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
         </div>
       )}
 
-      {/* =========================
-          ✅ 中央：総資産（or ズーム内容） / 周囲：返済・貯蓄・追加リング（追加で1つずつ増える）
-          ✅ タップ入れ替え：2回タップでswap
-          ✅ タップズーム：タップしたリングを中央表示
-         ========================= */}
       <div style={{ maxWidth: 980, margin: "0 auto" }}>
         <div
           style={{
@@ -931,22 +962,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           {orbitItems.map((item, idx) => {
             const count = orbitItems.length;
 
-            // ✅ ここが変更点：初期(スマホ)は三角っぽく、増えたら通常円形へ
-            let deg: number;
-
-            if (isMobile && count === 2) {
-              // 周囲2個：上(-90) と 右下(30)（左下を空けて“三角感”）
-              const triangle2 = [-90, 30];
-              deg = triangle2[idx] ?? (-90 + (360 / count) * idx);
-            } else if (isMobile && count === 3) {
-              // 周囲3個：上(-90)・右下(30)・左下(210)
-              const triangle3 = [-90, 30, 210];
-              deg = triangle3[idx] ?? (-90 + (360 / count) * idx);
-            } else {
-              // それ以外：通常の円形（上スタート）
-              deg = -90 + (360 / count) * idx;
-            }
-
+            const deg = getOrbitDeg(idx, count);
             const rad = (deg * Math.PI) / 180;
 
             const x = Math.cos(rad) * orbitRadius;
