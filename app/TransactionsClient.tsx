@@ -132,7 +132,10 @@ function Ring({
 /** =========================
  * 追加リング（最大8）
  * pos: 周囲リングの並び位置（入れ替え保持）
+ * charMode: ② 手動上書き（auto/mofu/hina/none）
  * ========================= */
+type CharaMode = "auto" | "mofu" | "hina" | "none";
+
 type ExtraRing = {
   id: string;
   title: string;
@@ -141,6 +144,7 @@ type ExtraRing = {
   color: string;
   offsetDeg?: number;
   pos?: number;
+  charMode?: CharaMode;
 };
 
 type Focused =
@@ -155,6 +159,64 @@ function makeId() {
 }
 
 const MAX_EXTRA_RINGS = 8;
+
+// ✅ ②：自動判定 + 手動上書き
+function pickCharaAuto(title: string): Exclude<CharaMode, "auto"> {
+  const t = (title ?? "").toLowerCase();
+
+  // モフ（守る/支払い/銀行）
+  const mofuWords = [
+    "銀行",
+    "口座",
+    "振込",
+    "引落",
+    "引き落とし",
+    "返済",
+    "ローン",
+    "クレカ",
+    "カード",
+    "支出",
+    "固定費",
+    "家賃",
+    "保険",
+    "税",
+    "年金",
+  ];
+
+  // ひな（増やす/育てる）
+  const hinaWords = ["投資", "nisa", "ニーサ", "株", "積立", "つみたて", "資産", "運用", "配当"];
+
+  if (mofuWords.some((w) => t.includes(w))) return "mofu";
+  if (hinaWords.some((w) => t.includes(w))) return "hina";
+  return "none";
+}
+
+function resolveChara(title: string, mode?: CharaMode): Exclude<CharaMode, "auto"> {
+  if (mode === "mofu" || mode === "hina" || mode === "none") return mode;
+  return pickCharaAuto(title);
+}
+
+function CharaBadge({ kind }: { kind: "mofu" | "hina" }) {
+  const src = kind === "mofu" ? "/icons/mofu-mini.png" : "/icons/hina-mini.png";
+  return (
+    <img
+      src={src}
+      alt={kind}
+      style={{
+        position: "absolute",
+        right: -6,
+        top: -6,
+        width: 42,
+        height: 42,
+        borderRadius: 999,
+        background: "rgba(255,255,255,0.9)",
+        border: "1px solid rgba(0,0,0,0.06)",
+        boxShadow: "0 8px 18px rgba(0,0,0,0.08)",
+        pointerEvents: "none",
+      }}
+    />
+  );
+}
 
 export default function TransactionsClient({ initialTransactions }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions ?? []);
@@ -434,6 +496,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               current: Number(x.current) || 0,
               target: Number(x.target) || 0,
               color: x.color || "#60a5fa",
+              charMode: (x.charMode ?? "auto") as CharaMode,
             }));
         }
       }
@@ -534,6 +597,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       color: "#60a5fa",
       offsetDeg: -90,
       pos,
+      charMode: "auto",
     };
 
     setDebtPos(nd);
@@ -609,33 +673,21 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   };
 
   // =========================
-  // ✅ サイズ（②：スマホは“見やすさ優先”で中央を小さめ）
-  // ✅ 左端切れ対策：楕円配置（横方向だけ縮める）
+  // ✅ サイズ（増えたら中央を少し小さく）+ 周囲半径調整
   // =========================
   const orbitCount = orbitItems.length; // 2..10
+  const baseBig = isMobile ? 260 : 360;
 
-  // ②見やすさ：スマホ中央を小さめ（固定寄り）
-  const baseBig = isMobile ? 230 : 360;
-
-  // 周囲も、増えたら少し小さく（8個でも切れにくく）
-  const smallScale = useMemo(() => {
-    if (!isMobile) return 1;
-    if (orbitCount >= 8) return 0.78;
-    if (orbitCount >= 6) return 0.86;
-    if (orbitCount >= 5) return 0.92;
-    return 1;
-  }, [isMobile, orbitCount]);
-
-  // 中央も少しだけ縮む（やりすぎない）
   const centerScale = useMemo(() => {
     if (!isMobile) return 1;
-    if (orbitCount >= 8) return 0.92;
-    if (orbitCount >= 6) return 0.95;
+    if (orbitCount >= 8) return 0.78;
+    if (orbitCount >= 6) return 0.85;
+    if (orbitCount >= 5) return 0.9;
     return 1;
   }, [isMobile, orbitCount]);
 
   const bigSize = Math.round(baseBig * centerScale);
-  const smallSize = Math.round((isMobile ? 140 : 190) * smallScale);
+  const smallSize = isMobile ? 150 : 190;
 
   const strokeBig = isMobile ? 14 : 16;
   const strokeSmall = isMobile ? 12 : 14;
@@ -643,21 +695,10 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const outwardBig = isMobile ? 10 : 12;
   const outwardSmall = isMobile ? 8 : 10;
 
-  // まずは縦方向の半径
-  const orbitRadiusY = useMemo(() => {
-    // ②：タップ不要で見える＝無駄に広げない
-    const base = isMobile ? 190 : 300;
-    const grow = Math.max(0, orbitCount - 4) * (isMobile ? 10 : 12);
-    return base + grow;
+  const orbitRadius = useMemo(() => {
+    const base = isMobile ? 180 : 300;
+    return base + Math.max(0, orbitCount - 4) * (isMobile ? 10 : 12);
   }, [isMobile, orbitCount]);
-
-  // 左端切れ対策：横方向は潰す（楕円）
-  const orbitRadiusX = useMemo(() => {
-    if (!isMobile) return orbitRadiusY;
-    // 個数が多いほど横を強めに潰す
-    const factor = orbitCount >= 8 ? 0.52 : orbitCount >= 6 ? 0.58 : 0.7;
-    return orbitRadiusY * factor;
-  }, [isMobile, orbitCount, orbitRadiusY]);
 
   // ✅ 中央表示（focusedがあれば差し替え）
   const centerCard = useMemo(() => {
@@ -740,15 +781,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     if (focused?.kind === "debt") setActiveExtraId(null);
     if (focused?.kind === "save") setActiveExtraId(null);
   }, [focused]);
-
-  // ✅（重要）スマホの「初期（周囲2個）」は三角に見えるよう角度固定
-  //  - count=2 : 下左(150°) と 下右(30°)
-  //  - count=3 : 上(270°) + 下左(150°) + 下右(30°)
-  const getDegForMobile = (count: number, idx: number) => {
-    if (count === 2) return idx === 0 ? 150 : 30;
-    if (count === 3) return [270, 150, 30][idx] ?? (360 / count) * idx;
-    return -90 + (360 / count) * idx;
-  };
 
   return (
     <div>
@@ -881,7 +913,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           style={{
             position: "relative",
             width: "100%",
-            height: isMobile ? 740 : 860,
+            height: isMobile ? 760 : 860,
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
@@ -939,11 +971,15 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               progress={centerCard.progress}
               color={centerCard.color}
             />
+
+            {/* ✅ 総資産はモフ固定 */}
+            <CharaBadge kind="mofu" />
+
             <div style={{ zIndex: 2, position: "relative" }}>
               <div style={{ fontSize: 16, opacity: 0.75, fontWeight: 900 }}>{centerCard.title}</div>
               <div
                 style={{
-                  fontSize: isMobile ? 42 : 54,
+                  fontSize: isMobile ? 44 : 54,
                   fontWeight: 900,
                   color: centerCard.kind === "asset" && summary.balance < 0 ? "#ef4444" : "#111",
                   lineHeight: 1.05,
@@ -952,12 +988,8 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 {yen(centerCard.value)}円
               </div>
 
-              {centerCard.sub1 && (
-                <div style={{ marginTop: 10, fontSize: 13, opacity: 0.75 }}>{centerCard.sub1}</div>
-              )}
-              {centerCard.sub2 && (
-                <div style={{ marginTop: 8, fontSize: 13, opacity: 0.75 }}>{centerCard.sub2}</div>
-              )}
+              {centerCard.sub1 && <div style={{ marginTop: 10, fontSize: 13, opacity: 0.75 }}>{centerCard.sub1}</div>}
+              {centerCard.sub2 && <div style={{ marginTop: 8, fontSize: 13, opacity: 0.75 }}>{centerCard.sub2}</div>}
 
               {centerCard.achieved && <div style={{ marginTop: 10, fontWeight: 900 }}>✅ 目標達成！</div>}
             </div>
@@ -966,14 +998,11 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           {/* 周囲リング（表示分だけ） */}
           {orbitItems.map((item, idx) => {
             const count = orbitItems.length;
-
-            // ✅ スマホは初期（三角っぽく）見せたい
-            const deg = isMobile ? getDegForMobile(count, idx) : -90 + (360 / count) * idx;
+            const deg = isMobile ? (360 / count) * idx : -90 + (360 / count) * idx;
             const rad = (deg * Math.PI) / 180;
 
-            // ✅ 楕円配置（横だけ縮めて左右の切れを抑える）
-            const x = Math.cos(rad) * orbitRadiusX;
-            const y = Math.sin(rad) * orbitRadiusY;
+            const x = Math.cos(rad) * orbitRadius;
+            const y = Math.sin(rad) * orbitRadius;
 
             let title = "";
             let value = 0;
@@ -982,6 +1011,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             let sub = "";
             let achieved = false;
 
+            // ✅ 追加：キャラ種別
+            let chara: "mofu" | "hina" | null = null;
+
             if (item.kind === "debt") {
               title = "返済";
               value = repaidTotal;
@@ -989,6 +1021,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               color = "#d1d5db";
               sub = "(累計)";
               achieved = debtAchieved;
+              chara = "mofu"; // 固定
             } else if (item.kind === "save") {
               title = "貯蓄";
               value = savedThisMonth;
@@ -996,6 +1029,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               color = "#22c55e";
               sub = "今月";
               achieved = saveAchieved;
+              chara = "hina"; // 固定
             } else {
               const r = extraRings.find((x) => x.id === item.id);
               title = r?.title ?? "追加";
@@ -1003,6 +1037,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               progress = r && r.target > 0 ? clamp01(r.current / r.target) : 0;
               color = r?.color ?? "#60a5fa";
               achieved = r && r.target > 0 ? r.current >= r.target : false;
+
+              const resolved = resolveChara(title, r?.charMode);
+              chara = resolved === "mofu" ? "mofu" : resolved === "hina" ? "hina" : null;
             }
 
             const isPicked = pickedKey === item.key;
@@ -1054,9 +1091,13 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 title={pickedKey === null ? "タップで選択→次をタップで入れ替え" : "タップで入れ替え"}
               >
                 <Ring size={smallSize} stroke={strokeSmall} outward={outwardSmall} progress={progress} color={color} />
+
+                {/* ✅ キャラバッジ */}
+                {chara && <CharaBadge kind={chara} />}
+
                 <div style={{ zIndex: 2 }}>
                   <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>{title}</div>
-                  <div style={{ fontSize: isMobile ? 24 : 30, fontWeight: 900 }}>{yen(value)}円</div>
+                  <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900 }}>{yen(value)}円</div>
                   {sub && <div style={{ marginTop: 4, fontSize: 11, opacity: 0.6 }}>{sub}</div>}
                 </div>
               </button>
@@ -1118,6 +1159,31 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                   onChange={(e) => updateExtraRing(activeExtra.id, { title: e.target.value.slice(0, 24) })}
                   style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #ccc", marginTop: 6 }}
                 />
+              </label>
+
+              {/* ✅ ②：キャラ設定（自動＋手動上書き） */}
+              <label style={{ fontSize: 12, opacity: 0.75 }}>
+                キャラ（追加リング）
+                <select
+                  value={(activeExtra.charMode ?? "auto") as CharaMode}
+                  onChange={(e) => updateExtraRing(activeExtra.id, { charMode: e.target.value as CharaMode })}
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    borderRadius: 10,
+                    border: "1px solid #ccc",
+                    marginTop: 6,
+                    background: "#fff",
+                  }}
+                >
+                  <option value="auto">自動（タイトルで判定）</option>
+                  <option value="mofu">モフ（固定）</option>
+                  <option value="hina">ひな（固定）</option>
+                  <option value="none">表示しない</option>
+                </select>
+                <div style={{ marginTop: 6, fontSize: 11, opacity: 0.65 }}>
+                  自動判定：銀行/返済系→モフ、投資/積立系→ひな（タイトルに含まれる単語で判定）
+                </div>
               </label>
 
               <label style={{ fontSize: 12, opacity: 0.75 }}>
