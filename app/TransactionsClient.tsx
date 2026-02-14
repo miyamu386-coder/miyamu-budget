@@ -930,7 +930,10 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           {/* 周囲リング（表示分だけ） */}
           {orbitItems.map((item, idx) => {
             const count = orbitItems.length;
-            const deg = -90 + (360 / count) * idx;
+            const deg = isMobile
+            ? (360 / count) * idx
+            : -90 + (360 / count) * idx;
+
             const rad = (deg * Math.PI) / 180;
 
             const x = Math.cos(rad) * orbitRadius;
