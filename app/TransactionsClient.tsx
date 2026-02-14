@@ -930,9 +930,22 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           {/* 周囲リング（表示分だけ） */}
           {orbitItems.map((item, idx) => {
             const count = orbitItems.length;
-            const deg = isMobile
-            ? (360 / count) * idx
-            : -90 + (360 / count) * idx;
+
+            // ✅ ここが変更点：初期(スマホ)は三角っぽく、増えたら通常円形へ
+            let deg: number;
+
+            if (isMobile && count === 2) {
+              // 周囲2個：上(-90) と 右下(30)（左下を空けて“三角感”）
+              const triangle2 = [-90, 30];
+              deg = triangle2[idx] ?? (-90 + (360 / count) * idx);
+            } else if (isMobile && count === 3) {
+              // 周囲3個：上(-90)・右下(30)・左下(210)
+              const triangle3 = [-90, 30, 210];
+              deg = triangle3[idx] ?? (-90 + (360 / count) * idx);
+            } else {
+              // それ以外：通常の円形（上スタート）
+              deg = -90 + (360 / count) * idx;
+            }
 
             const rad = (deg * Math.PI) / 180;
 
