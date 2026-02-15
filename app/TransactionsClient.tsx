@@ -226,7 +226,8 @@ function resolveChara(title: string, mode?: CharaMode): Exclude<CharaMode, "auto
 }
 
 function CharaBadge({ kind }: { kind: "mofu" | "hina" }) {
-  const src = kind === "mofu" ? "/icons/mofu-chibi.png" : "/icons/hina-chibi.png";
+  // ✅ public直下に合わせる
+  const src = kind === "mofu" ? "/mofu-chibi.png" : "/hina-chibi.png";
   return (
     <img
       src={src}
