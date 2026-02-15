@@ -1035,8 +1035,8 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const orbitCount = orbitItems.length;
 
   // 半径（目標値）→ 画面に収まるように調整
-  const desiredRadius = isMobile ? 220 : 280;
-  const edgePadding = 10; // 端から少し余裕
+  const desiredRadius = isMobile ? 260 : 320;
+  const edgePadding = isMobile 16 : 20; // 端から少し余裕
   const safeRadius = useMemo(() => {
     if (!orbitW) return desiredRadius;
     // 円周上のリング(小)がはみ出さない半径上限
@@ -1046,7 +1046,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
   // 中央を少し上に寄せて、上のムダ空白を減らす
   // ここは見た目調整の要
-  const centerOffsetY = isMobile ? -120 : -80;
+  const centerOffsetY = isMobile ? -40 : -20;
 
   const orbitPositions = useMemo(() => {
     // 固定(返済/貯蓄)が「だいたい左右下」になるように start角を調整
