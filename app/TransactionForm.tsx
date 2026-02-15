@@ -17,6 +17,9 @@ type Props = {
 
   editing?: Transaction | null;
   categorySuggestions?: string[];
+
+  // ✅ 「返済」「貯蓄」「生活費」等 → ring:* に自動変換したい時に使う
+  ringTitleResolver?: Array<{ title: string; category: string }>;
 };
 
 function toYMD(dateLike: string) {
@@ -25,8 +28,33 @@ function toYMD(dateLike: string) {
 }
 
 function normalizeAmountInput(s: string) {
-  const half = s.replace(/[０-９]/g, (ch) => String(ch.charCodeAt(0) - 0xfee0));
+  const half = s.replace(/[０-９．]/g, (ch) => {
+    if (ch === "．") return ".";
+    return String(ch.charCodeAt(0) - 0xfee0);
+  });
   return half.replace(/,/g, "");
+}
+
+// ✅ 「5万」「1.2万」「3千」「50,000」等を数値にする
+function parseAmountLike(input: string): number {
+  if (!input) return 0;
+
+  const half = input.replace(/[０-９．]/g, (ch) => {
+    if (ch === "．") return ".";
+    return String(ch.charCodeAt(0) - 0xfee0);
+  });
+
+  let s = half.trim().replace(/[,，\s]/g, "").replace(/円/g, "");
+
+  const manMatch = s.match(/^(-?\d+(?:\.\d+)?)万$/);
+  if (manMatch) return Math.round(Number(manMatch[1]) * 10000);
+
+  const senMatch = s.match(/^(-?\d+(?:\.\d+)?)千$/);
+  if (senMatch) return Math.round(Number(senMatch[1]) * 1000);
+
+  const n = Number(s);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n);
 }
 
 function normalizeUserKeyInput(s: string) {
@@ -41,6 +69,7 @@ export default function TransactionForm({
   onCancelEdit,
   editing,
   categorySuggestions = [],
+  ringTitleResolver = [],
 }: Props) {
   const [type, setType] = useState<TxType>(editing?.type ?? "expense");
   const [amountStr, setAmountStr] = useState(editing ? String(editing.amount) : "");
@@ -112,8 +141,8 @@ export default function TransactionForm({
   function decideToast(tt: TxType, cat: string) {
     const c = (cat ?? "").trim().toLowerCase();
 
-    // 返済（支出 + 返済を含む）
-    if (tt === "expense" && c.includes("返済")) {
+    // ✅ 返済リング
+    if (c === "ring:debt") {
       return { kind: "mofu" as const, text: "借金も計画的に、な。" };
     }
 
@@ -123,8 +152,13 @@ export default function TransactionForm({
       return { kind: "hina" as const, text: "未来のためにありがとう！" };
     }
 
-    // それ以外（とりあえず）
-    return { kind: "mofu" as const, text: "未来のためにありがとう！" };
+    // 貯蓄リング
+    if (c === "ring:save") {
+      return { kind: "hina" as const, text: "積み上げ、最高！" };
+    }
+
+    // それ以外
+    return { kind: "mofu" as const, text: "記録できた。えらい。" };
   }
 
   useEffect(() => {
@@ -133,15 +167,31 @@ export default function TransactionForm({
     };
   }, []);
 
+  // ✅ 「返済」「貯蓄」「追加リング名」→ ring:* に寄せる
+  function normalizeCategoryInput(raw: string) {
+    const v = (raw ?? "").trim();
+    if (!v) return v;
+
+    if (v.startsWith("ring:")) return v;
+
+    // タイトル完全一致で変換
+    for (const p of ringTitleResolver) {
+      if ((p.title ?? "").trim() === v) return p.category;
+    }
+
+    return v;
+  }
+
   async function handleSubmit() {
-    const normalized = normalizeAmountInput(amountStr);
-    const amount = Number(normalized);
+    const amount = parseAmountLike(amountStr);
 
     if (!Number.isFinite(amount) || amount <= 0) {
-      alert("金額は正の数で入力してください");
+      alert("金額は正の数で入力してください（例: 50000 / 5万 / 1.2万）");
       return;
     }
-    if (!category.trim()) {
+
+    const normalizedCategory = normalizeCategoryInput(category);
+    if (!normalizedCategory.trim()) {
       alert("カテゴリを入力してください");
       return;
     }
@@ -160,7 +210,7 @@ export default function TransactionForm({
           body: JSON.stringify({
             type,
             amount,
-            category: category.trim(),
+            category: normalizedCategory,
             occurredAt,
           }),
         });
@@ -172,8 +222,7 @@ export default function TransactionForm({
 
         const updated: Transaction = await res.json();
 
-        // ✅ 保存成功：チビキャラ + 一言
-        const t1 = decideToast(type, category.trim());
+        const t1 = decideToast(type, normalizedCategory);
         showToast(t1.kind, t1.text);
 
         onUpdated?.(updated);
@@ -187,7 +236,7 @@ export default function TransactionForm({
           body: JSON.stringify({
             type,
             amount,
-            category: category.trim(),
+            category: normalizedCategory,
             occurredAt,
           }),
         });
@@ -199,8 +248,7 @@ export default function TransactionForm({
 
         const created: Transaction = await res.json();
 
-        // ✅ 保存成功：チビキャラ + 一言
-        const t1 = decideToast(type, category.trim());
+        const t1 = decideToast(type, normalizedCategory);
         showToast(t1.kind, t1.text);
 
         onAdded?.(created);
@@ -246,7 +294,7 @@ export default function TransactionForm({
           aria-label="toast"
         >
           <img
-            src={toast.kind === "mofu" ? "/mofu-chibi.png" : "/hina-chibi.png"}
+            src={toast.kind === "mofu" ? "/icons/mofu-chibi.png" : "/icons/hina-chibi.png"}
             alt={toast.kind}
             style={{ width: 46, height: 46, borderRadius: 999 }}
           />
@@ -362,8 +410,8 @@ export default function TransactionForm({
           <input
             value={amountStr}
             onChange={(e) => setAmountStr(normalizeAmountInput(e.target.value))}
-            placeholder="例) 1200"
-            inputMode="numeric"
+            placeholder="例) 1200 / 5万"
+            inputMode="text"
             style={{
               width: "100%",
               padding: 12,
@@ -380,7 +428,8 @@ export default function TransactionForm({
         <input
           value={category}
           onChange={(e) => setCategory(e.target.value)}
-          placeholder="例) コンビニ / 給料"
+          onBlur={() => setCategory((v) => normalizeCategoryInput(v))}
+          placeholder="例) コンビニ / 給料 / 返済 / 貯蓄 / 生活費"
           style={{
             width: "100%",
             padding: 12,
