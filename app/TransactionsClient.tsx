@@ -333,9 +333,6 @@ function ExtraRingButton({
   const badge = resolved === "mofu" ? "mofu" : resolved === "hina" ? "hina" : null;
 
   // ✅ 目標に対して何を進捗にするか
-  // income_only → income / target
-  // expense_only → expense / target
-  // both → balance(>=0) / target
   const valueForProgress =
     mode === "income_only" ? sums.income : mode === "expense_only" ? sums.expense : Math.max(0, sums.balance);
 
@@ -343,6 +340,9 @@ function ExtraRingButton({
 
   const lp = useLongPress(() => onLongPressEdit(id));
   const defaultType: TxType = mode === "income_only" ? "income" : mode === "expense_only" ? "expense" : "expense";
+
+  const displayValue =
+    mode === "income_only" ? sums.income : mode === "expense_only" ? sums.expense : sums.balance;
 
   return (
     <button
@@ -384,7 +384,7 @@ function ExtraRingButton({
 
       <div style={{ zIndex: 2 }}>
         <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>{title}</div>
-        <div style={{ fontSize: isMobile ? 20 : 22, fontWeight: 900 }}>{yen(sums.balance)}円</div>
+        <div style={{ fontSize: isMobile ? 20 : 22, fontWeight: 900 }}>{yen(displayValue)}円</div>
         <div style={{ marginTop: 6, fontSize: 11, opacity: 0.55 }}>タップで入力 / 長押しで編集</div>
       </div>
     </button>
@@ -592,7 +592,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const remainToTarget = Math.max(0, targetBalance - totalAssetBalance);
   const balanceAchieved = targetBalance > 0 ? totalAssetBalance >= targetBalance : false;
 
-  // 返済/貯蓄（固定も「目標に対する割合」に寄せる）
+  // 返済/貯蓄（固定も「目標に対する割合」）
   const repaidTotal = debtSums.expense; // 返済は支出として積まれる想定
   const debtRingProgress = debtTarget > 0 ? clamp01(repaidTotal / debtTarget) : 0;
   const debtAchieved = debtTarget > 0 ? repaidTotal >= debtTarget : false;
@@ -863,49 +863,43 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   }, [extraRings]);
 
   // =========================
-  // ✅ 追加リングの配置：初期エリア内に混ぜる（下に押し下げない）
-  // - 追加1個なら「左右下の間（中央下）」に来る
-  // - 増えたら左右・上にも回っていく（中心の周りに並ぶ）
+  // ✅ 追加リングの配置：中心の周りに並べる（下固定にしない）
   // =========================
   const extraPositions = useMemo(() => {
     const n = extraRings.length;
     if (n === 0) return [];
 
-    // レスポンシブ：小リングのサイズを微調整（横幅が狭い時）
     const padding = isMobile ? 10 : 16;
     const available = Math.max(320, layoutW - padding * 2);
 
-    const baseSize = smallSize; // 固定の左右下と同じサイズ感
+    const baseSize = smallSize;
     const size = Math.max(isMobile ? 120 : 160, Math.min(baseSize, Math.floor(available / 3)));
 
-    // 中心からの距離（固定三角の外側に被らない程度）
-    const radiusX = isMobile ? 110 : 185;
-    const radiusY = isMobile ? 150 : 230;
+    // 中心からの半径（固定の左下/右下に被りにくい値）
+    const rX = isMobile ? 140 : 220;
+    const rY = isMobile ? 160 : 240;
 
-    // 置き場所候補（中心(0,0)基準）
-    // 1個目が「左右下の間」に来るように最初は真下寄り
-    const slotsMobile = [
-      { x: 0, y: tri.dy * 0.55 }, // 1: 下中央（カードローンがここ）
-      { x: -radiusX, y: tri.dy * 0.35 }, // 2: 左寄り
-      { x: radiusX, y: tri.dy * 0.35 }, // 3: 右寄り
-      { x: -radiusX * 0.7, y: -radiusY * 0.2 }, // 4: 左上寄り
-      { x: radiusX * 0.7, y: -radiusY * 0.2 }, // 5: 右上寄り
-    ];
+    // 角度スロット（度）: 下固定にせず、まず “下寄り斜め” から回す
+    // 1個目が「ど真ん中下」にならないように 110° を先頭にしてる
+    const angles = isMobile
+      ? [110, 70, 210, 330, 150]   // スマホ：上に詰まりやすいのでバランス重視
+      : [120, 60, 210, 330, 150]; // PC
 
-    const slotsDesktop = [
-      { x: 0, y: tri.dy * 0.55 },
-      { x: -radiusX, y: tri.dy * 0.35 },
-      { x: radiusX, y: tri.dy * 0.35 },
-      { x: -radiusX * 0.8, y: -radiusY * 0.2 },
-      { x: radiusX * 0.8, y: -radiusY * 0.2 },
-    ];
+    const slots = angles.map((deg) => {
+      const rad = (deg * Math.PI) / 180;
+      return {
+        x: Math.cos(rad) * rX,
+        y: Math.sin(rad) * rY,
+      };
+    });
 
-    const slots = isMobile ? slotsMobile : slotsDesktop;
+    // yが下に行きすぎるのを軽く抑える（固定三角の下段と干渉しやすいので）
+    const maxY = tri.dy * 0.55;
 
     return extraRings.slice(0, slots.length).map((r, i) => ({
       id: r.id,
       x: slots[i].x,
-      y: slots[i].y,
+      y: Math.min(slots[i].y, maxY),
       size,
     }));
   }, [extraRings, isMobile, layoutW, smallSize, tri.dy]);
@@ -1034,52 +1028,8 @@ export default function TransactionsClient({ initialTransactions }: Props) {
         </div>
       )}
 
-      {/* ✅ リング目標（普段は折りたたみ：※1回だけ表示） */}
-      <details
-        style={{
-          border: "1px solid #eee",
-          borderRadius: 12,
-          padding: 12,
-          marginBottom: 16,
-          background: "#fff",
-        }}
-      >
-        <summary style={{ fontWeight: 900, cursor: "pointer" }}>リング目標を編集（ここをタップで開く）</summary>
-
-        <div style={{ marginTop: 12 }}>
-          <RingGoalEditor
-            ringCategories={[
-              GOAL_ASSET_KEY,
-              ringCategory(FIXED_DEBT_KEY),
-              ringCategory(FIXED_SAVE_KEY),
-              ...extraRings.map((r) => ringCategory(r.ringKey)),
-            ]}
-            resolveLabel={(cat) => {
-              if (cat === GOAL_ASSET_KEY) return "総資産 目標";
-              return resolveCategoryLabel(cat);
-            }}
-          />
-        </div>
-      </details>
-
-      {/* ✅ 入力フォーム */}
-      <TransactionForm
-        editing={editing}
-        categorySuggestions={categorySuggestions}
-        ringTitleResolver={ringTitleResolver}
-        onAdded={(t) => {
-          setTransactions((prev) => [t, ...prev]);
-          setEditing(null);
-        }}
-        onUpdated={(t) => {
-          setTransactions((prev) => prev.map((x) => (x.id === t.id ? t : x)));
-          setEditing(null);
-        }}
-        onCancelEdit={() => setEditing(null)}
-      />
-
       {/* =========================
-          ✅ 円グラフエリア（固定3＋追加はこの中で配置が変わる）
+          ✅ 円グラフエリア（最優先で上に固定）
          ========================= */}
       <div ref={layoutRef} style={{ maxWidth: 980, margin: "0 auto" }}>
         <div
@@ -1220,7 +1170,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             </div>
           </button>
 
-          {/* ✅ 追加リング群（初期エリア内で配置が変わる） */}
+          {/* ✅ 追加リング群（中心の周りに配置） */}
           {extraPositions.map((p) => {
             const r = extraRings.find((x) => x.id === p.id);
             const rc = extraComputed.find((x) => x.id === p.id);
@@ -1270,6 +1220,69 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             ＋ 追加リング（残り {Math.max(0, MAX_EXTRA_RINGS - extraRings.length)}）
           </button>
         </div>
+      </div>
+
+      {/* ✅ ここから下に「編集系」をまとめる（＝円グラフの外に出ない） */}
+      <div style={{ maxWidth: 980, margin: "16px auto 0" }}>
+        {/* ✅ リング目標（スマホは折りたたみ / PCは開く） */}
+        <details
+          open={!isMobile}
+          style={{
+            border: "1px solid #eee",
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 12,
+            background: "#fff",
+          }}
+        >
+          <summary style={{ fontWeight: 900, cursor: "pointer" }}>リング目標を編集（ここをタップで開く）</summary>
+
+          <div style={{ marginTop: 12 }}>
+            <RingGoalEditor
+              ringCategories={[
+                GOAL_ASSET_KEY,
+                ringCategory(FIXED_DEBT_KEY),
+                ringCategory(FIXED_SAVE_KEY),
+                ...extraRings.map((r) => ringCategory(r.ringKey)),
+              ]}
+              resolveLabel={(cat) => {
+                if (cat === GOAL_ASSET_KEY) return "総資産 目標";
+                return resolveCategoryLabel(cat);
+              }}
+            />
+          </div>
+        </details>
+
+        {/* ✅ 手入力フォーム（スマホは折りたたみ / PCは開く） */}
+        <details
+          open={!isMobile} // ✅ PCは開く / スマホは閉じる
+          style={{
+            border: "1px solid #eee",
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 12,
+            background: "#fff",
+          }}
+        >
+          <summary style={{ fontWeight: 900, cursor: "pointer" }}>手入力で追加（ここをタップで開く）</summary>
+
+          <div style={{ marginTop: 12 }}>
+            <TransactionForm
+              editing={editing}
+              categorySuggestions={categorySuggestions}
+              ringTitleResolver={ringTitleResolver}
+              onAdded={(t) => {
+                setTransactions((prev) => [t, ...prev]);
+                setEditing(null);
+              }}
+              onUpdated={(t) => {
+                setTransactions((prev) => prev.map((x) => (x.id === t.id ? t : x)));
+                setEditing(null);
+              }}
+              onCancelEdit={() => setEditing(null)}
+            />
+          </div>
+        </details>
       </div>
 
       {/* =========================
@@ -1545,7 +1558,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             </div>
 
             <div style={{ marginTop: 10, fontSize: 11, opacity: 0.65 }}>
-              ※作成すると「初期の円エリア内」に追加され、配置は増えるほど変わります（最大 {MAX_EXTRA_RINGS} 個）
+              ※作成すると「中心の周り」に追加されます（最大 {MAX_EXTRA_RINGS} 個）
             </div>
           </div>
         </div>
