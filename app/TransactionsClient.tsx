@@ -861,7 +861,15 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       sub2: targetBalance > 0 ? `目標まであと ${yen(remainToTarget)}円` : "",
       achieved: balanceAchieved,
     };
-  }, [totalAssetBalance, progressToTarget, monthSummary.income, monthSummary.expense, targetBalance, remainToTarget, balanceAchieved]);
+  }, [
+    totalAssetBalance,
+    progressToTarget,
+    monthSummary.income,
+    monthSummary.expense,
+    targetBalance,
+    remainToTarget,
+    balanceAchieved,
+  ]);
 
   // =========================
   // ✅ List表示用：categoryを人間向けラベルにする
@@ -894,49 +902,73 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
   // =========================
   // ✅ B配置：追加リングは「固定三角の下」に増える
-  // - 左端切れ対策：コンテナ幅からリングサイズを自動縮小
-  // - ボタン重なり対策：必要な高さを計算してcontainerのheightに反映
+  // ✅ 三角っぽい増え方（特に 3→5 が綺麗）
+  //
+  // n=1: 1
+  // n=2: 2
+  // n=3: 1+2（小三角）
+  // n=4: 1+3
+  // n=5: 2+3（3→5が自然に見える）
   // =========================
   const extraLayout = useMemo(() => {
-    const cols = 3;
+    const n = extraRings.length;
+
     const gapX = isMobile ? 10 : 14;
     const gapY = isMobile ? 16 : 20;
 
     const padding = isMobile ? 20 : 30;
     const availableW = Math.max(320, layoutW - padding * 2);
 
+    // 「最大3個並び」を上限としてリングサイズを決める（横切れ防止）
+    const maxCols = 3;
     const desired = isMobile ? 118 : 150;
-    const maxRing = Math.floor((availableW - gapX * (cols - 1)) / cols);
+    const maxRing = Math.floor((availableW - gapX * (maxCols - 1)) / maxCols);
     const ring = Math.max(isMobile ? 96 : 118, Math.min(desired, maxRing));
 
-    const rowCount = Math.ceil(extraRings.length / cols);
+    const stepX = ring + gapX;
+    const stepY = ring + gapY;
 
     // 固定三角より「少し下」から始める
     const baseY = tri.dy + (isMobile ? 210 : 260);
 
+    // nに応じた “三角っぽい段” を作る
+    const rowSizes: number[] = (() => {
+      if (n <= 0) return [];
+      if (n === 1) return [1];
+      if (n === 2) return [2];
+      if (n === 3) return [1, 2];
+      if (n === 4) return [1, 3];
+      // n === 5
+      return [2, 3];
+    })();
+
     const positions: Array<{ id: string; x: number; y: number; size: number }> = [];
-    for (let i = 0; i < extraRings.length; i++) {
-      const row = Math.floor(i / cols);
-      const col = i % cols;
 
-      const colsInThisRow = Math.min(cols, extraRings.length - row * cols);
-      const totalW = colsInThisRow * ring + (colsInThisRow - 1) * gapX;
-      const startX = -totalW / 2;
+    let idx = 0;
+    for (let row = 0; row < rowSizes.length; row++) {
+      const k = rowSizes[row];
+      for (let i = 0; i < k; i++) {
+        if (idx >= n) break;
+        const r = extraRings[idx];
 
-      const x = startX + col * (ring + gapX) + ring / 2;
-      const y = baseY + row * (ring + gapY);
+        // 例：k=3 なら -1,0,1 ／ k=2 なら -0.5,0.5
+        const x = (i - (k - 1) / 2) * stepX;
+        const y = baseY + row * stepY;
 
-      positions.push({ id: extraRings[i].id, x, y, size: ring });
+        positions.push({ id: r.id, x, y, size: ring });
+        idx++;
+      }
     }
 
-    // 追加リングで必要になる高さ（最後のリングの下端 + 余白）
-    const extraBottom = rowCount === 0 ? baseY : baseY + (rowCount - 1) * (ring + gapY) + ring;
+    // 必要高さ（最後の列の下端 + 余白）
+    const lastRow = Math.max(0, rowSizes.length - 1);
+    const extraBottom = n === 0 ? baseY : baseY + lastRow * stepY + ring;
     const neededBelow = extraBottom + (isMobile ? 70 : 90);
 
     return {
       positions,
       ring,
-      rowCount,
+      rowCount: rowSizes.length,
       neededBelow,
     };
   }, [extraRings, isMobile, tri.dy, layoutW]);
@@ -1112,7 +1144,13 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               if (lpAsset.shouldIgnoreClick()) e.preventDefault();
             }}
           >
-            <Ring size={bigSize} stroke={strokeBig} outward={outwardBig} progress={centerCard.progress} color={centerCard.color} />
+            <Ring
+              size={bigSize}
+              stroke={strokeBig}
+              outward={outwardBig}
+              progress={centerCard.progress}
+              color={centerCard.color}
+            />
             <CharaBadge kind="mofu" />
 
             <div style={{ zIndex: 2, position: "relative" }}>
@@ -1128,8 +1166,12 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 {yen(centerCard.value)}円
               </div>
 
-              {centerCard.sub1 && <div style={{ marginTop: 10, fontSize: 13, opacity: 0.75 }}>{centerCard.sub1}</div>}
-              {centerCard.sub2 && <div style={{ marginTop: 8, fontSize: 13, opacity: 0.75 }}>{centerCard.sub2}</div>}
+              {centerCard.sub1 && (
+                <div style={{ marginTop: 10, fontSize: 13, opacity: 0.75 }}>{centerCard.sub1}</div>
+              )}
+              {centerCard.sub2 && (
+                <div style={{ marginTop: 8, fontSize: 13, opacity: 0.75 }}>{centerCard.sub2}</div>
+              )}
 
               {centerCard.achieved && <div style={{ marginTop: 10, fontWeight: 900 }}>✅ 目標達成！</div>}
 
@@ -1221,7 +1263,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             </div>
           </button>
 
-          {/* ✅ 追加リング群（B：下に増える） */}
+          {/* ✅ 追加リング群（三角っぽく増える） */}
           {extraLayout.positions.map((p) => {
             const r = extraRings.find((x) => x.id === p.id);
             const rc = extraComputed.find((x) => x.id === p.id);
@@ -1756,7 +1798,15 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       )}
 
       {/* ✅ 目標入力 */}
-      <div style={{ border: "1px solid #eee", borderRadius: 12, padding: 14, marginBottom: 14, marginTop: 16 }}>
+      <div
+        style={{
+          border: "1px solid #eee",
+          borderRadius: 12,
+          padding: 14,
+          marginBottom: 14,
+          marginTop: 16,
+        }}
+      >
         <div style={{ fontWeight: 900, marginBottom: 10 }}>目標設定（リロードしても保持）</div>
 
         <div style={{ display: "grid", gap: 10 }}>
