@@ -385,8 +385,14 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const [userKey, setUserKey] = useState<string>("");
 
   useEffect(() => {
-    setUserKey(getOrCreateUserKey());
-  }, []);
+  try {
+    const k = getOrCreateUserKey();
+    setUserKey(k);
+  } catch (e) {
+    console.error("getOrCreateUserKey failed:", e);
+    setUserKey(`fallback_${Date.now()}`);
+  }
+}, []);
 
   // ✅ userKeyが変わったらデータ再取得
   useEffect(() => {
