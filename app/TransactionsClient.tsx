@@ -10,6 +10,44 @@ import { getOrCreateUserKey } from "../lib/userKey";
 import RingGoalEditor from "./components/RingGoalEditor";
 import { loadRingGoals, getTarget, type RingGoal } from "../lib/ringGoals";
 
+/**
+ * ✅ 長押しハンドラ（Pointer Events）
+ * - onClick側で shouldIgnoreClick() を見て短押し/長押しを分岐
+ */
+function useLongPressHandlers(onLongPress: () => void, delay = 650) {
+  const timerRef = useRef<number | null>(null);
+  const longPressedRef = useRef(false);
+
+  const clear = () => {
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  const onPointerDown = () => {
+    clear();
+    longPressedRef.current = false;
+    timerRef.current = window.setTimeout(() => {
+      longPressedRef.current = true;
+      onLongPress();
+    }, delay);
+  };
+
+  const onPointerUp = () => {
+    clear();
+  };
+
+  const onPointerCancel = () => {
+    clear();
+    longPressedRef.current = false;
+  };
+
+  const shouldIgnoreClick = () => longPressedRef.current;
+
+  return { onPointerDown, onPointerUp, onPointerCancel, shouldIgnoreClick };
+}
+
 type Props = {
   initialTransactions: Transaction[];
 };
@@ -195,7 +233,6 @@ function ringCategory(ringKey: string) {
 
 const FIXED_DEBT_KEY = "debt";
 const FIXED_SAVE_KEY = "save";
-const [focusExtraId, setFocusExtraId] = useState<string | null>(null);
 // ✅ 総資産 目標だけは「目標専用キー」
 const GOAL_ASSET_KEY = "ring:asset";
 
@@ -253,40 +290,6 @@ function CharaBadge({ kind }: { kind: "mofu" | "hina" }) {
   );
 }
 
-// ✅ 長押し（iOS優先で touch も拾う）
-function useLongPress(onLongPress: () => void, ms = 650) {
-  const timer = useRef<number | null>(null);
-  const fired = useRef(false);
-
-  const clear = () => {
-    if (timer.current) window.clearTimeout(timer.current);
-    timer.current = null;
-  };
-
-  const start = () => {
-    fired.current = false;
-    clear();
-    timer.current = window.setTimeout(() => {
-      fired.current = true;
-      onLongPress();
-    }, ms);
-  };
-
-  const end = () => clear();
-  const shouldIgnoreClick = () => fired.current;
-
-  return {
-    onPointerDown: start,
-    onPointerUp: end,
-    onPointerCancel: end,
-    onPointerLeave: end,
-    onTouchStart: start,
-    onTouchEnd: end,
-    onTouchCancel: end,
-    shouldIgnoreClick,
-  };
-}
-
 type TxType = "income" | "expense";
 
 // ✅ 追加リング1つ分（目標に対する割合で外周を描く）
@@ -316,8 +319,8 @@ function ExtraRingButton({
   pos: { x: number; y: number; size: number };
   strokeSmall: number;
   outwardSmall: number;
-  onTapAdd: (id: string, defaultType: TxType) => void;
-  onLongPressEditRing: (id: string) => void; // 追加リングの編集（名前/モード）
+  onTapAdd: (id: string, defaultType: TxType) => void; // ✅ タップ = 入力
+  onLongPressEditRing: (id: string) => void; // ✅ 長押し = 編集
 }) {
   const resolved = resolveChara(title, charMode);
   const badge = resolved === "mofu" ? "mofu" : resolved === "hina" ? "hina" : null;
@@ -327,8 +330,8 @@ function ExtraRingButton({
 
   const prog = target > 0 ? clamp01(valueForProgress / target) : 0;
 
-  const lp = useLongPress(() => onLongPressEditRing(id));
-  const defaultType: TxType = mode === "income_only" ? "income" : mode === "expense_only" ? "expense" : "expense";
+  const lp = useLongPressHandlers(() => onLongPressEditRing(id), 650);
+  const defaultType: TxType = mode === "income_only" ? "income" : "expense";
 
   return (
     <button
@@ -385,14 +388,14 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const [userKey, setUserKey] = useState<string>("");
 
   useEffect(() => {
-  try {
-    const k = getOrCreateUserKey();
-    setUserKey(k);
-  } catch (e) {
-    console.error("getOrCreateUserKey failed:", e);
-    setUserKey(`fallback_${Date.now()}`);
-  }
-}, []);
+    try {
+      const k = getOrCreateUserKey();
+      setUserKey(k);
+    } catch (e) {
+      console.error("getOrCreateUserKey failed:", e);
+      setUserKey(`fallback_${Date.now()}`);
+    }
+  }, []);
 
   // ✅ userKeyが変わったらデータ再取得
   useEffect(() => {
@@ -445,8 +448,8 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     setKeyEditingOpen(false);
   };
 
-  // --- 月切替
-  const nowYm = ymdToMonthKey(new Date().toISOString().slice(0, 10));
+  // --- 月切替（UTCズレ対策でローカル日付を使う）
+  const nowYm = ymdToMonthKey(todayYMD());
   const [selectedYm, setSelectedYm] = useState<string>(nowYm);
 
   const monthTransactions = useMemo(() => {
@@ -868,7 +871,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
   // =========================
   // ✅ 追加リングの配置（中心周り・被りにくい角度）
-  // - 1個目が「下中央（固定の間）」に来る
   // =========================
   const extraPositions = useMemo(() => {
     const n = extraRings.length;
@@ -884,8 +886,8 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     const radiusX = isMobile ? 120 : 210;
     const radiusY = isMobile ? 210 : 300;
 
-    // 角度（度）: 下 → 左下 → 右下 → 左上 → 右上（固定3を避けやすい）
-  const angles = [-90, -140, -40, 180, 0];
+    // 角度（度）: 下 → 左下 → 右下 → 左上 → 右上
+    const angles = [-90, -140, -40, 180, 0];
 
     return extraRings.slice(0, angles.length).map((r, i) => {
       const rad = (angles[i] * Math.PI) / 180;
@@ -895,20 +897,20 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     });
   }, [extraRings, isMobile, layoutW, smallSize]);
 
-  // ✅ エリア高さは固定（押し下げない）
-  const areaH = isMobile ? 780 : 860;
+  // ✅ エリア高さ（スマホは少し余裕）
+  const areaH = isMobile ? 820 : 860;
 
   // =========================
-  // ✅ リング操作：固定3は
-  // - タップ：入力
-  // - 長押し：目標編集（復活！）
+  // ✅ 固定リングの長押し
+  // - 長押し：目標編集
+  // - タップ：入力（返済/貯蓄のみ）
   // =========================
-  const lpGoalAsset = useLongPress(() => openGoalEditor(GOAL_ASSET_KEY));
-  const lpGoalDebt = useLongPress(() => openGoalEditor(ringCategory(FIXED_DEBT_KEY)));
-  const lpGoalSave = useLongPress(() => openGoalEditor(ringCategory(FIXED_SAVE_KEY)));
+  const lpGoalAsset = useLongPressHandlers(() => openGoalEditor(GOAL_ASSET_KEY), 650);
+  const lpGoalDebt = useLongPressHandlers(() => openGoalEditor(ringCategory(FIXED_DEBT_KEY)), 650);
+  const lpGoalSave = useLongPressHandlers(() => openGoalEditor(ringCategory(FIXED_SAVE_KEY)), 650);
 
   return (
-    <div>
+    <div style={{ paddingBottom: isMobile ? 24 : 0 }}>
       {/* 月切替 */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
         {SHOW_USERKEY_UI && (
@@ -1080,7 +1082,11 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             type="button"
             {...lpGoalAsset}
             onClick={(e) => {
-              if (lpGoalAsset.shouldIgnoreClick()) e.preventDefault();
+              if (lpGoalAsset.shouldIgnoreClick()) {
+                e.preventDefault();
+                return;
+              }
+              // 中央はタップで入力させない（誤操作防止）。必要ならここで何か開ける。
             }}
             style={{
               width: bigSize,
@@ -1107,7 +1113,13 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             }}
             title="長押し：総資産の目標を編集"
           >
-            <Ring size={bigSize} stroke={strokeBig} outward={outwardBig} progress={centerCard.progress} color={centerCard.color} />
+            <Ring
+              size={bigSize}
+              stroke={strokeBig}
+              outward={outwardBig}
+              progress={centerCard.progress}
+              color={centerCard.color}
+            />
             <CharaBadge kind="mofu" />
 
             <div style={{ zIndex: 2, position: "relative" }}>
@@ -1242,10 +1254,10 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 pos={p}
                 strokeSmall={strokeSmall}
                 outwardSmall={outwardSmall}
-                onTapAdd={() => openExtraEdit(r.id)}
-onLongPressEditRing={() =>
-  openQuickAdd({ kind: "extra", id: r.id }, "expense")
-}
+                // ✅ タップ：入力（クイック入力）
+                onTapAdd={(id, defaultType) => openQuickAdd({ kind: "extra", id }, defaultType)}
+                // ✅ 長押し：編集
+                onLongPressEditRing={(id) => openExtraEdit(id)}
               />
             );
           })}
@@ -1303,7 +1315,10 @@ onLongPressEditRing={() =>
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 10 }}>
-              リング目標を編集{goalFocusCategory ? `：${goalFocusCategory === GOAL_ASSET_KEY ? "総資産" : resolveCategoryLabel(goalFocusCategory)}` : ""}
+              リング目標を編集
+              {goalFocusCategory
+                ? `：${goalFocusCategory === GOAL_ASSET_KEY ? "総資産" : resolveCategoryLabel(goalFocusCategory)}`
+                : ""}
             </div>
 
             <RingGoalEditor
