@@ -1773,6 +1773,19 @@ export default function TransactionsClient({ initialTransactions }: Props) {
         }}
         resolveCategoryLabel={resolveCategoryLabel}
       />
+      <img
+  src="/mofu-watch.png"
+  alt="watch mofu"
+  style={{
+    position: "fixed",
+    bottom: -15,
+    left: "50%",
+    transform: "translateX(-50%)",
+    width: 120,
+    pointerEvents: "none",
+    zIndex: 999
+  }}
+/>
     </div>
   );
 }
