@@ -1120,6 +1120,23 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               progress={centerCard.progress}
               color={centerCard.color}
             />
+
+            {/* ✅ ここに「見守りモフ」を総資産リング内に固定（透かし） */}
+            <img
+              src="/mofu-watch.png"
+              alt="watch mofu"
+              style={{
+                position: "absolute",
+                bottom: isMobile ? -18 : -22,
+                left: "50%",
+                transform: "translateX(-50%)",
+                width: isMobile ? 110 : 140,
+                opacity: 0.65, // ←文字があるので透かす
+                pointerEvents: "none",
+                zIndex: 1,
+              }}
+            />
+
             <CharaBadge kind="mofu" />
 
             <div style={{ zIndex: 2, position: "relative" }}>
@@ -1773,19 +1790,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
         }}
         resolveCategoryLabel={resolveCategoryLabel}
       />
-      <img
-  src="/mofu-watch.png"
-  alt="watch mofu"
-  style={{
-    position: "fixed",
-    bottom: -15,
-    left: "50%",
-    transform: "translateX(-50%)",
-    width: 120,
-    pointerEvents: "none",
-    zIndex: 999
-  }}
-/>
     </div>
   );
 }
