@@ -362,7 +362,7 @@ function ExtraRingButton({
         overflow: "visible",
         cursor: "pointer",
         boxShadow: "0 10px 25px rgba(0,0,0,0.05)",
-        zIndex: 1,
+        zIndex: 2,
         touchAction: "manipulation",
       }}
       title="タップ：入力 / 長押し：リング編集"
@@ -377,6 +377,102 @@ function ExtraRingButton({
         <div style={{ marginTop: 6, fontSize: 11, opacity: 0.55 }}>タップで入力 / 長押しで編集</div>
       </div>
     </button>
+  );
+}
+
+// ✅ 保存後に「ヌッ」と出す演出（全身モフ / 全身ひな）
+function SaveCharaOverlay({
+  kind,
+  message,
+  onClose,
+  isMobile,
+}: {
+  kind: "mofu" | "hina";
+  message: string;
+  onClose: () => void;
+  isMobile: boolean;
+}) {
+  const src = kind === "mofu" ? "/mofu-main.png" : "/hina.png";
+  const title = kind === "mofu" ? "返済 保存" : "貯蓄 保存";
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 10050,
+        pointerEvents: "auto",
+        display: "flex",
+        alignItems: "flex-end",
+        justifyContent: "center",
+        padding: isMobile ? 14 : 18,
+        background: "rgba(0,0,0,0.12)",
+      }}
+      title="タップで閉じる"
+    >
+      <div
+        style={{
+          width: "min(720px, 96vw)",
+          position: "relative",
+          display: "flex",
+          gap: 14,
+          alignItems: "center",
+          justifyContent: "center",
+          padding: isMobile ? 12 : 14,
+          borderRadius: 18,
+          background: "rgba(255,255,255,0.92)",
+          border: "1px solid rgba(0,0,0,0.06)",
+          boxShadow: "0 18px 60px rgba(0,0,0,0.28)",
+          animation: "miyamuPopIn 240ms ease-out both",
+          transformOrigin: "50% 100%",
+        }}
+      >
+        <img
+          src={src}
+          alt={kind}
+          style={{
+            width: isMobile ? 140 : 180,
+            height: "auto",
+            filter: "drop-shadow(0 18px 28px rgba(0,0,0,0.25))",
+            animation: "miyamuNutto 520ms cubic-bezier(.2,.9,.2,1) both",
+          }}
+        />
+
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900 }}>{title}</div>
+          <div style={{ fontSize: isMobile ? 18 : 20, fontWeight: 900, marginTop: 6, lineHeight: 1.2 }}>
+            {message}
+          </div>
+          <div style={{ marginTop: 8, fontSize: 11, opacity: 0.6 }}>※タップで閉じる</div>
+        </div>
+      </div>
+
+      <style jsx>{`
+        @keyframes miyamuPopIn {
+          from {
+            opacity: 0;
+            transform: translateY(16px) scale(0.98);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+        @keyframes miyamuNutto {
+          from {
+            opacity: 0;
+            transform: translateY(18px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
+    </div>
   );
 }
 
@@ -716,6 +812,27 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     return data as Transaction;
   };
 
+  // =========================
+  // ✅ 保存演出（全身モフ/ひな ＋ 一言）
+  // =========================
+  const [saveOverlay, setSaveOverlay] = useState<{ kind: "mofu" | "hina"; message: string; key: number } | null>(null);
+
+  const pickSaveMessage = (kind: "mofu" | "hina") => {
+    const mofu = ["返済よし。次、いこう。", "積み上げたな。えらい。", "今日も前進だ。", "その調子。", "やるじゃん。"];
+    const hina = ["貯蓄できた！えらい！", "コツコツ最強！", "積み立て成功〜！", "未来が育つね！", "いい感じ！"];
+    const list = kind === "mofu" ? mofu : hina;
+    return list[Math.floor(Math.random() * list.length)];
+  };
+
+  const triggerSaveOverlay = (kind: "mofu" | "hina") => {
+    const message = pickSaveMessage(kind);
+    setSaveOverlay({ kind, message, key: Date.now() });
+    // 自動で消える（タップでも消える）
+    window.setTimeout(() => {
+      setSaveOverlay((cur) => (cur && cur.key ? null : null));
+    }, 1700);
+  };
+
   const saveQuickAdd = async () => {
     if (isSavingQuick) return;
     const meta = getQuickMeta();
@@ -744,6 +861,10 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
       setTransactions((prev) => [tx, ...prev]);
       closeQuickAdd();
+
+      // ✅ 返済→保存＝全身モフ / 貯蓄→保存＝全身ひな
+      if (meta.ringKey === FIXED_DEBT_KEY) triggerSaveOverlay("mofu");
+      if (meta.ringKey === FIXED_SAVE_KEY) triggerSaveOverlay("hina");
     } catch (e) {
       console.error(e);
       alert("保存に失敗しました（ネットワーク or API）。Vercel Logsも確認してね。");
@@ -911,6 +1032,17 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
   return (
     <div style={{ paddingBottom: isMobile ? 24 : 0 }}>
+      {/* ✅ 保存演出（全身キャラ） */}
+      {saveOverlay && (
+        <SaveCharaOverlay
+          key={saveOverlay.key}
+          kind={saveOverlay.kind}
+          message={saveOverlay.message}
+          isMobile={isMobile}
+          onClose={() => setSaveOverlay(null)}
+        />
+      )}
+
       {/* 月切替 */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
         {SHOW_USERKEY_UI && (
@@ -1077,6 +1209,24 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             alignItems: "center",
           }}
         >
+          {/* ✅ 見守りモフ：円グラフ背景に透かし常駐 */}
+          <img
+            src="/mofu-watch.png"
+            alt="watch mofu"
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: "40%",
+              transform: "translate(-50%, -50%)",
+              width: isMobile ? 260 : 420,
+              height: "auto",
+              opacity: 0.12,
+              pointerEvents: "none",
+              zIndex: 0,
+              filter: "grayscale(10%)",
+            }}
+          />
+
           {/* 中央：総資産（長押しで目標編集） */}
           <button
             type="button"
@@ -1107,7 +1257,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               boxShadow: centerCard.achieved
                 ? "0 0 28px rgba(34,197,94,0.45)"
                 : "0 10px 25px rgba(0,0,0,0.06)",
-              zIndex: 2,
+              zIndex: 3,
               touchAction: "manipulation",
               cursor: "pointer",
             }}
@@ -1119,22 +1269,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               outward={outwardBig}
               progress={centerCard.progress}
               color={centerCard.color}
-            />
-
-            {/* ✅ 見守りモフ：総資産リング内に固定（透かし） */}
-            <img
-              src="/mofu-watch.png"
-              alt="watch mofu"
-              style={{
-                position: "absolute",
-                bottom: isMobile ? -18 : -22,
-                left: "50%",
-                transform: "translateX(-50%)",
-                width: isMobile ? 110 : 140,
-                opacity: 0.65, // ←文字があるので透かす
-                pointerEvents: "none",
-                zIndex: 1,
-              }}
             />
 
             <CharaBadge kind="mofu" />
@@ -1189,12 +1323,18 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               overflow: "visible",
               cursor: "pointer",
               boxShadow: debtAchieved ? "0 0 28px rgba(34,197,94,0.45)" : "0 10px 25px rgba(0,0,0,0.05)",
-              zIndex: 2,
+              zIndex: 3,
               touchAction: "manipulation",
             }}
             title="タップ：返済を入力 / 長押し：返済目標を編集"
           >
-            <Ring size={smallSize} stroke={strokeSmall} outward={outwardSmall} progress={debtRingProgress} color="#d1d5db" />
+            <Ring
+              size={smallSize}
+              stroke={strokeSmall}
+              outward={outwardSmall}
+              progress={debtRingProgress}
+              color="#d1d5db"
+            />
             <CharaBadge kind="mofu" />
             <div style={{ zIndex: 2 }}>
               <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>返済</div>
@@ -1233,12 +1373,18 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               overflow: "visible",
               cursor: "pointer",
               boxShadow: saveAchieved ? "0 0 28px rgba(34,197,94,0.45)" : "0 10px 25px rgba(0,0,0,0.05)",
-              zIndex: 2,
+              zIndex: 3,
               touchAction: "manipulation",
             }}
             title="タップ：貯蓄を入力 / 長押し：貯蓄目標を編集"
           >
-            <Ring size={smallSize} stroke={strokeSmall} outward={outwardSmall} progress={saveRingProgress} color="#22c55e" />
+            <Ring
+              size={smallSize}
+              stroke={strokeSmall}
+              outward={outwardSmall}
+              progress={saveRingProgress}
+              color="#22c55e"
+            />
             <CharaBadge kind="hina" />
             <div style={{ zIndex: 2 }}>
               <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>貯蓄</div>
