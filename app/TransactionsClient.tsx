@@ -268,28 +268,6 @@ function resolveChara(title: string, mode?: CharaMode): Exclude<CharaMode, "auto
   return pickCharaAuto(title);
 }
 
-function CharaBadge({ kind }: { kind: "mofu" | "hina" }) {
-  const src = kind === "mofu" ? "/mofu-chibi.png" : "/hina-chibi.png";
-  return (
-    <img
-      src={src}
-      alt={kind}
-      style={{
-        position: "absolute",
-        right: -6,
-        top: -6,
-        width: 42,
-        height: 42,
-        borderRadius: 999,
-        background: "rgba(255,255,255,0.9)",
-        border: "1px solid rgba(0,0,0,0.06)",
-        boxShadow: "0 8px 18px rgba(0,0,0,0.08)",
-        pointerEvents: "none",
-      }}
-    />
-  );
-}
-
 type TxType = "income" | "expense";
 
 // ✅ 追加リング1つ分（目標に対する割合で外周を描く）
@@ -322,23 +300,26 @@ function ExtraRingButton({
   onTapAdd: (id: string, defaultType: TxType) => void; // ✅ タップ = 入力
   onLongPressEditRing: (id: string) => void; // ✅ 長押し = 編集
 }) {
-  const resolved = resolveChara(title, charMode);
-  const badge = resolved === "mofu" ? "mofu" : resolved === "hina" ? "hina" : null;
+  // ※バッジ（常駐モフ/ひな）は消す仕様に変更（スッキリ優先）
+  resolveChara(title, charMode);
 
   const valueForProgress =
     mode === "income_only" ? sums.income : mode === "expense_only" ? sums.expense : Math.max(0, sums.balance);
 
   const prog = target > 0 ? clamp01(valueForProgress / target) : 0;
 
+  // ✅ shouldIgnoreClick はDOMへ渡さない！
   const lp = useLongPressHandlers(() => onLongPressEditRing(id), 650);
+  const { shouldIgnoreClick, ...lpProps } = lp;
+
   const defaultType: TxType = mode === "income_only" ? "income" : "expense";
 
   return (
     <button
       type="button"
-      {...lp}
+      {...lpProps}
       onClick={(e) => {
-        if (lp.shouldIgnoreClick()) {
+        if (shouldIgnoreClick()) {
           e.preventDefault();
           return;
         }
@@ -368,8 +349,6 @@ function ExtraRingButton({
       title="タップ：入力 / 長押し：リング編集"
     >
       <Ring size={pos.size} stroke={strokeSmall} outward={outwardSmall} progress={prog} color={color} />
-      {badge === "mofu" && <CharaBadge kind="mofu" />}
-      {badge === "hina" && <CharaBadge kind="hina" />}
 
       <div style={{ zIndex: 2 }}>
         <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>{title}</div>
@@ -393,7 +372,6 @@ function SaveCharaOverlay({
   isMobile: boolean;
 }) {
   const src = kind === "mofu" ? "/mofu-main.png" : "/hina.png";
-  const title = kind === "mofu" ? "返済 保存" : "貯蓄 保存";
 
   return (
     <div
@@ -442,7 +420,9 @@ function SaveCharaOverlay({
         />
 
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900 }}>{title}</div>
+          <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900 }}>
+            {kind === "mofu" ? "返済 保存" : "貯蓄 保存"}
+          </div>
           <div style={{ fontSize: isMobile ? 18 : 20, fontWeight: 900, marginTop: 6, lineHeight: 1.2 }}>
             {message}
           </div>
@@ -816,22 +796,54 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   // ✅ 保存演出（全身モフ/ひな ＋ 一言）
   // =========================
   const [saveOverlay, setSaveOverlay] = useState<{ kind: "mofu" | "hina"; message: string; key: number } | null>(null);
+  const overlayTimerRef = useRef<number | null>(null);
 
-  const pickSaveMessage = (kind: "mofu" | "hina") => {
-    const mofu = ["返済よし。次、いこう。", "積み上げたな。えらい。", "今日も前進だ。", "その調子。", "やるじゃん。"];
-    const hina = ["貯蓄できた！えらい！", "コツコツ最強！", "積み立て成功〜！", "未来が育つね！", "いい感じ！"];
-    const list = kind === "mofu" ? mofu : hina;
-    return list[Math.floor(Math.random() * list.length)];
-  };
+ const pickSaveMessage = (kind: "mofu" | "hina") => {
+  const mofu: string[] = [
+    "返済OK。次いこう",
+    "次はどうする？",
+    "今日も前進だ。",
+    "その調子だ。",
+    "無理すんなよ。",
+  ];
+
+  const hina: string[] = [
+    "できた！",
+    "コツコツ大事！",
+    "積み立て成功〜！",
+    "明るい未来！",
+    "いい感じ！",
+  ];
+
+  const list = kind === "mofu" ? mofu : hina;
+  return list[Math.floor(Math.random() * list.length)];
+};
 
   const triggerSaveOverlay = (kind: "mofu" | "hina") => {
+    if (overlayTimerRef.current !== null) {
+      window.clearTimeout(overlayTimerRef.current);
+      overlayTimerRef.current = null;
+    }
+
     const message = pickSaveMessage(kind);
-    setSaveOverlay({ kind, message, key: Date.now() });
-    // 自動で消える（タップでも消える）
-    window.setTimeout(() => {
-      setSaveOverlay((cur) => (cur && cur.key ? null : null));
+    const key = Date.now();
+    setSaveOverlay({ kind, message, key });
+
+    overlayTimerRef.current = window.setTimeout(() => {
+      setSaveOverlay(null);
+      overlayTimerRef.current = null;
     }, 1700);
   };
+
+  // unmount時にタイマー掃除
+  useEffect(() => {
+    return () => {
+      if (overlayTimerRef.current !== null) {
+        window.clearTimeout(overlayTimerRef.current);
+        overlayTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const saveQuickAdd = async () => {
     if (isSavingQuick) return;
@@ -1027,8 +1039,13 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   // - タップ：入力（返済/貯蓄のみ）
   // =========================
   const lpGoalAsset = useLongPressHandlers(() => openGoalEditor(GOAL_ASSET_KEY), 650);
+  const { shouldIgnoreClick: shouldIgnoreAsset, ...lpGoalAssetProps } = lpGoalAsset;
+
   const lpGoalDebt = useLongPressHandlers(() => openGoalEditor(ringCategory(FIXED_DEBT_KEY)), 650);
+  const { shouldIgnoreClick: shouldIgnoreDebt, ...lpGoalDebtProps } = lpGoalDebt;
+
   const lpGoalSave = useLongPressHandlers(() => openGoalEditor(ringCategory(FIXED_SAVE_KEY)), 650);
+  const { shouldIgnoreClick: shouldIgnoreSave, ...lpGoalSaveProps } = lpGoalSave;
 
   return (
     <div style={{ paddingBottom: isMobile ? 24 : 0 }}>
@@ -1209,34 +1226,31 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             alignItems: "center",
           }}
         >
-          {/* ✅ 見守りモフ：円グラフ背景に透かし常駐 */}
+          {/* ✅ 見守りモフ：円グラフ背景に透かし常駐（サイズ/配置はここを触る） */}
           <img
             src="/mofu-watch.png"
             alt="watch mofu"
             style={{
               position: "absolute",
+              bottom: isMobile ? 0 : 570, // ← 上下移動（下げる/上げる）
               left: "50%",
-              top: "40%",
-              transform: "translate(-50%, -50%)",
-              width: isMobile ? 260 : 420,
-              height: "auto",
-              opacity: 0.12,
+              transform: "translateX(-50%)",
+              width: isMobile ? 200 : 1800, // ← 大きさ
+              opacity: 0.35, // ← 透け
               pointerEvents: "none",
-              zIndex: 0,
-              filter: "grayscale(10%)",
+              zIndex: 1,
             }}
           />
 
           {/* 中央：総資産（長押しで目標編集） */}
           <button
             type="button"
-            {...lpGoalAsset}
+            {...lpGoalAssetProps}
             onClick={(e) => {
-              if (lpGoalAsset.shouldIgnoreClick()) {
+              if (shouldIgnoreAsset()) {
                 e.preventDefault();
                 return;
               }
-              // 中央はタップで入力させない（誤操作防止）。必要ならここで何か開ける。
             }}
             style={{
               width: bigSize,
@@ -1271,8 +1285,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               color={centerCard.color}
             />
 
-            <CharaBadge kind="mofu" />
-
             <div style={{ zIndex: 2, position: "relative" }}>
               <div style={{ fontSize: 16, opacity: 0.75, fontWeight: 900 }}>{centerCard.title}</div>
               <div
@@ -1297,9 +1309,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           {/* 左下：返済（タップで入力 / 長押しで目標編集） */}
           <button
             type="button"
-            {...lpGoalDebt}
+            {...lpGoalDebtProps}
             onClick={(e) => {
-              if (lpGoalDebt.shouldIgnoreClick()) {
+              if (shouldIgnoreDebt()) {
                 e.preventDefault();
                 return;
               }
@@ -1328,14 +1340,8 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             }}
             title="タップ：返済を入力 / 長押し：返済目標を編集"
           >
-            <Ring
-              size={smallSize}
-              stroke={strokeSmall}
-              outward={outwardSmall}
-              progress={debtRingProgress}
-              color="#d1d5db"
-            />
-            <CharaBadge kind="mofu" />
+            <Ring size={smallSize} stroke={strokeSmall} outward={outwardSmall} progress={debtRingProgress} color="#d1d5db" />
+
             <div style={{ zIndex: 2 }}>
               <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>返済</div>
               <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900 }}>{yen(repaidTotal)}円</div>
@@ -1347,9 +1353,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           {/* 右下：貯蓄（タップで入力 / 長押しで目標編集） */}
           <button
             type="button"
-            {...lpGoalSave}
+            {...lpGoalSaveProps}
             onClick={(e) => {
-              if (lpGoalSave.shouldIgnoreClick()) {
+              if (shouldIgnoreSave()) {
                 e.preventDefault();
                 return;
               }
@@ -1378,14 +1384,8 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             }}
             title="タップ：貯蓄を入力 / 長押し：貯蓄目標を編集"
           >
-            <Ring
-              size={smallSize}
-              stroke={strokeSmall}
-              outward={outwardSmall}
-              progress={saveRingProgress}
-              color="#22c55e"
-            />
-            <CharaBadge kind="hina" />
+            <Ring size={smallSize} stroke={strokeSmall} outward={outwardSmall} progress={saveRingProgress} color="#22c55e" />
+
             <div style={{ zIndex: 2 }}>
               <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>貯蓄</div>
               <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900 }}>{yen(savedThisMonth)}円</div>
@@ -1479,9 +1479,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           >
             <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 10 }}>
               リング目標を編集
-              {goalFocusCategory
-                ? `：${goalFocusCategory === GOAL_ASSET_KEY ? "総資産" : resolveCategoryLabel(goalFocusCategory)}`
-                : ""}
+              {goalFocusCategory ? `：${goalFocusCategory === GOAL_ASSET_KEY ? "総資産" : resolveCategoryLabel(goalFocusCategory)}` : ""}
             </div>
 
             <RingGoalEditor
