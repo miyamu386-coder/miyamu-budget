@@ -356,21 +356,54 @@ function ExtraRingButton({
     {title}
   </div>
 
-  <div style={{ fontSize: isMobile ? 20 : 22, fontWeight: 900 }}>
-    {yen(sums.balance)}円
-  </div>
+ {(() => {
+  const displayValue =
+    mode === "income_only" ? sums.income :
+    mode === "expense_only" ? sums.expense :
+    sums.balance;
 
-  {target > 0 && (target - sums.balance) > 0 && (
-    <div style={{ fontSize: 11, marginTop: 2, opacity: 0.75 }}>
-      目標まであと {(target - sums.balance).toLocaleString()}円
-    </div>
-  )}
+ const remain =
+  target > 0
+    ? Math.max(
+        0,
+        target -
+          (mode === "expense_only"
+            ? sums.expense
+            : mode === "income_only"
+            ? sums.income
+            : sums.balance)
+      )
+    : 0;
 
-  {target > 0 && (target - sums.balance) <= 0 && (
-    <div style={{ fontSize: 11, marginTop: 2, color: "green" }}>
-      🎉 達成！
-    </div>
-  )}
+const achieved =
+  target > 0
+    ? (mode === "expense_only"
+        ? sums.expense
+        : mode === "income_only"
+        ? sums.income
+        : sums.balance) >= target
+    : false;
+
+  return (
+    <>
+      <div style={{ fontSize: isMobile ? 20 : 22, fontWeight: 900 }}>
+        {yen(displayValue)}円
+      </div>
+
+      {target > 0 && !achieved && (
+        <div style={{ fontSize: 11, marginTop: 2, opacity: 0.75 }}>
+          目標まであと {yen(remain)}円
+        </div>
+      )}
+
+      {target > 0 && achieved && (
+        <div style={{ fontSize: 11, marginTop: 2, color: "green" }}>
+          🎉 達成！
+        </div>
+      )}
+    </>
+  );
+})()}
 
   <div style={{ marginTop: 6, fontSize: 11, opacity: 0.55 }}>
     タップで入力 / 長押しで編集
