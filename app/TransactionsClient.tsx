@@ -351,9 +351,31 @@ function ExtraRingButton({
       <Ring size={pos.size} stroke={strokeSmall} outward={outwardSmall} progress={prog} color={color} />
 
       <div style={{ zIndex: 2 }}>
-        <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>{title}</div>
-        <div style={{ fontSize: isMobile ? 20 : 22, fontWeight: 900 }}>{yen(sums.balance)}円</div>
-        <div style={{ marginTop: 6, fontSize: 11, opacity: 0.55 }}>タップで入力 / 長押しで編集</div>
+        <div style={{ zIndex: 2 }}>
+  <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>
+    {title}
+  </div>
+
+  <div style={{ fontSize: isMobile ? 20 : 22, fontWeight: 900 }}>
+    {yen(sums.balance)}円
+  </div>
+
+  {target > 0 && (target - sums.balance) > 0 && (
+    <div style={{ fontSize: 11, marginTop: 2, opacity: 0.75 }}>
+      目標まであと {(target - sums.balance).toLocaleString()}円
+    </div>
+  )}
+
+  {target > 0 && (target - sums.balance) <= 0 && (
+    <div style={{ fontSize: 11, marginTop: 2, color: "green" }}>
+      🎉 達成！
+    </div>
+  )}
+
+  <div style={{ marginTop: 6, fontSize: 11, opacity: 0.55 }}>
+    タップで入力 / 長押しで編集
+  </div>
+</div>
       </div>
     </button>
   );
@@ -668,6 +690,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const savedThisMonth = saveSums.income; // 貯蓄は収入として積まれる想定
   const saveRingProgress = monthlySaveTarget > 0 ? clamp01(savedThisMonth / monthlySaveTarget) : 0;
   const saveAchieved = monthlySaveTarget > 0 ? savedThisMonth >= monthlySaveTarget : false;
+
+  // ✅ 返済リング表示用の「目標値」変数（← 赤線対策）
+  const debtGoal = debtTarget;
 
   // =========================
   // ✅ スマホ判定
@@ -1215,20 +1240,20 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           }}
         >
           {/* ✅ 見守りモフ：円グラフ背景に透かし常駐（サイズ/配置はここを触る） */}
-         <img
-  src="/mofu-watch.png"
-  alt="watch mofu"
-  style={{
-    position: "absolute",
-    left: "50%",
-    top: isMobile ? "-10px" : "-40px",
-    transform: "translateX(-50%)",
-    width: isMobile ? 280 : 520,
-    opacity: 0.50,
-    pointerEvents: "none",
-    zIndex: 1,
-  }}
-/>
+          <img
+            src="/mofu-watch.png"
+            alt="watch mofu"
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: isMobile ? "-10px" : "-40px",
+              transform: "translateX(-50%)",
+              width: isMobile ? 280 : 520,
+              opacity: 0.5,
+              pointerEvents: "none",
+              zIndex: 1,
+            }}
+          />
 
           {/* 中央：総資産（長押しで目標編集） */}
           <button
@@ -1294,7 +1319,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               {centerCard.achieved && <div style={{ marginTop: 6, fontWeight: 900 }}>✅ 目標達成！</div>}
 
               {/* ✅ 総資産の右下にモフ */}
-              
             </div>
           </button>
 
@@ -1344,6 +1368,20 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>返済</div>
               <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900 }}>{yen(repaidTotal)}円</div>
               <div style={{ marginTop: 4, fontSize: 11, opacity: 0.6 }}>(累計)</div>
+
+              {/* ✅ ここが追加箇所（赤線消える） */}
+              {debtGoal > 0 && debtGoal - repaidTotal > 0 && (
+                <div style={{ fontSize: 11, marginTop: 2, opacity: 0.75 }}>
+                  目標まであと {(debtGoal - repaidTotal).toLocaleString()}円
+                </div>
+              )}
+
+              {debtGoal > 0 && debtGoal - repaidTotal <= 0 && (
+                <div style={{ fontSize: 11, marginTop: 2, color: "green" }}>
+                  🎉 達成！
+                </div>
+              )}
+
               <div style={{ marginTop: 6, fontSize: 11, opacity: 0.55 }}>タップで入力 / 長押しで目標編集</div>
             </div>
           </button>
@@ -1943,3 +1981,4 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     </div>
   );
 }
+
