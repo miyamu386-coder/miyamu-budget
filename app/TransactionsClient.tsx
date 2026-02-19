@@ -1215,16 +1215,16 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           }}
         >
           {/* ✅ 見守りモフ：円グラフ背景に透かし常駐（サイズ/配置はここを触る） */}
-          <img
+         <img
   src="/mofu-watch.png"
   alt="watch mofu"
   style={{
     position: "absolute",
     left: "50%",
-    top: "0%",
-    transform: "translate(-50%, -50%)",
-    width: isMobile ? 220 : 520,   // ← PCを小さく
-    opacity: 0.35,                 // ← もっと薄く
+    top: isMobile ? "-30px" : "-80px",
+    transform: "translateX(-50%)",
+    width: isMobile ? 220 : 520,
+    opacity: 0.35,
     pointerEvents: "none",
     zIndex: 1,
   }}
