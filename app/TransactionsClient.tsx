@@ -144,6 +144,35 @@ function normalizeUserKeyInput(s: string) {
   return s.trim().slice(0, 64);
 }
 
+/** ✅ ファイル保存（端末にダウンロード） */
+function downloadTextFile(filename: string, text: string, mime = "text/plain;charset=utf-8") {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function csvEscape(v: unknown) {
+  const s = String(v ?? "");
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function toCsv(rows: Array<Record<string, unknown>>) {
+  if (rows.length === 0) return "id,occurredAt,type,amount,category,note\n";
+  const headers = ["id", "occurredAt", "type", "amount", "category", "note"];
+  const lines = [headers.join(",")];
+  for (const r of rows) {
+    lines.push(headers.map((h) => csvEscape((r as any)[h])).join(","));
+  }
+  return lines.join("\n") + "\n";
+}
+
 /**
  * ✅ 外周リング描画（SVG）
  */
@@ -245,7 +274,7 @@ function pickCharaAuto(title: string): Exclude<CharaMode, "auto"> {
     "振込",
     "引落",
     "引き落とし",
-    "返済",
+    "生活費",
     "ローン",
     "クレカ",
     "カード",
@@ -314,6 +343,11 @@ function ExtraRingButton({
 
   const defaultType: TxType = mode === "income_only" ? "income" : "expense";
 
+  const displayValue = mode === "income_only" ? sums.income : mode === "expense_only" ? sums.expense : sums.balance;
+
+  const remain = target > 0 ? Math.max(0, target - displayValue) : 0;
+  const achieved = target > 0 ? displayValue >= target : false;
+
   return (
     <button
       type="button"
@@ -351,64 +385,17 @@ function ExtraRingButton({
       <Ring size={pos.size} stroke={strokeSmall} outward={outwardSmall} progress={prog} color={color} />
 
       <div style={{ zIndex: 2 }}>
-        <div style={{ zIndex: 2 }}>
-  <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>
-    {title}
-  </div>
+        <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>{title}</div>
 
- {(() => {
-  const displayValue =
-    mode === "income_only" ? sums.income :
-    mode === "expense_only" ? sums.expense :
-    sums.balance;
+        <div style={{ fontSize: isMobile ? 20 : 22, fontWeight: 900 }}>{yen(displayValue)}円</div>
 
- const remain =
-  target > 0
-    ? Math.max(
-        0,
-        target -
-          (mode === "expense_only"
-            ? sums.expense
-            : mode === "income_only"
-            ? sums.income
-            : sums.balance)
-      )
-    : 0;
+        {target > 0 && !achieved && (
+          <div style={{ fontSize: 11, marginTop: 2, opacity: 0.75 }}>目標まであと {yen(remain)}円</div>
+        )}
 
-const achieved =
-  target > 0
-    ? (mode === "expense_only"
-        ? sums.expense
-        : mode === "income_only"
-        ? sums.income
-        : sums.balance) >= target
-    : false;
+        {target > 0 && achieved && <div style={{ fontSize: 11, marginTop: 2, color: "green" }}>🎉 達成！</div>}
 
-  return (
-    <>
-      <div style={{ fontSize: isMobile ? 20 : 22, fontWeight: 900 }}>
-        {yen(displayValue)}円
-      </div>
-
-      {target > 0 && !achieved && (
-        <div style={{ fontSize: 11, marginTop: 2, opacity: 0.75 }}>
-          目標まであと {yen(remain)}円
-        </div>
-      )}
-
-      {target > 0 && achieved && (
-        <div style={{ fontSize: 11, marginTop: 2, color: "green" }}>
-          🎉 達成！
-        </div>
-      )}
-    </>
-  );
-})()}
-
-  <div style={{ marginTop: 6, fontSize: 11, opacity: 0.55 }}>
-    タップで入力 / 長押しで編集
-  </div>
-</div>
+        <div style={{ marginTop: 6, fontSize: 11, opacity: 0.55 }}>タップで入力 / 長押しで編集</div>
       </div>
     </button>
   );
@@ -476,7 +463,7 @@ function SaveCharaOverlay({
 
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900 }}>
-            {kind === "mofu" ? "返済 保存" : "貯蓄 保存"}
+            {kind === "mofu" ? "生活費 保存" : "貯蓄 保存"}
           </div>
           <div style={{ fontSize: isMobile ? 18 : 20, fontWeight: 900, marginTop: 6, lineHeight: 1.2 }}>
             {message}
@@ -512,7 +499,10 @@ function SaveCharaOverlay({
 }
 
 export default function TransactionsClient({ initialTransactions }: Props) {
-  const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions ?? []);
+  // =========================
+  // ✅ transactions は「APIの結果」を正にする（localStorageと競合させない）
+  // =========================
+  const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
   const [editing, setEditing] = useState<Transaction | null>(null);
 
   // ✅ userKey
@@ -581,7 +571,48 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
   // --- 月切替（UTCズレ対策でローカル日付を使う）
   const nowYm = ymdToMonthKey(todayYMD());
-  const [selectedYm, setSelectedYm] = useState<string>(nowYm);
+
+  // ✅ 月状態はlocalStorageに保存して「次回も同じ月」を開ける
+  const selectedYmKey = useMemo(() => {
+    const k = userKey || "anonymous";
+    return `miyamu_selected_ym:${k}`;
+  }, [userKey]);
+
+  const [selectedYm, setSelectedYm] = useState<string>(() => {
+    if (typeof window === "undefined") return nowYm;
+    try {
+      const saved = localStorage.getItem(selectedYmKey);
+      return saved || nowYm;
+    } catch {
+      return nowYm;
+    }
+  });
+
+  // ★① 月ごと保存キー（生活費PDF/出力用の“月単位キー”）
+  const storageKey = useMemo(() => {
+    const k = userKey || "anonymous";
+    return `miyamu_transactions:${k}:${selectedYm}`;
+  }, [userKey, selectedYm]);
+
+  // userKeyが確定したら、ユーザー別キーで読み直す
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const saved = localStorage.getItem(selectedYmKey);
+      if (saved) setSelectedYm(saved);
+      else setSelectedYm(nowYm);
+    } catch {
+      setSelectedYm(nowYm);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedYmKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem(selectedYmKey, selectedYm);
+    } catch {}
+  }, [selectedYmKey, selectedYm]);
 
   const monthTransactions = useMemo(() => {
     return transactions.filter((t) => {
@@ -591,7 +622,28 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     });
   }, [transactions, selectedYm]);
 
+  // ★② ✅ 月ごとに「その月の一覧だけ」保存（A案）
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(monthTransactions));
+    } catch {}
+  }, [storageKey, monthTransactions]);
+
   const monthSummary = useMemo(() => calcSummary(monthTransactions), [monthTransactions]);
+
+  // ✅ 月ごと保存（「その月の一覧だけ」キャッシュ）
+  const monthCacheKey = useMemo(() => {
+    const k = userKey || "anonymous";
+    return `miyamu_month_cache:${k}:${selectedYm}`;
+  }, [userKey, selectedYm]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem(monthCacheKey, JSON.stringify(monthTransactions));
+    } catch {}
+  }, [monthCacheKey, monthTransactions]);
 
   // ✅ カテゴリ候補（ring:* はUI汚れるので候補からは外す）
   const categorySuggestions = useMemo(() => {
@@ -715,8 +767,8 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const remainToTarget = Math.max(0, targetBalance - totalAssetBalance);
   const balanceAchieved = targetBalance > 0 ? totalAssetBalance >= targetBalance : false;
 
-  // 返済/貯蓄
-  const repaidTotal = debtSums.expense; // 返済は支出として積まれる想定
+  // 生活費/貯蓄
+  const repaidTotal = debtSums.expense; // 生活費は支出として積まれる想定
   const debtRingProgress = debtTarget > 0 ? clamp01(repaidTotal / debtTarget) : 0;
   const debtAchieved = debtTarget > 0 ? repaidTotal >= debtTarget : false;
 
@@ -724,7 +776,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const saveRingProgress = monthlySaveTarget > 0 ? clamp01(savedThisMonth / monthlySaveTarget) : 0;
   const saveAchieved = monthlySaveTarget > 0 ? savedThisMonth >= monthlySaveTarget : false;
 
-  // ✅ 返済リング表示用の「目標値」変数（← 赤線対策）
+  // ✅ 生活費リング表示用の「目標値」変数
   const debtGoal = debtTarget;
 
   // =========================
@@ -791,18 +843,13 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const closeGoalEditor = () => {
     setGoalModalOpen(false);
     setGoalFocusCategory(null);
-    // ✅ 目標を保存したあと反映（RingGoalEditorがlocalStorage更新する前提）
     setRingGoals(loadRingGoals());
   };
 
   // =========================
   // ✅ タップ入力（クイック入力モーダル）
   // =========================
-  type QuickAddTarget =
-    | { kind: "debt" }
-    | { kind: "save" }
-    | { kind: "extra"; id: string }
-    | null;
+  type QuickAddTarget = { kind: "debt" } | { kind: "save" } | { kind: "extra"; id: string } | null;
 
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [quickTarget, setQuickTarget] = useState<QuickAddTarget>(null);
@@ -828,7 +875,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
   const getQuickMeta = (): { ringKey: string; title: string; mode: RingMode } | null => {
     if (!quickTarget) return null;
-    if (quickTarget.kind === "debt") return { ringKey: FIXED_DEBT_KEY, title: "返済", mode: "expense_only" };
+    if (quickTarget.kind === "debt") return { ringKey: FIXED_DEBT_KEY, title: "生活費", mode: "expense_only" };
     if (quickTarget.kind === "save") return { ringKey: FIXED_SAVE_KEY, title: "貯蓄", mode: "income_only" };
     const r = extraRings.find((x) => x.id === quickTarget.id);
     if (!r) return null;
@@ -857,10 +904,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const overlayTimerRef = useRef<number | null>(null);
 
   const pickSaveMessage = (kind: "mofu" | "hina") => {
-    const mofu: string[] = ["返済OK。次いこう", "次はどうする？", "今日も前進だ。", "その調子だ。", "無理すんなよ。"];
-
+    // 生活費に合わせて言い回しは後で毒舌化してOK（今は無難版）
+    const mofu: string[] = ["OK。次いこう", "次はどうする？", "今日も前進だ。", "その調子だ。", "無理すんなよ。"];
     const hina: string[] = ["できた！", "コツコツ大事！", "積み立て成功〜！", "明るい未来！", "いい感じ！"];
-
     const list = kind === "mofu" ? mofu : hina;
     return list[Math.floor(Math.random() * list.length)];
   };
@@ -881,7 +927,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     }, 3000);
   };
 
-  // unmount時にタイマー掃除
   useEffect(() => {
     return () => {
       if (overlayTimerRef.current !== null) {
@@ -920,7 +965,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       setTransactions((prev) => [tx, ...prev]);
       closeQuickAdd();
 
-      // ✅ 返済→保存＝全身モフ / 貯蓄→保存＝全身ひな
       if (meta.ringKey === FIXED_DEBT_KEY) triggerSaveOverlay("mofu");
       if (meta.ringKey === FIXED_SAVE_KEY) triggerSaveOverlay("hina");
     } catch (e) {
@@ -1009,22 +1053,14 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       sub2: targetBalance > 0 ? `目標まであと ${yen(remainToTarget)}円` : "",
       achieved: balanceAchieved,
     };
-  }, [
-    totalAssetBalance,
-    progressToTarget,
-    monthSummary.income,
-    monthSummary.expense,
-    targetBalance,
-    remainToTarget,
-    balanceAchieved,
-  ]);
+  }, [totalAssetBalance, progressToTarget, monthSummary.income, monthSummary.expense, targetBalance, remainToTarget, balanceAchieved]);
 
   // =========================
   // ✅ List表示用：categoryを人間向けラベルにする
   // =========================
   const categoryLabelMap = useMemo(() => {
     const map = new Map<string, string>();
-    map.set(ringCategory(FIXED_DEBT_KEY), "返済");
+    map.set(ringCategory(FIXED_DEBT_KEY), "生活費");
     map.set(ringCategory(FIXED_SAVE_KEY), "貯蓄");
     for (const r of extraRings) {
       map.set(ringCategory(r.ringKey), r.title);
@@ -1037,10 +1073,10 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     return categoryLabelMap.get(c) ?? c;
   };
 
-  // Form側で「返済」「貯蓄」「追加リング名」を打った時に ring:* に変換するため
+  // Form側で「生活費」「貯蓄」「追加リング名」を打った時に ring:* に変換するため
   const ringTitleResolver = useMemo(() => {
     const pairs: Array<{ title: string; category: string }> = [];
-    pairs.push({ title: "返済", category: ringCategory(FIXED_DEBT_KEY) });
+    pairs.push({ title: "生活費", category: ringCategory(FIXED_DEBT_KEY) });
     pairs.push({ title: "貯蓄", category: ringCategory(FIXED_SAVE_KEY) });
     for (const r of extraRings) {
       pairs.push({ title: r.title, category: ringCategory(r.ringKey) });
@@ -1076,13 +1112,10 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     });
   }, [extraRings, isMobile, layoutW, smallSize]);
 
-  // ✅ エリア高さ（スマホは少し余裕）
   const areaH = isMobile ? 820 : 860;
 
   // =========================
   // ✅ 固定リングの長押し
-  // - 長押し：目標編集
-  // - タップ：入力（返済/貯蓄のみ）
   // =========================
   const lpGoalAsset = useLongPressHandlers(() => openGoalEditor(GOAL_ASSET_KEY), 650);
   const { shouldIgnoreClick: shouldIgnoreAsset, ...lpGoalAssetProps } = lpGoalAsset;
@@ -1092,6 +1125,49 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
   const lpGoalSave = useLongPressHandlers(() => openGoalEditor(ringCategory(FIXED_SAVE_KEY)), 650);
   const { shouldIgnoreClick: shouldIgnoreSave, ...lpGoalSaveProps } = lpGoalSave;
+
+  // =========================
+  // ✅ 生活費(その月だけ) をファイル保存（JSON / CSV）
+  // =========================
+  const lifeCategory = ringCategory(FIXED_DEBT_KEY);
+
+  const lifeMonthTransactions = useMemo(() => {
+    return monthTransactions.filter((t) => (t.category ?? "").trim() === lifeCategory);
+  }, [monthTransactions, lifeCategory]);
+
+  const exportLifeMonthJson = () => {
+    const payload = {
+      app: "miyamuLog",
+      kind: "life_month",
+      ym: selectedYm,
+      userKeyMasked: maskKey(userKey),
+      exportedAt: new Date().toISOString(),
+      summary: calcSummary(lifeMonthTransactions),
+      items: lifeMonthTransactions.map((t) => ({
+        id: t.id,
+        occurredAt: t.occurredAt,
+        type: t.type,
+        amount: t.amount,
+        category: t.category,
+        note: (t as any).note ?? "",
+      })),
+    };
+    const filename = `miyamuLog_生活費_${selectedYm}.json`;
+    downloadTextFile(filename, JSON.stringify(payload, null, 2), "application/json;charset=utf-8");
+  };
+
+  const exportLifeMonthCsv = () => {
+    const rows = lifeMonthTransactions.map((t) => ({
+      id: t.id,
+      occurredAt: t.occurredAt,
+      type: t.type,
+      amount: t.amount,
+      category: t.category,
+      note: (t as any).note ?? "",
+    }));
+    const filename = `miyamuLog_生活費_${selectedYm}.csv`;
+    downloadTextFile(filename, toCsv(rows), "text/csv;charset=utf-8");
+  };
 
   return (
     <div style={{ paddingBottom: isMobile ? 24 : 0 }}>
@@ -1107,7 +1183,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       )}
 
       {/* 月切替 */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
         {SHOW_USERKEY_UI && (
           <>
             <div style={{ fontSize: 12, opacity: 0.75 }}>userKey: {maskKey(userKey)}</div>
@@ -1156,6 +1232,41 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           }}
         >
           ▶
+        </button>
+
+        {/* ✅ 生活費(その月だけ) ファイル保存ボタン */}
+        <button
+          type="button"
+          onClick={exportLifeMonthJson}
+          style={{
+            padding: "10px 12px",
+            borderRadius: 12,
+            border: "1px solid #ccc",
+            background: "#fff",
+            cursor: "pointer",
+            fontWeight: 900,
+            fontSize: 12,
+          }}
+          title="生活費（今表示中の月）をJSONで保存"
+        >
+          生活費(今月) JSON保存
+        </button>
+
+        <button
+          type="button"
+          onClick={exportLifeMonthCsv}
+          style={{
+            padding: "10px 12px",
+            borderRadius: 12,
+            border: "1px solid #ccc",
+            background: "#fff",
+            cursor: "pointer",
+            fontWeight: 900,
+            fontSize: 12,
+          }}
+          title="生活費（今表示中の月）をCSVで保存"
+        >
+          生活費(今月) CSV保存
         </button>
       </div>
 
@@ -1272,7 +1383,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             alignItems: "center",
           }}
         >
-          {/* ✅ 見守りモフ：円グラフ背景に透かし常駐（サイズ/配置はここを触る） */}
+          {/* ✅ 見守りモフ */}
           <img
             src="/mofu-watch.png"
             alt="watch mofu"
@@ -1314,24 +1425,15 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               top: "40%",
               transform: "translate(-50%, -50%)",
               overflow: "visible",
-              boxShadow: centerCard.achieved
-                ? "0 0 28px rgba(34,197,94,0.45)"
-                : "0 10px 25px rgba(0,0,0,0.06)",
+              boxShadow: centerCard.achieved ? "0 0 28px rgba(34,197,94,0.45)" : "0 10px 25px rgba(0,0,0,0.06)",
               zIndex: 3,
               touchAction: "manipulation",
               cursor: "pointer",
             }}
             title="長押し：総資産の目標を編集"
           >
-            <Ring
-              size={bigSize}
-              stroke={strokeBig}
-              outward={outwardBig}
-              progress={centerCard.progress}
-              color={centerCard.color}
-            />
+            <Ring size={bigSize} stroke={strokeBig} outward={outwardBig} progress={centerCard.progress} color={centerCard.color} />
 
-            {/* ✅ 総資産の中に「右下モフ」を置くため、ここをCSSモジュールで包む */}
             <div className={styles.assetBox} style={{ zIndex: 2, position: "relative" }}>
               <div style={{ fontSize: 16, opacity: 0.75, fontWeight: 900 }}>{centerCard.title}</div>
               <div
@@ -1350,12 +1452,10 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
               <div style={{ marginTop: 10, fontSize: 11, opacity: 0.55 }}>長押しで「目標」編集</div>
               {centerCard.achieved && <div style={{ marginTop: 6, fontWeight: 900 }}>✅ 目標達成！</div>}
-
-              {/* ✅ 総資産の右下にモフ */}
             </div>
           </button>
 
-          {/* 左下：返済（タップで入力 / 長押しで目標編集） */}
+          {/* 左下：生活費 */}
           <button
             type="button"
             {...lpGoalDebtProps}
@@ -1387,39 +1487,26 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               zIndex: 3,
               touchAction: "manipulation",
             }}
-            title="タップ：返済を入力 / 長押し：返済目標を編集"
+            title="タップ：生活費を入力 / 長押し：生活費目標を編集"
           >
-            <Ring
-              size={smallSize}
-              stroke={strokeSmall}
-              outward={outwardSmall}
-              progress={debtRingProgress}
-              color="#d1d5db"
-            />
+            <Ring size={smallSize} stroke={strokeSmall} outward={outwardSmall} progress={debtRingProgress} color="#d1d5db" />
 
             <div style={{ zIndex: 2 }}>
-              <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>返済</div>
+              <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>生活費</div>
               <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900 }}>{yen(repaidTotal)}円</div>
               <div style={{ marginTop: 4, fontSize: 11, opacity: 0.6 }}>(累計)</div>
 
-              {/* ✅ ここが追加箇所（赤線消える） */}
               {debtGoal > 0 && debtGoal - repaidTotal > 0 && (
-                <div style={{ fontSize: 11, marginTop: 2, opacity: 0.75 }}>
-                  目標まであと {(debtGoal - repaidTotal).toLocaleString()}円
-                </div>
+                <div style={{ fontSize: 11, marginTop: 2, opacity: 0.75 }}>目標まであと {(debtGoal - repaidTotal).toLocaleString()}円</div>
               )}
 
-              {debtGoal > 0 && debtGoal - repaidTotal <= 0 && (
-                <div style={{ fontSize: 11, marginTop: 2, color: "green" }}>
-                  🎉 達成！
-                </div>
-              )}
+              {debtGoal > 0 && debtGoal - repaidTotal <= 0 && <div style={{ fontSize: 11, marginTop: 2, color: "green" }}>🎉 達成！</div>}
 
               <div style={{ marginTop: 6, fontSize: 11, opacity: 0.55 }}>タップで入力 / 長押しで目標編集</div>
             </div>
           </button>
 
-          {/* 右下：貯蓄（タップで入力 / 長押しで目標編集） */}
+          {/* 右下：貯蓄 */}
           <button
             type="button"
             {...lpGoalSaveProps}
@@ -1453,13 +1540,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             }}
             title="タップ：貯蓄を入力 / 長押し：貯蓄目標を編集"
           >
-            <Ring
-              size={smallSize}
-              stroke={strokeSmall}
-              outward={outwardSmall}
-              progress={saveRingProgress}
-              color="#22c55e"
-            />
+            <Ring size={smallSize} stroke={strokeSmall} outward={outwardSmall} progress={saveRingProgress} color="#22c55e" />
 
             <div style={{ zIndex: 2 }}>
               <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>貯蓄</div>
@@ -1492,9 +1573,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 pos={p}
                 strokeSmall={strokeSmall}
                 outwardSmall={outwardSmall}
-                // ✅ タップ：入力（クイック入力）
                 onTapAdd={(id, defaultType) => openQuickAdd({ kind: "extra", id }, defaultType)}
-                // ✅ 長押し：編集
                 onLongPressEditRing={(id) => openExtraEdit(id)}
               />
             );
@@ -1554,9 +1633,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           >
             <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 10 }}>
               リング目標を編集
-              {goalFocusCategory
-                ? `：${goalFocusCategory === GOAL_ASSET_KEY ? "総資産" : resolveCategoryLabel(goalFocusCategory)}`
-                : ""}
+              {goalFocusCategory ? `：${goalFocusCategory === GOAL_ASSET_KEY ? "総資産" : resolveCategoryLabel(goalFocusCategory)}` : ""}
             </div>
 
             <RingGoalEditor
@@ -1589,15 +1666,13 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               </button>
             </div>
 
-            <div style={{ marginTop: 8, fontSize: 11, opacity: 0.65 }}>
-              ※この画面は「長押し」で開きます。スマホでも画面外に出ません。
-            </div>
+            <div style={{ marginTop: 8, fontSize: 11, opacity: 0.65 }}>※この画面は「長押し」で開きます。スマホでも画面外に出ません。</div>
           </div>
         </div>
       )}
 
       {/* =========================
-          ✅ クイック入力モーダル（返済/貯蓄/追加リング）
+          ✅ クイック入力モーダル（生活費/貯蓄/追加リング）
          ========================= */}
       {quickAddOpen && (
         <div
@@ -1631,8 +1706,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
               const mode = meta.mode;
               const showTabs = mode === "both";
-              const forcedType: TxType =
-                mode === "income_only" ? "income" : mode === "expense_only" ? "expense" : quickType;
+              const forcedType: TxType = mode === "income_only" ? "income" : mode === "expense_only" ? "expense" : quickType;
 
               return (
                 <>
@@ -1868,9 +1942,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               </button>
             </div>
 
-            <div style={{ marginTop: 10, fontSize: 11, opacity: 0.65 }}>
-              ※作成すると「中心の周り」に追加されます（最大 {MAX_EXTRA_RINGS} 個）
-            </div>
+            <div style={{ marginTop: 10, fontSize: 11, opacity: 0.65 }}>※作成すると「中心の周り」に追加されます（最大 {MAX_EXTRA_RINGS} 個）</div>
           </div>
         </div>
       )}
@@ -2014,4 +2086,3 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     </div>
   );
 }
-
