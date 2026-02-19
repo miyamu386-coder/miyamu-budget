@@ -2,15 +2,24 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "miyamu budget",
+  title: "みやむMaker",
   description: "家計簿・予算管理",
   manifest: "/manifest.webmanifest",
-  themeColor: "#ffffff",
+
+  icons: {
+    icon: "/icon.png",
+    apple: "/icon.png",
+  },
+
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
     title: "miyamu budget",
   },
+};
+
+export const viewport = {
+  themeColor: "#ffffff",
 };
 
 export default function RootLayout({
