@@ -1221,10 +1221,10 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   style={{
     position: "absolute",
     left: "50%",
-    top: isMobile ? "-30px" : "-80px",
+    top: isMobile ? "-10px" : "-40px",
     transform: "translateX(-50%)",
-    width: isMobile ? 220 : 520,
-    opacity: 0.35,
+    width: isMobile ? 280 : 520,
+    opacity: 0.50,
     pointerEvents: "none",
     zIndex: 1,
   }}
