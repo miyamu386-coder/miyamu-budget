@@ -1,0 +1,17 @@
+.assetBox {
+  position: relative;
+}
+
+.mofu {
+  position: absolute;
+  right: 8px;
+  bottom: 0;
+  width: 120px;
+  opacity: 0.95;
+}
+
+@media (max-width: 768px) {
+  .mofu {
+    width: 150px;
+  }
+}

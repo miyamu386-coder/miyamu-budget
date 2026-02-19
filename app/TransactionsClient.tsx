@@ -5,7 +5,7 @@ import TransactionForm from "./TransactionForm";
 import TransactionList from "./TransactionList";
 import type { Transaction } from "./types";
 import { getOrCreateUserKey } from "../lib/userKey";
-
+import styles from "./TransactionsClient.module.css";
 // ✅ リング目標（localStorage）
 import RingGoalEditor from "./components/RingGoalEditor";
 import { loadRingGoals, getTarget, type RingGoal } from "../lib/ringGoals";
@@ -798,26 +798,14 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const [saveOverlay, setSaveOverlay] = useState<{ kind: "mofu" | "hina"; message: string; key: number } | null>(null);
   const overlayTimerRef = useRef<number | null>(null);
 
- const pickSaveMessage = (kind: "mofu" | "hina") => {
-  const mofu: string[] = [
-    "返済OK。次いこう",
-    "次はどうする？",
-    "今日も前進だ。",
-    "その調子だ。",
-    "無理すんなよ。",
-  ];
+  const pickSaveMessage = (kind: "mofu" | "hina") => {
+    const mofu: string[] = ["返済OK。次いこう", "次はどうする？", "今日も前進だ。", "その調子だ。", "無理すんなよ。"];
 
-  const hina: string[] = [
-    "できた！",
-    "コツコツ大事！",
-    "積み立て成功〜！",
-    "明るい未来！",
-    "いい感じ！",
-  ];
+    const hina: string[] = ["できた！", "コツコツ大事！", "積み立て成功〜！", "明るい未来！", "いい感じ！"];
 
-  const list = kind === "mofu" ? mofu : hina;
-  return list[Math.floor(Math.random() * list.length)];
-};
+    const list = kind === "mofu" ? mofu : hina;
+    return list[Math.floor(Math.random() * list.length)];
+  };
 
   const triggerSaveOverlay = (kind: "mofu" | "hina") => {
     if (overlayTimerRef.current !== null) {
@@ -832,7 +820,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     overlayTimerRef.current = window.setTimeout(() => {
       setSaveOverlay(null);
       overlayTimerRef.current = null;
-    }, 1700);
+    }, 3000);
   };
 
   // unmount時にタイマー掃除
@@ -1228,19 +1216,19 @@ export default function TransactionsClient({ initialTransactions }: Props) {
         >
           {/* ✅ 見守りモフ：円グラフ背景に透かし常駐（サイズ/配置はここを触る） */}
           <img
-            src="/mofu-watch.png"
-            alt="watch mofu"
-            style={{
-              position: "absolute",
-              bottom: isMobile ? 0 : 570, // ← 上下移動（下げる/上げる）
-              left: "50%",
-              transform: "translateX(-50%)",
-              width: isMobile ? 200 : 1800, // ← 大きさ
-              opacity: 0.35, // ← 透け
-              pointerEvents: "none",
-              zIndex: 1,
-            }}
-          />
+  src="/mofu-watch.png"
+  alt="watch mofu"
+  style={{
+    position: "absolute",
+    left: "50%",
+    top: "0%",
+    transform: "translate(-50%, -50%)",
+    width: isMobile ? 220 : 520,   // ← PCを小さく
+    opacity: 0.35,                 // ← もっと薄く
+    pointerEvents: "none",
+    zIndex: 1,
+  }}
+/>
 
           {/* 中央：総資産（長押しで目標編集） */}
           <button
@@ -1285,7 +1273,8 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               color={centerCard.color}
             />
 
-            <div style={{ zIndex: 2, position: "relative" }}>
+            {/* ✅ 総資産の中に「右下モフ」を置くため、ここをCSSモジュールで包む */}
+            <div className={styles.assetBox} style={{ zIndex: 2, position: "relative" }}>
               <div style={{ fontSize: 16, opacity: 0.75, fontWeight: 900 }}>{centerCard.title}</div>
               <div
                 style={{
@@ -1303,6 +1292,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
               <div style={{ marginTop: 10, fontSize: 11, opacity: 0.55 }}>長押しで「目標」編集</div>
               {centerCard.achieved && <div style={{ marginTop: 6, fontWeight: 900 }}>✅ 目標達成！</div>}
+
+              {/* ✅ 総資産の右下にモフ */}
+              
             </div>
           </button>
 
@@ -1340,7 +1332,13 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             }}
             title="タップ：返済を入力 / 長押し：返済目標を編集"
           >
-            <Ring size={smallSize} stroke={strokeSmall} outward={outwardSmall} progress={debtRingProgress} color="#d1d5db" />
+            <Ring
+              size={smallSize}
+              stroke={strokeSmall}
+              outward={outwardSmall}
+              progress={debtRingProgress}
+              color="#d1d5db"
+            />
 
             <div style={{ zIndex: 2 }}>
               <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>返済</div>
@@ -1384,7 +1382,13 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             }}
             title="タップ：貯蓄を入力 / 長押し：貯蓄目標を編集"
           >
-            <Ring size={smallSize} stroke={strokeSmall} outward={outwardSmall} progress={saveRingProgress} color="#22c55e" />
+            <Ring
+              size={smallSize}
+              stroke={strokeSmall}
+              outward={outwardSmall}
+              progress={saveRingProgress}
+              color="#22c55e"
+            />
 
             <div style={{ zIndex: 2 }}>
               <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>貯蓄</div>
@@ -1479,7 +1483,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           >
             <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 10 }}>
               リング目標を編集
-              {goalFocusCategory ? `：${goalFocusCategory === GOAL_ASSET_KEY ? "総資産" : resolveCategoryLabel(goalFocusCategory)}` : ""}
+              {goalFocusCategory
+                ? `：${goalFocusCategory === GOAL_ASSET_KEY ? "総資産" : resolveCategoryLabel(goalFocusCategory)}`
+                : ""}
             </div>
 
             <RingGoalEditor
