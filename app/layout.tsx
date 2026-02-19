@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "miyamu budget",
+    title: "みやむMaker",
   },
 };
 
