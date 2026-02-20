@@ -56,6 +56,9 @@ export async function POST(req: Request) {
 
     const amount = parseAmount(body.amount);
     const category = String(body.category ?? "").trim();
+
+    const detailCategoryRaw = String(body.detailCategory ?? "").trim();
+    const detailCategory = detailCategoryRaw ? detailCategoryRaw.slice(0, 64) : null;
     const type = body.type as TxType;
     const occurredAt = parseOccurredAt(body.occurredAt) ?? new Date();
 
@@ -70,6 +73,7 @@ export async function POST(req: Request) {
         userKey,
         amount: Math.trunc(amount),
         category,
+        detailCategory,  //
         type,
         occurredAt,
       },

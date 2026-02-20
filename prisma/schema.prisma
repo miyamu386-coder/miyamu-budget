@@ -12,6 +12,7 @@ model Transaction {
   userKey    String?   @db.VarChar(64)
   amount     Int
   category   String
+  detailCategory String? //
   type       String
   createdAt  DateTime @default(now())
   occurredAt DateTime @default(now())

@@ -4,6 +4,7 @@ export type Transaction = {
   id: number;
   amount: number;
   category: string;
+  detailCategory?: string; // ← ★ここ追加！！
   type: TxType;
   createdAt: string;   // ISO文字列
   occurredAt: string;  // ISO文字列（発生日）
