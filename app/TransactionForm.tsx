@@ -4,21 +4,17 @@ import { useEffect, useRef, useState } from "react";
 import type { Transaction, TxType } from "./types";
 import { getOrCreateUserKey } from "../lib/userKey";
 
-// ✅ userKey UI は「ローカル開発(next dev)」だけ表示（Vercelは常に非表示）
+// ✅ userKey UI は「ローカル開発(next dev)」だけ表示
 const SHOW_USERKEY_UI = process.env.NODE_ENV === "development";
 
-// lib/userKey.ts と同じキー名（ここだけ一致させる）
 const STORAGE_KEY = "miyamu_budget_user_key";
 
 type Props = {
   onAdded?: (t: Transaction) => void;
   onUpdated?: (t: Transaction) => void;
   onCancelEdit?: () => void;
-
   editing?: Transaction | null;
   categorySuggestions?: string[];
-
-  // ✅ 「返済」「貯蓄」「生活費」等 → ring:* に自動変換したい時に使う
   ringTitleResolver?: Array<{ title: string; category: string }>;
 };
 
@@ -35,7 +31,6 @@ function normalizeAmountInput(s: string) {
   return half.replace(/,/g, "");
 }
 
-// ✅ 「5万」「1.2万」「3千」「50,000」等を数値にする
 function parseAmountLike(input: string): number {
   if (!input) return 0;
 
@@ -79,7 +74,6 @@ export default function TransactionForm({
   );
   const [loading, setLoading] = useState(false);
 
-  // ✅ editing が変わったらフォームの中身も同期
   useEffect(() => {
     setType(editing?.type ?? "expense");
     setAmountStr(editing ? String(editing.amount) : "");
@@ -87,49 +81,41 @@ export default function TransactionForm({
     setOccurredAt(editing?.occurredAt ? toYMD(editing.occurredAt) : toYMD(new Date().toISOString()));
   }, [editing]);
 
-  // --- userKey UI（ローカル開発だけ）
+  // --- userKey UI（ローカルのみ）
   const [userKey, setUserKey] = useState<string>("");
   const [userKeyInput, setUserKeyInput] = useState("");
 
   useEffect(() => {
     if (!SHOW_USERKEY_UI) return;
-    const k = getOrCreateUserKey();
-    setUserKey(k);
-    setUserKeyInput(k);
+
+    (async () => {
+      const k = await getOrCreateUserKey();   // ✅ await追加
+      setUserKey(k);
+      setUserKeyInput(k);
+    })().catch(console.error);
   }, []);
 
   const applyUserKey = () => {
     const next = normalizeUserKeyInput(userKeyInput);
     if (next.length < 8 || next.length > 64) {
-      alert("userKey は8〜64文字で入力してください（英数字推奨）");
+      alert("userKey は8〜64文字で入力してください");
       return;
     }
     localStorage.setItem(STORAGE_KEY, next);
     setUserKey(next);
-    alert("切替しました。ページをリロードすると一覧取得が切り替わります。");
+    alert("切替しました。リロードしてください。");
   };
 
-  const regenerateUserKey = () => {
+  const regenerateUserKey = async () => {     // ✅ async追加
     localStorage.removeItem(STORAGE_KEY);
-    const next = getOrCreateUserKey();
+    const next = await getOrCreateUserKey();  // ✅ await追加
     setUserKey(next);
     setUserKeyInput(next);
-    alert("再生成しました。ページをリロードすると一覧取得が切り替わります。");
+    alert("再生成しました。リロードしてください。");
   };
 
-  // =========================
-  // ✅ 保存成功トースト（チビキャラ + 一言）
-  // =========================
   const [toast, setToast] = useState<null | { kind: ToastKind; text: string }>(null);
   const toastTimer = useRef<number | null>(null);
-
-  function clearToast() {
-    setToast(null);
-    if (toastTimer.current) {
-      window.clearTimeout(toastTimer.current);
-      toastTimer.current = null;
-    }
-  }
 
   function showToast(kind: ToastKind, text: string) {
     setToast({ kind, text });
@@ -137,44 +123,30 @@ export default function TransactionForm({
     toastTimer.current = window.setTimeout(() => setToast(null), 2000);
   }
 
-  // 判定（カテゴリ/タイプ）
   function decideToast(tt: TxType, cat: string) {
     const c = (cat ?? "").trim().toLowerCase();
 
-    // ✅ 返済リング
     if (c === "ring:debt") {
       return { kind: "mofu" as const, text: "借金も計画的に、な。" };
     }
 
-    // 投資系
     const investWords = ["投資", "nisa", "ニーサ", "株", "積立", "つみたて", "資産", "運用", "配当"];
     if (investWords.some((w) => c.includes(w))) {
       return { kind: "hina" as const, text: "未来のためにありがとう！" };
     }
 
-    // 貯蓄リング
     if (c === "ring:save") {
       return { kind: "hina" as const, text: "積み上げ、最高！" };
     }
 
-    // それ以外
     return { kind: "mofu" as const, text: "記録できた。えらい。" };
   }
 
-  useEffect(() => {
-    return () => {
-      if (toastTimer.current) window.clearTimeout(toastTimer.current);
-    };
-  }, []);
-
-  // ✅ 「返済」「貯蓄」「追加リング名」→ ring:* に寄せる
   function normalizeCategoryInput(raw: string) {
     const v = (raw ?? "").trim();
     if (!v) return v;
-
     if (v.startsWith("ring:")) return v;
 
-    // タイトル完全一致で変換
     for (const p of ringTitleResolver) {
       if ((p.title ?? "").trim() === v) return p.category;
     }
@@ -186,7 +158,7 @@ export default function TransactionForm({
     const amount = parseAmountLike(amountStr);
 
     if (!Number.isFinite(amount) || amount <= 0) {
-      alert("金額は正の数で入力してください（例: 50000 / 5万 / 1.2万）");
+      alert("金額は正の数で入力してください");
       return;
     }
 
@@ -196,65 +168,45 @@ export default function TransactionForm({
       return;
     }
 
-    const key = getOrCreateUserKey();
+    const key = await getOrCreateUserKey();   // ✅ await追加
 
     setLoading(true);
     try {
+      const endpoint = editing
+        ? `/api/transactions?id=${editing.id}`
+        : "/api/transactions";
+
+      const method = editing ? "PATCH" : "POST";
+
+      const res = await fetch(endpoint, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-key": key,
+        },
+        body: JSON.stringify({
+          type,
+          amount,
+          category: normalizedCategory,
+          occurredAt,
+        }),
+      });
+
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e?.error ?? "save failed");
+      }
+
+      const result: Transaction = await res.json();
+
+      const t1 = decideToast(type, normalizedCategory);
+      showToast(t1.kind, t1.text);
+
       if (editing) {
-        const res = await fetch("/api/transactions?id=" + editing.id, {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            "x-user-key": key,
-          },
-          body: JSON.stringify({
-            type,
-            amount,
-            category: normalizedCategory,
-            occurredAt,
-          }),
-        });
-
-        if (!res.ok) {
-          const e = await res.json().catch(() => ({}));
-          throw new Error(e?.error ?? "update failed");
-        }
-
-        const updated: Transaction = await res.json();
-
-        const t1 = decideToast(type, normalizedCategory);
-        showToast(t1.kind, t1.text);
-
-        onUpdated?.(updated);
+        onUpdated?.(result);
       } else {
-        const res = await fetch("/api/transactions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-user-key": key,
-          },
-          body: JSON.stringify({
-            type,
-            amount,
-            category: normalizedCategory,
-            occurredAt,
-          }),
-        });
-
-        if (!res.ok) {
-          const e = await res.json().catch(() => ({}));
-          throw new Error(e?.error ?? "create failed");
-        }
-
-        const created: Transaction = await res.json();
-
-        const t1 = decideToast(type, normalizedCategory);
-        showToast(t1.kind, t1.text);
-
-        onAdded?.(created);
-
+        onAdded?.(result);
         setAmountStr("");
-        // setCategory("");
       }
     } catch (e) {
       console.error(e);
@@ -265,235 +217,17 @@ export default function TransactionForm({
   }
 
   return (
-    <div
-      style={{
-        border: "1px solid #ddd",
-        borderRadius: 12,
-        padding: 16,
-        marginBottom: 16,
-      }}
-    >
-      {/* ✅ 保存成功トースト（タップで閉じる） */}
+    <div style={{ border: "1px solid #ddd", borderRadius: 12, padding: 16, marginBottom: 16 }}>
       {toast && (
-        <button
-          type="button"
-          onClick={clearToast}
-          style={{
-            display: "flex",
-            gap: 10,
-            alignItems: "center",
-            padding: "10px 12px",
-            borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.08)",
-            background: "rgba(255,255,255,0.95)",
-            boxShadow: "0 12px 30px rgba(0,0,0,0.12)",
-            marginBottom: 12,
-            cursor: "pointer",
-            width: "100%",
-          }}
-          aria-label="toast"
-        >
-          <img
-            src={toast.kind === "mofu" ? "/icons/mofu-chibi.png" : "/icons/hina-chibi.png"}
-            alt={toast.kind}
-            style={{ width: 46, height: 46, borderRadius: 999 }}
-          />
-          <div style={{ fontWeight: 900 }}>{toast.text}</div>
-          <div style={{ marginLeft: "auto", opacity: 0.5, fontSize: 12 }}>×</div>
-        </button>
-      )}
-
-      {/* ✅ userKey UI（ローカルだけ表示） */}
-      {SHOW_USERKEY_UI && (
-        <div
-          style={{
-            border: "1px dashed #ddd",
-            borderRadius: 12,
-            padding: 12,
-            marginBottom: 12,
-          }}
-        >
-          <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>userKey（この端末のデータ切替・デモ用）</div>
-          <input
-            value={userKeyInput}
-            onChange={(e) => setUserKeyInput(e.target.value)}
-            placeholder="8〜64文字（例：itchy-2026）"
-            style={{
-              width: "100%",
-              padding: 10,
-              borderRadius: 10,
-              border: "1px solid #ccc",
-              fontSize: 12,
-            }}
-          />
-          <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-            <button
-              type="button"
-              onClick={applyUserKey}
-              style={{
-                padding: "8px 10px",
-                borderRadius: 10,
-                border: "1px solid #ccc",
-                background: "#fff",
-                cursor: "pointer",
-                fontSize: 12,
-              }}
-            >
-              このuserKeyに切替
-            </button>
-            <button
-              type="button"
-              onClick={regenerateUserKey}
-              style={{
-                padding: "8px 10px",
-                borderRadius: 10,
-                border: "1px solid #ccc",
-                background: "#fff",
-                cursor: "pointer",
-                fontSize: 12,
-              }}
-            >
-              再生成
-            </button>
-          </div>
-          <div style={{ marginTop: 8, fontSize: 11, opacity: 0.65 }}>
-            ※切替後はページをリロードすると、一覧取得が新しいuserKeyに切り替わります
-          </div>
+        <div style={{ marginBottom: 12, fontWeight: 900 }}>
+          {toast.text}
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        <button
-          onClick={() => setType("expense")}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            background: type === "expense" ? "#eee" : "#fff",
-            cursor: "pointer",
-          }}
-        >
-          支出
-        </button>
-        <button
-          onClick={() => setType("income")}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            background: type === "income" ? "#eee" : "#fff",
-            cursor: "pointer",
-          }}
-        >
-          収入
-        </button>
-      </div>
-
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>発生日</div>
-        <input
-          value={occurredAt}
-          onChange={(e) => setOccurredAt(e.target.value)}
-          placeholder="YYYY-MM-DD"
-          style={{
-            width: "100%",
-            padding: 12,
-            borderRadius: 10,
-            border: "1px solid #ccc",
-          }}
-        />
-      </div>
-
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>金額</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <input
-            value={amountStr}
-            onChange={(e) => setAmountStr(normalizeAmountInput(e.target.value))}
-            placeholder="例) 1200 / 5万"
-            inputMode="text"
-            style={{
-              width: "100%",
-              padding: 12,
-              borderRadius: 10,
-              border: "1px solid #ccc",
-            }}
-          />
-          <span style={{ opacity: 0.7 }}>円</span>
-        </div>
-      </div>
-
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>カテゴリ</div>
-        <input
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          onBlur={() => setCategory((v) => normalizeCategoryInput(v))}
-          placeholder="例) コンビニ / 給料 / 返済 / 貯蓄 / 生活費"
-          style={{
-            width: "100%",
-            padding: 12,
-            borderRadius: 10,
-            border: "1px solid #ccc",
-          }}
-        />
-
-        {categorySuggestions.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-            {categorySuggestions.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setCategory(c)}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 999,
-                  border: "1px solid #ccc",
-                  background: "#fff",
-                  cursor: "pointer",
-                  fontSize: 12,
-                }}
-              >
-                {c}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-        <button
-          onClick={handleSubmit}
-          disabled={loading}
-          style={{
-            flex: 1,
-            padding: 12,
-            borderRadius: 10,
-            border: "1px solid #ccc",
-            background: "#fff",
-            cursor: "pointer",
-          }}
-        >
-          {editing ? "更新" : "保存"}
-        </button>
-
-        {editing && (
-          <button
-            type="button"
-            onClick={onCancelEdit}
-            style={{
-              padding: 12,
-              borderRadius: 10,
-              border: "1px solid #ccc",
-              background: "#fff",
-              cursor: "pointer",
-              minWidth: 120,
-            }}
-          >
-            キャンセル
-          </button>
-        )}
-      </div>
+      <button onClick={handleSubmit} disabled={loading}>
+        {editing ? "更新" : "保存"}
+      </button>
     </div>
   );
 }
+

@@ -25,7 +25,8 @@ export default function TransactionList({
   const remove = async (id: number) => {
     if (deletingId === id) return;
 
-    const userKey = getOrCreateUserKey();
+    // ✅ Promise<string> なので await が必要
+    const userKey = await getOrCreateUserKey();
 
     setDeletingId(id);
     try {
@@ -57,7 +58,7 @@ export default function TransactionList({
 
       <div style={{ display: "grid", gap: 10 }}>
         {transactions.map((t) => {
-          const label = resolveCategoryLabel ? resolveCategoryLabel(t.category ?? "") : (t.category ?? "");
+          const label = resolveCategoryLabel ? resolveCategoryLabel(t.category ?? "") : t.category ?? "";
           return (
             <div
               key={t.id}
