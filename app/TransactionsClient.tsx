@@ -106,6 +106,75 @@ function todayYMD() {
   const dd = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${dd}`;
 }
+function clamp(n: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, n));
+}
+
+function addMonthsDate(base: Date, monthsToAdd: number) {
+  const d = new Date(base);
+  const day = d.getDate();
+  d.setMonth(d.getMonth() + monthsToAdd);
+  // 月末吸収（例: 1/31 + 1ヶ月 がズレる対策）
+  if (d.getDate() < day) d.setDate(0);
+  return d;
+}
+
+function formatYMDDate(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}/${m}/${dd}`;
+}
+
+function calcRepayment(params: {
+  totalDebt: number;       // 借入総額（リング目標）
+  repaidTotal: number;     // 返済済み累計（リングのexpense累計）
+  monthlyPayment: number;  // 今月返済（または平均）
+  asOf?: Date;             // 基準日
+}) {
+  const asOf = params.asOf ?? new Date();
+  const totalDebt = Math.max(0, params.totalDebt);
+  const repaidTotal = Math.max(0, params.repaidTotal);
+  const monthlyPayment = Math.max(0, params.monthlyPayment);
+
+  const remaining = Math.max(0, totalDebt - repaidTotal);
+  const progressPct = totalDebt > 0 ? clamp((repaidTotal / totalDebt) * 100, 0, 100) : 0;
+
+  if (totalDebt <= 0) {
+    return {
+      progressPct,
+      remaining,
+      months: null as number | null,
+      payoffDate: null as Date | null,
+      message: "目標（借入総額）が未設定です",
+    };
+  }
+
+  if (remaining === 0) {
+    return {
+      progressPct: 100,
+      remaining: 0,
+      months: 0,
+      payoffDate: asOf,
+      message: "完済済み",
+    };
+  }
+
+  if (monthlyPayment <= 0) {
+    return {
+      progressPct,
+      remaining,
+      months: null,
+      payoffDate: null,
+      message: "今月の返済額が0のため予測できません",
+    };
+  }
+
+  const months = Math.ceil(remaining / monthlyPayment);
+  const payoffDate = addMonthsDate(asOf, months);
+
+  return { progressPct, remaining, months, payoffDate, message: "OK" };
+}
 
 // ✅ 本番(Vercel)では userKey UI を出さない（ローカル開発だけ表示）
 const SHOW_USERKEY_UI = process.env.NODE_ENV !== "production";
@@ -739,9 +808,68 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     return { ...s, balance };
   };
 
-  // 固定リング
+   // 固定リング
   const lifeSums = getRingSums(FIXED_LIFE_KEY, false); // ✅ 生活費は月次
-  const saveSums = getRingSums(FIXED_SAVE_KEY, true); // ✅ 貯蓄は累計（selectedYmまで）
+  const saveSums = getRingSums(FIXED_SAVE_KEY, true);  // ✅ 貯蓄は累計（selectedYmまで）
+
+  // =========================
+  // ✅ 目標（ringGoals.ts）から取得
+  // =========================
+  const [ringGoals, setRingGoals] = useState<RingGoal[]>([]);
+
+  useEffect(() => {
+    if (!userKey) return;
+    setRingGoals(loadRingGoals());
+  }, [userKey]);
+
+  const targetBalance = getTarget(ringGoals, GOAL_ASSET_KEY);
+  const lifeTarget = getTarget(ringGoals, ringCategory(FIXED_LIFE_KEY));
+  const saveTarget = getTarget(ringGoals, ringCategory(FIXED_SAVE_KEY));
+    // =========================
+  // ✅ 返済リング：自動検出 → 進捗% / あと◯ヶ月 / 完済予測日
+  // ルール：
+  // - 目標(target) = 借入総額
+  // - 返済累計 = expense の累計（carryOver=true 相当）
+  // - 今月返済 = expense の月次
+  // =========================
+  const repayRing = useMemo(() => {
+    const words = ["返済", "ローン", "借入", "カードローン", "クレカ", "リボ", "分割"];
+    return extraRings.find((r) => words.some((w) => (r.title ?? "").includes(w))) ?? null;
+  }, [extraRings]);
+
+  const repaymentInfo = useMemo(() => {
+    if (!repayRing) {
+      return {
+        exists: false,
+        title: "",
+        totalDebt: 0,
+        repaidTotal: 0,
+        monthlyPayment: 0,
+        result: calcRepayment({ totalDebt: 0, repaidTotal: 0, monthlyPayment: 0, asOf: new Date() }),
+      };
+    }
+
+    const totalDebt = getTarget(ringGoals, ringCategory(repayRing.ringKey)); // 目標=借入総額
+    const repaidTotal = getRingSums(repayRing.ringKey, true).expense;        // 累計の支出=返済累計
+    const monthlyPayment = getRingSums(repayRing.ringKey, false).expense;    // 月次の支出=今月返済
+
+    const result = calcRepayment({
+      totalDebt,
+      repaidTotal,
+      monthlyPayment,
+      asOf: new Date(),
+    });
+
+    return {
+      exists: true,
+      title: repayRing.title,
+      totalDebt,
+      repaidTotal,
+      monthlyPayment,
+      result,
+    };
+  }, [repayRing, ringGoals, selectedYm, selectedEnd, sumByCategoryMonthly, sumByCategoryCarry]); 
+  // ↑ 依存は「getRingSumsが参照するmapが更新されたら再計算」用に入れてる
 
   // 追加リング（carryOver に従う）
   const extraComputed = useMemo(() => {
@@ -768,20 +896,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     return total;
   }, [lifeSums.balance, saveSums.balance, extraComputed]);
 
-  // =========================
-  // ✅ 目標（ringGoals.ts）から取得
-  // =========================
-  const [ringGoals, setRingGoals] = useState<RingGoal[]>([]);
-
-  useEffect(() => {
-    if (!userKey) return;
-    setRingGoals(loadRingGoals());
-  }, [userKey]);
-
-  const targetBalance = getTarget(ringGoals, GOAL_ASSET_KEY);
-  const lifeTarget = getTarget(ringGoals, ringCategory(FIXED_LIFE_KEY));
-  const saveTarget = getTarget(ringGoals, ringCategory(FIXED_SAVE_KEY));
-
   const progressToTarget = targetBalance > 0 ? clamp01(totalAssetBalance / targetBalance) : 0;
   const remainToTarget = Math.max(0, targetBalance - totalAssetBalance);
   const balanceAchieved = targetBalance > 0 ? totalAssetBalance >= targetBalance : false;
@@ -795,7 +909,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const savedTotal = saveSums.income; // “累計でいこう”なので income累計表示
   const saveRingProgress = saveTarget > 0 ? clamp01(savedTotal / saveTarget) : 0;
   const saveAchieved = saveTarget > 0 ? savedTotal >= saveTarget : false;
-
   // =========================
   // ✅ スマホ判定
   // =========================
@@ -1084,14 +1197,31 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   // =========================
   const centerCard = useMemo(() => {
     return {
-      title: "総資産",
-      value: totalAssetBalance,
-      progress: progressToTarget,
-      color: "#9ca3af",
-      sub1: `収入 ${yen(monthSummary.income)} / 支出 ${yen(monthSummary.expense)}`,
-      sub2: targetBalance > 0 ? `目標まであと ${yen(remainToTarget)}円` : "",
-      achieved: balanceAchieved,
-    };
+  title: "総資産",
+  value: totalAssetBalance,
+  progress: progressToTarget,
+  color: "#9ca3af",
+
+  sub1: `収入 ${yen(monthSummary.income)} / 支出 ${yen(monthSummary.expense)}`,
+  sub2: targetBalance > 0 ? `目標まであと ${yen(remainToTarget)}円` : "",
+
+  // ✅ 返済表示
+  sub3: repaymentInfo?.exists
+    ? `返済率：${repaymentInfo.result.progressPct.toFixed(1)}%`
+    : "",
+
+  sub4:
+    repaymentInfo?.exists && repaymentInfo.result.months !== null
+      ? `完済まで：あと ${repaymentInfo.result.months}ヶ月`
+      : "",
+
+  sub5:
+    repaymentInfo?.exists && repaymentInfo.result.payoffDate
+      ? `完済予定日：${formatYMDDate(repaymentInfo.result.payoffDate)}`
+      : "",
+
+  achieved: balanceAchieved,
+};
   }, [
     totalAssetBalance,
     progressToTarget,
@@ -1584,6 +1714,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
               {centerCard.sub1 && <div style={{ marginTop: 10, fontSize: 13, opacity: 0.75 }}>{centerCard.sub1}</div>}
               {centerCard.sub2 && <div style={{ marginTop: 8, fontSize: 13, opacity: 0.75 }}>{centerCard.sub2}</div>}
+              {centerCard.sub3 && <div style={{ marginTop: 8, fontSize: 13, opacity: 0.8 }}>{centerCard.sub3}</div>}
+{centerCard.sub4 && <div style={{ marginTop: 6, fontSize: 13, opacity: 0.8 }}>{centerCard.sub4}</div>}
+{centerCard.sub5 && <div style={{ marginTop: 6, fontSize: 13, opacity: 0.8 }}>{centerCard.sub5}</div>}
 
               <div style={{ marginTop: 10, fontSize: 11, opacity: 0.55 }}>長押しで「目標」編集</div>
               {centerCard.achieved && <div style={{ marginTop: 6, fontWeight: 900 }}>✅ 目標達成！</div>}
