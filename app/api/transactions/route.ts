@@ -1,17 +1,33 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 type TxType = "income" | "expense";
+
+const COOKIE_NAME = "miyamu_user_key";
 
 function badRequest(message: string) {
   return NextResponse.json({ error: message }, { status: 400 });
 }
 
-function getUserKey(req: Request): string | null {
-  const userKey = req.headers.get("x-user-key")?.trim();
-  if (!userKey) return null;
-  if (userKey.length < 8 || userKey.length > 64) return null;
-  return userKey;
+function normalizeAndValidateKey(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+
+  const key = raw.trim();
+
+  if (key.length < 8 || key.length > 64) return null;
+
+  return key;
+}
+
+// ✅ header優先 → cookie fallback
+function getUserKey(req: NextRequest): string | null {
+  const headerKey = normalizeAndValidateKey(req.headers.get("x-user-key"));
+  if (headerKey) return headerKey;
+
+  const cookieKey = normalizeAndValidateKey(req.cookies.get(COOKIE_NAME)?.value);
+  if (cookieKey) return cookieKey;
+
+  return null;
 }
 
 function parseAmount(value: unknown): number {
@@ -30,10 +46,10 @@ function parseOccurredAt(value: unknown): Date | null {
   return d;
 }
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
     const userKey = getUserKey(req);
-    if (!userKey) return badRequest("x-user-key header is required");
+    if (!userKey) return badRequest("user key is required (x-user-key header or cookie)");
 
     const transactions = await prisma.transaction.findMany({
       where: { userKey },
@@ -47,10 +63,10 @@ export async function GET(req: Request) {
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     const userKey = getUserKey(req);
-    if (!userKey) return badRequest("x-user-key header is required");
+    if (!userKey) return badRequest("user key is required (x-user-key header or cookie)");
 
     const body = await req.json();
 
@@ -59,6 +75,7 @@ export async function POST(req: Request) {
 
     const detailCategoryRaw = String(body.detailCategory ?? "").trim();
     const detailCategory = detailCategoryRaw ? detailCategoryRaw.slice(0, 64) : null;
+
     const type = body.type as TxType;
     const occurredAt = parseOccurredAt(body.occurredAt) ?? new Date();
 
@@ -73,7 +90,7 @@ export async function POST(req: Request) {
         userKey,
         amount: Math.trunc(amount),
         category,
-        detailCategory,  //
+        detailCategory,
         type,
         occurredAt,
       },
@@ -86,10 +103,10 @@ export async function POST(req: Request) {
   }
 }
 
-export async function DELETE(req: Request) {
+export async function DELETE(req: NextRequest) {
   try {
     const userKey = getUserKey(req);
-    if (!userKey) return badRequest("x-user-key header is required");
+    if (!userKey) return badRequest("user key is required (x-user-key header or cookie)");
 
     const idStr = new URL(req.url).searchParams.get("id");
     const id = Number(idStr);
@@ -110,10 +127,10 @@ export async function DELETE(req: Request) {
   }
 }
 
-export async function PATCH(req: Request) {
+export async function PATCH(req: NextRequest) {
   try {
     const userKey = getUserKey(req);
-    if (!userKey) return badRequest("x-user-key header is required");
+    if (!userKey) return badRequest("user key is required (x-user-key header or cookie)");
 
     const idStr = new URL(req.url).searchParams.get("id");
     const id = Number(idStr);
@@ -123,6 +140,10 @@ export async function PATCH(req: Request) {
 
     const amount = parseAmount(body.amount);
     const category = String(body.category ?? "").trim();
+
+    const detailCategoryRaw = String(body.detailCategory ?? "").trim();
+    const detailCategory = detailCategoryRaw ? detailCategoryRaw.slice(0, 64) : null;
+
     const type = body.type as TxType;
     const occurredAt = parseOccurredAt(body.occurredAt);
 
@@ -135,7 +156,13 @@ export async function PATCH(req: Request) {
 
     const updated = await prisma.transaction.updateMany({
       where: { id, userKey },
-      data: { amount: Math.trunc(amount), category, type, occurredAt },
+      data: {
+        amount: Math.trunc(amount),
+        category,
+        detailCategory, // ✅ PATCHでも保持できるように（未使用ならnullでもOK）
+        type,
+        occurredAt,
+      },
     });
 
     if (updated.count === 0) {

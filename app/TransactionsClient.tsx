@@ -106,6 +106,7 @@ function todayYMD() {
   const dd = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${dd}`;
 }
+
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
 }
@@ -127,10 +128,10 @@ function formatYMDDate(d: Date) {
 }
 
 function calcRepayment(params: {
-  totalDebt: number;       // 借入総額（リング目標）
-  repaidTotal: number;     // 返済済み累計（リングのexpense累計）
-  monthlyPayment: number;  // 今月返済（または平均）
-  asOf?: Date;             // 基準日
+  totalDebt: number; // 借入総額（リング目標）
+  repaidTotal: number; // 返済済み累計（リングのexpense累計）
+  monthlyPayment: number; // 今月返済（または平均）
+  asOf?: Date; // 基準日
 }) {
   const asOf = params.asOf ?? new Date();
   const totalDebt = Math.max(0, params.totalDebt);
@@ -563,14 +564,17 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   // ✅ userKey
   const [userKey, setUserKey] = useState<string>("");
 
+  // 初回：userKey決定（getOrCreateUserKeyが内部でlocalStorageを見る想定）
   useEffect(() => {
-    try {
-      const k = getOrCreateUserKey();
-      setUserKey(k);
-    } catch (e) {
-      console.error("getOrCreateUserKey failed:", e);
-      setUserKey(`fallback_${Date.now()}`);
-    }
+    (async () => {
+      try {
+        const k = await getOrCreateUserKey();
+        setUserKey(k);
+      } catch (e) {
+        console.error("getOrCreateUserKey failed:", e);
+        setUserKey(`fallback_${Date.now()}`);
+      }
+    })();
   }, []);
 
   // ✅ userKeyが変わったらデータ再取得
@@ -608,20 +612,31 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
   const applyUserKey = () => {
     const next = normalizeUserKeyInput(userKeyInput);
+
     if (next.length < 8 || next.length > 64) {
       alert("userKey は8〜64文字で入力してください（英数字推奨）");
       return;
     }
+
     localStorage.setItem(STORAGE_KEY, next);
     setUserKey(next);
     setKeyEditingOpen(false);
   };
 
-  const regenerateUserKey = () => {
-    localStorage.removeItem(STORAGE_KEY);
-    const next = getOrCreateUserKey();
-    setUserKey(next);
-    setKeyEditingOpen(false);
+  const regenerateUserKey = async () => {
+    // ✅ 既存の保存キーを消して「新規作成させる」
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {}
+
+    try {
+      const k = await getOrCreateUserKey();
+      setUserKey(k);
+      setKeyEditingOpen(false);
+    } catch (e) {
+      console.error("regenerateUserKey failed:", e);
+      alert("再生成に失敗しました。コンソールを確認してね。");
+    }
   };
 
   // --- 月切替（UTCズレ対策でローカル日付を使う）
@@ -636,7 +651,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const [selectedYm, setSelectedYm] = useState<string>(() => {
     if (typeof window === "undefined") return nowYm;
     try {
-      const saved = localStorage.getItem(selectedYmKey);
+      const saved = localStorage.getItem(`miyamu_selected_ym:anonymous`);
       return saved || nowYm;
     } catch {
       return nowYm;
@@ -665,8 +680,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
   // =========================
   // ✅ A案：月次（生活費） vs 累計（貯蓄/返済）
-  // - 月次: selectedYmだけ
-  // - 累計: selectedYmの月末まで（<= endOfMonth）
   // =========================
   const selectedEnd = useMemo(() => endOfMonthYMD(selectedYm), [selectedYm]);
 
@@ -690,8 +703,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const monthSummary = useMemo(() => calcSummary(monthTransactions), [monthTransactions]);
 
   // =========================
-  // ✅ 月PDF用：月次データをlocalStorageへ保存（A案）
-  // ※これで「その月のログ」が落ちない
+  // ✅ 月PDF用：月次データをlocalStorageへ保存
   // =========================
   const monthStorageKey = useMemo(() => {
     const k = userKey || "anonymous";
@@ -808,9 +820,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     return { ...s, balance };
   };
 
-   // 固定リング
+  // 固定リング
   const lifeSums = getRingSums(FIXED_LIFE_KEY, false); // ✅ 生活費は月次
-  const saveSums = getRingSums(FIXED_SAVE_KEY, true);  // ✅ 貯蓄は累計（selectedYmまで）
+  const saveSums = getRingSums(FIXED_SAVE_KEY, true); // ✅ 貯蓄は累計
 
   // =========================
   // ✅ 目標（ringGoals.ts）から取得
@@ -825,12 +837,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const targetBalance = getTarget(ringGoals, GOAL_ASSET_KEY);
   const lifeTarget = getTarget(ringGoals, ringCategory(FIXED_LIFE_KEY));
   const saveTarget = getTarget(ringGoals, ringCategory(FIXED_SAVE_KEY));
-    // =========================
+
+  // =========================
   // ✅ 返済リング：自動検出 → 進捗% / あと◯ヶ月 / 完済予測日
-  // ルール：
-  // - 目標(target) = 借入総額
-  // - 返済累計 = expense の累計（carryOver=true 相当）
-  // - 今月返済 = expense の月次
   // =========================
   const repayRing = useMemo(() => {
     const words = ["返済", "ローン", "借入", "カードローン", "クレカ", "リボ", "分割"];
@@ -850,8 +859,8 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     }
 
     const totalDebt = getTarget(ringGoals, ringCategory(repayRing.ringKey)); // 目標=借入総額
-    const repaidTotal = getRingSums(repayRing.ringKey, true).expense;        // 累計の支出=返済累計
-    const monthlyPayment = getRingSums(repayRing.ringKey, false).expense;    // 月次の支出=今月返済
+    const repaidTotal = getRingSums(repayRing.ringKey, true).expense; // 累計支出=返済累計
+    const monthlyPayment = getRingSums(repayRing.ringKey, false).expense; // 月次支出=今月返済
 
     const result = calcRepayment({
       totalDebt,
@@ -868,8 +877,8 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       monthlyPayment,
       result,
     };
-  }, [repayRing, ringGoals, selectedYm, selectedEnd, sumByCategoryMonthly, sumByCategoryCarry]); 
-  // ↑ 依存は「getRingSumsが参照するmapが更新されたら再計算」用に入れてる
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repayRing, ringGoals, sumByCategoryMonthly, sumByCategoryCarry]);
 
   // 追加リング（carryOver に従う）
   const extraComputed = useMemo(() => {
@@ -883,16 +892,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   // 総資産（中央）= 全リング残高の合計（各リングのスコープで計算）
   const totalAssetBalance = useMemo(() => {
     let total = 0;
-
-    // 生活費は月次なので balance がマイナスになりやすい（支出のみ）
-    total += lifeSums.balance;
-
-    // 貯蓄は累計
-    total += saveSums.balance;
-
-    // 追加は個別
+    total += lifeSums.balance; // 月次
+    total += saveSums.balance; // 累計
     for (const r of extraComputed) total += r.sums.balance;
-
     return total;
   }, [lifeSums.balance, saveSums.balance, extraComputed]);
 
@@ -906,9 +908,10 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const lifeAchieved = lifeTarget > 0 ? lifeSpent >= lifeTarget : false;
 
   // 貯蓄：累計（収入のみ想定でもOK）
-  const savedTotal = saveSums.income; // “累計でいこう”なので income累計表示
+  const savedTotal = saveSums.income;
   const saveRingProgress = saveTarget > 0 ? clamp01(savedTotal / saveTarget) : 0;
   const saveAchieved = saveTarget > 0 ? savedTotal >= saveTarget : false;
+
   // =========================
   // ✅ スマホ判定
   // =========================
@@ -970,6 +973,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     setGoalFocusCategory(cat);
     setGoalModalOpen(true);
   };
+
   const closeGoalEditor = () => {
     setGoalModalOpen(false);
     setGoalFocusCategory(null);
@@ -986,7 +990,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const [quickType, setQuickType] = useState<TxType>("expense");
   const [quickAmountStr, setQuickAmountStr] = useState("");
   const [quickDate, setQuickDate] = useState(todayYMD());
-  const [quickDetail, setQuickDetail] = useState(""); // ✅ 内訳（コンビニ/外食/など）
+  const [quickDetail, setQuickDetail] = useState(""); // ✅ 内訳
   const [isSavingQuick, setIsSavingQuick] = useState(false);
 
   const openQuickAdd = (target: QuickAddTarget, defaultType: TxType) => {
@@ -1197,31 +1201,25 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   // =========================
   const centerCard = useMemo(() => {
     return {
-  title: "総資産",
-  value: totalAssetBalance,
-  progress: progressToTarget,
-  color: "#9ca3af",
+      title: "総資産",
+      value: totalAssetBalance,
+      progress: progressToTarget,
+      color: "#9ca3af",
 
-  sub1: `収入 ${yen(monthSummary.income)} / 支出 ${yen(monthSummary.expense)}`,
-  sub2: targetBalance > 0 ? `目標まであと ${yen(remainToTarget)}円` : "",
+      sub1: `収入 ${yen(monthSummary.income)} / 支出 ${yen(monthSummary.expense)}`,
+      sub2: targetBalance > 0 ? `目標まであと ${yen(remainToTarget)}円` : "",
 
-  // ✅ 返済表示
-  sub3: repaymentInfo?.exists
-    ? `返済率：${repaymentInfo.result.progressPct.toFixed(1)}%`
-    : "",
+      // ✅ 返済表示
+      sub3: repaymentInfo?.exists ? `返済率：${repaymentInfo.result.progressPct.toFixed(1)}%` : "",
+      sub4:
+        repaymentInfo?.exists && repaymentInfo.result.months !== null ? `完済まで：あと ${repaymentInfo.result.months}ヶ月` : "",
+      sub5:
+        repaymentInfo?.exists && repaymentInfo.result.payoffDate
+          ? `完済予定日：${formatYMDDate(repaymentInfo.result.payoffDate)}`
+          : "",
 
-  sub4:
-    repaymentInfo?.exists && repaymentInfo.result.months !== null
-      ? `完済まで：あと ${repaymentInfo.result.months}ヶ月`
-      : "",
-
-  sub5:
-    repaymentInfo?.exists && repaymentInfo.result.payoffDate
-      ? `完済予定日：${formatYMDDate(repaymentInfo.result.payoffDate)}`
-      : "",
-
-  achieved: balanceAchieved,
-};
+      achieved: balanceAchieved,
+    };
   }, [
     totalAssetBalance,
     progressToTarget,
@@ -1230,6 +1228,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     targetBalance,
     remainToTarget,
     balanceAchieved,
+    repaymentInfo,
   ]);
 
   // =========================
@@ -1263,7 +1262,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   }, [extraRings]);
 
   // =========================
-  // ✅ 追加リングの配置（中心周り・被りにくい角度）
+  // ✅ 追加リングの配置
   // =========================
   const extraPositions = useMemo(() => {
     const n = extraRings.length;
@@ -1275,11 +1274,10 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     const baseSize = smallSize;
     const size = Math.max(isMobile ? 120 : 160, Math.min(baseSize, Math.floor(available / 3)));
 
-    // 中心からの距離
     const radiusX = isMobile ? 120 : 210;
     const radiusY = isMobile ? 210 : 300;
 
-    // 角度（度）: 下 → 左下 → 右下 → 左上 → 右上
+    // 下 → 左下 → 右下 → 左上 → 右上
     const angles = [-90, -140, -40, 180, 0];
 
     return extraRings.slice(0, angles.length).map((r, i) => {
@@ -1290,13 +1288,10 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     });
   }, [extraRings, isMobile, layoutW, smallSize]);
 
-  // ✅ エリア高さ（スマホは少し余裕）
   const areaH = isMobile ? 820 : 860;
 
   // =========================
   // ✅ 固定リングの長押し
-  // - 長押し：目標編集
-  // - タップ：入力（生活費/貯蓄のみ）
   // =========================
   const lpGoalAsset = useLongPressHandlers(() => openGoalEditor(GOAL_ASSET_KEY), 650);
   const { shouldIgnoreClick: shouldIgnoreAsset, ...lpGoalAssetProps } = lpGoalAsset;
@@ -1308,18 +1303,14 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const { shouldIgnoreClick: shouldIgnoreSave, ...lpGoalSaveProps } = lpGoalSave;
 
   // =========================
-  // ✅ 印刷 / PDF（みやむLog方式：ボタンで window.print）
-  // - iPhone Safari は自動 print() が弾かれやすいので「新規タブ内のボタン」で印刷
-  // - window.open は “クリック直後に1回だけ” 実行
+  // ✅ 印刷 / PDF（新規タブ方式）
   // =========================
   const openPrintView = () => {
-    // iOS Safari 判定（CriOS/Firefox/Edge iOS は除外）
     const ua = navigator.userAgent;
     const isIOS = /iP(hone|od|ad)/.test(ua);
     const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS/.test(ua);
     const isIOSSafari = isIOS && isSafari;
 
-    // ✅ 最低限のエスケープ（XSS対策）
     const esc = (s: string) =>
       (s ?? "")
         .replace(/&/g, "&amp;")
@@ -1349,7 +1340,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       })
       .join("");
 
-    // 支出内訳（detailCategory）
     const expenseOnly = monthTransactions.filter((t) => t.type === "expense");
     const breakdown = new Map<string, number>();
     for (const t of expenseOnly) {
@@ -1419,7 +1409,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 </body>
 </html>`;
 
-    // ✅ クリック直後に “1回だけ” open
     const w = window.open("", "_blank");
     if (!w) {
       alert("ポップアップがブロックされました。iPhoneは Safari の設定（ポップアップ）を確認してね。");
@@ -1431,8 +1420,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     w.document.close();
     w.focus();
 
-    // ✅ PC/Androidは自動で印刷ダイアログを出してOK
-    // ✅ iPhone Safariは弾かれやすいので出さない（新規タブ内の「印刷/PDF」ボタンを押してもらう）
     if (!isIOSSafari) {
       setTimeout(() => {
         try {
@@ -1443,7 +1430,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   };
 
   // =========================
-  // ✅ ここが “returnでJSXを包む” 修正ポイント
+  // ✅ ここが “returnでJSXを包む”
   // =========================
   return (
     <div style={{ padding: 14 }}>
@@ -1691,13 +1678,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             }}
             title="長押し：総資産の目標を編集"
           >
-            <Ring
-              size={bigSize}
-              stroke={strokeBig}
-              outward={outwardBig}
-              progress={centerCard.progress}
-              color={centerCard.color}
-            />
+            <Ring size={bigSize} stroke={strokeBig} outward={outwardBig} progress={centerCard.progress} color={centerCard.color} />
 
             <div className={styles.assetBox} style={{ zIndex: 2, position: "relative" }}>
               <div style={{ fontSize: 16, opacity: 0.75, fontWeight: 900 }}>{centerCard.title}</div>
@@ -1715,8 +1696,8 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               {centerCard.sub1 && <div style={{ marginTop: 10, fontSize: 13, opacity: 0.75 }}>{centerCard.sub1}</div>}
               {centerCard.sub2 && <div style={{ marginTop: 8, fontSize: 13, opacity: 0.75 }}>{centerCard.sub2}</div>}
               {centerCard.sub3 && <div style={{ marginTop: 8, fontSize: 13, opacity: 0.8 }}>{centerCard.sub3}</div>}
-{centerCard.sub4 && <div style={{ marginTop: 6, fontSize: 13, opacity: 0.8 }}>{centerCard.sub4}</div>}
-{centerCard.sub5 && <div style={{ marginTop: 6, fontSize: 13, opacity: 0.8 }}>{centerCard.sub5}</div>}
+              {centerCard.sub4 && <div style={{ marginTop: 6, fontSize: 13, opacity: 0.8 }}>{centerCard.sub4}</div>}
+              {centerCard.sub5 && <div style={{ marginTop: 6, fontSize: 13, opacity: 0.8 }}>{centerCard.sub5}</div>}
 
               <div style={{ marginTop: 10, fontSize: 11, opacity: 0.55 }}>長押しで「目標」編集</div>
               {centerCard.achieved && <div style={{ marginTop: 6, fontWeight: 900 }}>✅ 目標達成！</div>}
@@ -1757,13 +1738,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             }}
             title="タップ：生活費を入力 / 長押し：生活費目標を編集"
           >
-            <Ring
-              size={smallSize}
-              stroke={strokeSmall}
-              outward={outwardSmall}
-              progress={lifeRingProgress}
-              color="#d1d5db"
-            />
+            <Ring size={smallSize} stroke={strokeSmall} outward={outwardSmall} progress={lifeRingProgress} color="#d1d5db" />
 
             <div style={{ zIndex: 2 }}>
               <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>生活費</div>
@@ -1771,14 +1746,10 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               <div style={{ marginTop: 4, fontSize: 11, opacity: 0.6 }}>今月</div>
 
               {lifeTarget > 0 && lifeTarget - lifeSpent > 0 && (
-                <div style={{ fontSize: 11, marginTop: 2, opacity: 0.75 }}>
-                  目標まであと {(lifeTarget - lifeSpent).toLocaleString()}円
-                </div>
+                <div style={{ fontSize: 11, marginTop: 2, opacity: 0.75 }}>目標まであと {(lifeTarget - lifeSpent).toLocaleString()}円</div>
               )}
 
-              {lifeTarget > 0 && lifeTarget - lifeSpent <= 0 && (
-                <div style={{ fontSize: 11, marginTop: 2, color: "green" }}>🎉 達成！</div>
-              )}
+              {lifeTarget > 0 && lifeTarget - lifeSpent <= 0 && <div style={{ fontSize: 11, marginTop: 2, color: "green" }}>🎉 達成！</div>}
 
               <div style={{ marginTop: 6, fontSize: 11, opacity: 0.55 }}>タップで入力 / 長押しで目標編集</div>
             </div>
@@ -1818,13 +1789,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             }}
             title="タップ：貯蓄を入力 / 長押し：貯蓄目標を編集"
           >
-            <Ring
-              size={smallSize}
-              stroke={strokeSmall}
-              outward={outwardSmall}
-              progress={saveRingProgress}
-              color="#22c55e"
-            />
+            <Ring size={smallSize} stroke={strokeSmall} outward={outwardSmall} progress={saveRingProgress} color="#22c55e" />
 
             <div style={{ zIndex: 2 }}>
               <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>貯蓄</div>
@@ -1887,7 +1852,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       </div>
 
       {/* =========================
-          ✅ 目標編集モーダル（A案）
+          ✅ 目標編集モーダル
          ========================= */}
       {goalModalOpen && (
         <div
@@ -1958,7 +1923,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       )}
 
       {/* =========================
-          ✅ クイック入力モーダル（生活費/貯蓄/追加リング）
+          ✅ クイック入力モーダル
          ========================= */}
       {quickAddOpen && (
         <div
@@ -2198,7 +2163,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 onChange={(e) => {
                   const m = e.target.value as RingMode;
                   setCreateMode(m);
-                  // 返済/積立っぽいなら累計ONを推奨
                   setCreateCarryOver(m === "income_only" || m === "expense_only");
                 }}
                 style={{

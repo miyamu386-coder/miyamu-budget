@@ -1,26 +1,20 @@
-const STORAGE_KEY = "miyamu_budget_user_key";
+let cached: string | null = null;
 
-function genKey(): string {
-  try {
-    const a = crypto.getRandomValues(new Uint8Array(16));
-    return Array.from(a)
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
-  } catch {
-    return Math.random().toString(16).slice(2) +
-           Math.random().toString(16).slice(2);
-  }
-}
+export async function getOrCreateUserKey(): Promise<string> {
+  if (cached) return cached;
 
-export function getOrCreateUserKey(): string {
-  if (typeof window === "undefined") return "";
+  const res = await fetch("/api/user-key", {
+    method: "GET",
+    cache: "no-store",
+    credentials: "include",
+  });
 
-  const existing = localStorage.getItem(STORAGE_KEY);
-  if (existing && existing.length >= 8 && existing.length <= 64) {
-    return existing;
+  if (!res.ok) {
+    throw new Error("Failed to get userKey");
   }
 
-  const key = genKey();
-  localStorage.setItem(STORAGE_KEY, key);
-  return key;
+  const data = (await res.json()) as { userKey: string };
+  cached = data.userKey;
+
+  return cached;
 }
