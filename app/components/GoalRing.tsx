@@ -4,8 +4,8 @@ import React from "react";
 
 type Props = {
   title: string;
-  current: number;
-  target: number;
+  current: number; // 返済済み額（累計）を入れる想定
+  target: number;  // 総借入額（元の総額）
   subLines?: string[];
 };
 
@@ -15,8 +15,16 @@ function clamp(n: number, min: number, max: number) {
 
 export default function GoalRing({ title, current, target, subLines = [] }: Props) {
   const safeTarget = target > 0 ? target : 0;
-  const ratio = safeTarget > 0 ? current / safeTarget : 0;
+
+  // 返済済み額はマイナスにならないように
+  const safeCurrent = Math.max(0, current);
+
+  // 返済率（0〜100）
+  const ratio = safeTarget > 0 ? safeCurrent / safeTarget : 0;
   const pct = safeTarget > 0 ? Math.round(clamp(ratio, 0, 1) * 100) : 0;
+
+  // 残額（0未満にならないように）
+  const remaining = Math.max(0, safeTarget - safeCurrent);
 
   const ringStyle: React.CSSProperties = {
     width: 160,
@@ -43,18 +51,35 @@ export default function GoalRing({ title, current, target, subLines = [] }: Prop
     <div style={{ display: "grid", gap: 8, justifyItems: "center" }}>
       <div style={{ fontWeight: 800 }}>{title}</div>
 
-      <div style={ringStyle} aria-label={`${title} 達成率 ${pct}%`}>
+      <div style={ringStyle} aria-label={`${title} 進捗 ${pct}%`}>
         <div style={innerStyle}>
-          <div style={{ fontSize: 12, opacity: 0.6 }}>達成率</div>
+          <div style={{ fontSize: 12, opacity: 0.6 }}>返済率</div>
+
+          {/* 真ん中は % をドン */}
           <div style={{ fontSize: 22, fontWeight: 900 }}>{pct}%</div>
-          <div style={{ fontSize: 12, opacity: 0.75 }}>
-            {current.toLocaleString()} / {safeTarget.toLocaleString()}
+
+          {/* 下段は “完済まであと” を表示 */}
+          <div style={{ fontSize: 12, opacity: 0.85 }}>
+            完済まであと {remaining.toLocaleString()}円
+          </div>
+
+          {/* さらに小さく内訳（任意） */}
+          <div style={{ fontSize: 11, opacity: 0.65 }}>
+            {safeCurrent.toLocaleString()} / {safeTarget.toLocaleString()}
           </div>
         </div>
       </div>
 
       {subLines.length > 0 && (
-        <div style={{ fontSize: 12, opacity: 0.85, display: "grid", gap: 2, justifyItems: "center" }}>
+        <div
+          style={{
+            fontSize: 12,
+            opacity: 0.85,
+            display: "grid",
+            gap: 2,
+            justifyItems: "center",
+          }}
+        >
           {subLines.map((s, i) => (
             <div key={i}>{s}</div>
           ))}

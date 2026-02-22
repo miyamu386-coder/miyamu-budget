@@ -25,8 +25,7 @@ export default function TransactionList({
   const remove = async (id: number) => {
     if (deletingId === id) return;
 
-    // ✅ Promise<string> なので await が必要
-    const userKey = await getOrCreateUserKey();
+    const userKey = await getOrCreateUserKey(); // ✅ await
 
     setDeletingId(id);
     try {

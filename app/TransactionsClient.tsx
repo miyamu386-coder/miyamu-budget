@@ -6,6 +6,7 @@ import TransactionList from "./TransactionList";
 import type { Transaction } from "./types";
 import { getOrCreateUserKey } from "../lib/userKey";
 import styles from "./TransactionsClient.module.css";
+import GoalRing from "./components/GoalRing";
 
 // ✅ リング目標（localStorage）
 import RingGoalEditor from "./components/RingGoalEditor";
@@ -1434,6 +1435,11 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   // =========================
   return (
     <div style={{ padding: 14 }}>
+      <GoalRing
+  title="カードローン返済（累計）"
+  current={156015}
+  target={450000}
+/>
       {/* ✅ 保存演出（ヌッと出る） */}
       {saveOverlay && (
         <SaveCharaOverlay

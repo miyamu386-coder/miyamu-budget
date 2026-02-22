@@ -4,11 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import type { Transaction, TxType } from "./types";
 import { getOrCreateUserKey } from "../lib/userKey";
 
-// ✅ userKey UI は「ローカル開発(next dev)」だけ表示
-const SHOW_USERKEY_UI = process.env.NODE_ENV === "development";
-
-const STORAGE_KEY = "miyamu_budget_user_key";
-
 type Props = {
   onAdded?: (t: Transaction) => void;
   onUpdated?: (t: Transaction) => void;
@@ -52,10 +47,6 @@ function parseAmountLike(input: string): number {
   return Math.round(n);
 }
 
-function normalizeUserKeyInput(s: string) {
-  return s.trim().slice(0, 64);
-}
-
 type ToastKind = "mofu" | "hina";
 
 export default function TransactionForm({
@@ -81,41 +72,17 @@ export default function TransactionForm({
     setOccurredAt(editing?.occurredAt ? toYMD(editing.occurredAt) : toYMD(new Date().toISOString()));
   }, [editing]);
 
-  // --- userKey UI（ローカルのみ）
-  const [userKey, setUserKey] = useState<string>("");
-  const [userKeyInput, setUserKeyInput] = useState("");
-
-  useEffect(() => {
-    if (!SHOW_USERKEY_UI) return;
-
-    (async () => {
-      const k = await getOrCreateUserKey();   // ✅ await追加
-      setUserKey(k);
-      setUserKeyInput(k);
-    })().catch(console.error);
-  }, []);
-
-  const applyUserKey = () => {
-    const next = normalizeUserKeyInput(userKeyInput);
-    if (next.length < 8 || next.length > 64) {
-      alert("userKey は8〜64文字で入力してください");
-      return;
-    }
-    localStorage.setItem(STORAGE_KEY, next);
-    setUserKey(next);
-    alert("切替しました。リロードしてください。");
-  };
-
-  const regenerateUserKey = async () => {     // ✅ async追加
-    localStorage.removeItem(STORAGE_KEY);
-    const next = await getOrCreateUserKey();  // ✅ await追加
-    setUserKey(next);
-    setUserKeyInput(next);
-    alert("再生成しました。リロードしてください。");
-  };
-
+  // ✅ 保存成功トースト
   const [toast, setToast] = useState<null | { kind: ToastKind; text: string }>(null);
   const toastTimer = useRef<number | null>(null);
+
+  function clearToast() {
+    setToast(null);
+    if (toastTimer.current) {
+      window.clearTimeout(toastTimer.current);
+      toastTimer.current = null;
+    }
+  }
 
   function showToast(kind: ToastKind, text: string) {
     setToast({ kind, text });
@@ -126,31 +93,31 @@ export default function TransactionForm({
   function decideToast(tt: TxType, cat: string) {
     const c = (cat ?? "").trim().toLowerCase();
 
-    if (c === "ring:debt") {
-      return { kind: "mofu" as const, text: "借金も計画的に、な。" };
-    }
+    if (c === "ring:debt") return { kind: "mofu" as const, text: "借金も計画的に、な。" };
 
     const investWords = ["投資", "nisa", "ニーサ", "株", "積立", "つみたて", "資産", "運用", "配当"];
-    if (investWords.some((w) => c.includes(w))) {
-      return { kind: "hina" as const, text: "未来のためにありがとう！" };
-    }
+    if (investWords.some((w) => c.includes(w))) return { kind: "hina" as const, text: "未来のためにありがとう！" };
 
-    if (c === "ring:save") {
-      return { kind: "hina" as const, text: "積み上げ、最高！" };
-    }
+    if (c === "ring:save") return { kind: "hina" as const, text: "積み上げ、最高！" };
 
     return { kind: "mofu" as const, text: "記録できた。えらい。" };
   }
 
+  useEffect(() => {
+    return () => {
+      if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    };
+  }, []);
+
   function normalizeCategoryInput(raw: string) {
     const v = (raw ?? "").trim();
     if (!v) return v;
+
     if (v.startsWith("ring:")) return v;
 
     for (const p of ringTitleResolver) {
       if ((p.title ?? "").trim() === v) return p.category;
     }
-
     return v;
   }
 
@@ -158,7 +125,7 @@ export default function TransactionForm({
     const amount = parseAmountLike(amountStr);
 
     if (!Number.isFinite(amount) || amount <= 0) {
-      alert("金額は正の数で入力してください");
+      alert("金額は正の数で入力してください（例: 50000 / 5万 / 1.2万）");
       return;
     }
 
@@ -168,44 +135,54 @@ export default function TransactionForm({
       return;
     }
 
-    const key = await getOrCreateUserKey();   // ✅ await追加
+    // ✅ ここがポイント：必ず await
+    const key = await getOrCreateUserKey();
 
     setLoading(true);
     try {
-      const endpoint = editing
-        ? `/api/transactions?id=${editing.id}`
-        : "/api/transactions";
-
-      const method = editing ? "PATCH" : "POST";
-
-      const res = await fetch(endpoint, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-          "x-user-key": key,
-        },
-        body: JSON.stringify({
-          type,
-          amount,
-          category: normalizedCategory,
-          occurredAt,
-        }),
-      });
-
-      if (!res.ok) {
-        const e = await res.json().catch(() => ({}));
-        throw new Error(e?.error ?? "save failed");
-      }
-
-      const result: Transaction = await res.json();
-
-      const t1 = decideToast(type, normalizedCategory);
-      showToast(t1.kind, t1.text);
-
       if (editing) {
-        onUpdated?.(result);
+        const res = await fetch("/api/transactions?id=" + editing.id, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "x-user-key": key, // cookieが本命だけど、互換で付けてもOK
+          },
+          body: JSON.stringify({ type, amount, category: normalizedCategory, occurredAt }),
+        });
+
+        if (!res.ok) {
+          const e = await res.json().catch(() => ({}));
+          throw new Error(e?.error ?? "update failed");
+        }
+
+        const updated: Transaction = await res.json();
+
+        const t1 = decideToast(type, normalizedCategory);
+        showToast(t1.kind, t1.text);
+
+        onUpdated?.(updated);
       } else {
-        onAdded?.(result);
+        const res = await fetch("/api/transactions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-user-key": key,
+          },
+          body: JSON.stringify({ type, amount, category: normalizedCategory, occurredAt }),
+        });
+
+        if (!res.ok) {
+          const e = await res.json().catch(() => ({}));
+          throw new Error(e?.error ?? "create failed");
+        }
+
+        const created: Transaction = await res.json();
+
+        const t1 = decideToast(type, normalizedCategory);
+        showToast(t1.kind, t1.text);
+
+        onAdded?.(created);
+
         setAmountStr("");
       }
     } catch (e) {
@@ -219,15 +196,151 @@ export default function TransactionForm({
   return (
     <div style={{ border: "1px solid #ddd", borderRadius: 12, padding: 16, marginBottom: 16 }}>
       {toast && (
-        <div style={{ marginBottom: 12, fontWeight: 900 }}>
-          {toast.text}
-        </div>
+        <button
+          type="button"
+          onClick={clearToast}
+          style={{
+            display: "flex",
+            gap: 10,
+            alignItems: "center",
+            padding: "10px 12px",
+            borderRadius: 12,
+            border: "1px solid rgba(0,0,0,0.08)",
+            background: "rgba(255,255,255,0.95)",
+            boxShadow: "0 12px 30px rgba(0,0,0,0.12)",
+            marginBottom: 12,
+            cursor: "pointer",
+            width: "100%",
+          }}
+          aria-label="toast"
+        >
+          <img
+            src={toast.kind === "mofu" ? "/icons/mofu-chibi.png" : "/icons/hina-chibi.png"}
+            alt={toast.kind}
+            style={{ width: 46, height: 46, borderRadius: 999 }}
+          />
+          <div style={{ fontWeight: 900 }}>{toast.text}</div>
+          <div style={{ marginLeft: "auto", opacity: 0.5, fontSize: 12 }}>×</div>
+        </button>
       )}
 
-      <button onClick={handleSubmit} disabled={loading}>
-        {editing ? "更新" : "保存"}
-      </button>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <button
+          onClick={() => setType("expense")}
+          style={{
+            padding: "8px 12px",
+            borderRadius: 10,
+            border: "1px solid #ccc",
+            background: type === "expense" ? "#eee" : "#fff",
+            cursor: "pointer",
+          }}
+        >
+          支出
+        </button>
+        <button
+          onClick={() => setType("income")}
+          style={{
+            padding: "8px 12px",
+            borderRadius: 10,
+            border: "1px solid #ccc",
+            background: type === "income" ? "#eee" : "#fff",
+            cursor: "pointer",
+          }}
+        >
+          収入
+        </button>
+      </div>
+
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>発生日</div>
+        <input
+          value={occurredAt}
+          onChange={(e) => setOccurredAt(e.target.value)}
+          placeholder="YYYY-MM-DD"
+          style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #ccc" }}
+        />
+      </div>
+
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>金額</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            value={amountStr}
+            onChange={(e) => setAmountStr(normalizeAmountInput(e.target.value))}
+            placeholder="例) 1200 / 5万"
+            inputMode="text"
+            style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #ccc" }}
+          />
+          <span style={{ opacity: 0.7 }}>円</span>
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>カテゴリ</div>
+        <input
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          onBlur={() => setCategory((v) => normalizeCategoryInput(v))}
+          placeholder="例) コンビニ / 給料 / 返済 / 貯蓄 / 生活費"
+          style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #ccc" }}
+        />
+
+        {categorySuggestions.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+            {categorySuggestions.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setCategory(c)}
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  border: "1px solid #ccc",
+                  background: "#fff",
+                  cursor: "pointer",
+                  fontSize: 12,
+                }}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+        <button
+          onClick={handleSubmit}
+          disabled={loading}
+          style={{
+            flex: 1,
+            padding: 12,
+            borderRadius: 10,
+            border: "1px solid #ccc",
+            background: "#fff",
+            cursor: "pointer",
+          }}
+        >
+          {editing ? "更新" : "保存"}
+        </button>
+
+        {editing && (
+          <button
+            type="button"
+            onClick={onCancelEdit}
+            style={{
+              padding: 12,
+              borderRadius: 10,
+              border: "1px solid #ccc",
+              background: "#fff",
+              cursor: "pointer",
+              minWidth: 120,
+            }}
+          >
+            キャンセル
+          </button>
+        )}
+      </div>
     </div>
   );
 }
-
