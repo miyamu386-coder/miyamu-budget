@@ -6,7 +6,6 @@ import TransactionList from "./TransactionList";
 import type { Transaction } from "./types";
 import { getOrCreateUserKey } from "../lib/userKey";
 import styles from "./TransactionsClient.module.css";
-import GoalRing from "./components/GoalRing";
 
 // ✅ リング目標（localStorage）
 import RingGoalEditor from "./components/RingGoalEditor";
@@ -355,7 +354,31 @@ function guessCarryOver(title: string, mode: RingMode) {
   return false;
 }
 
+// ✅ 返済リング判定（返済系だけ%表示を出す）
+function isRepayRingLike(r: { title: string; mode: RingMode; carryOver?: boolean }) {
+  const t = (r.title ?? "").toLowerCase();
+  const words = ["返済", "ローン", "借入", "カードローン", "クレカ", "リボ", "分割"];
+
+  const byMode = r.mode === "expense_only" && !!r.carryOver; // ←基本はこれ
+  const byTitle = words.some((w) => t.includes(w));
+
+  // 誤爆させたくないので「両方一致」で厳しめ
+  return byMode && byTitle;
+
+  // もし「返済」の単語を入れ忘れが多い運用なら、下に変える
+  // return byMode || byTitle;
+}
+
 type TxType = "income" | "expense";
+
+type RepayInfo = {
+  enabled: boolean; // 目標（借入総額）が入っているか
+  progressPct: number;
+  remaining: number;
+  months: number | null;
+  payoffDate: Date | null;
+  message?: string;
+};
 
 // ✅ 追加リング1つ分（目標に対する割合で外周を描く）
 function ExtraRingButton({
@@ -372,6 +395,7 @@ function ExtraRingButton({
   outwardSmall,
   onTapAdd,
   onLongPressEditRing,
+  repayInfo,
 }: {
   id: string;
   title: string;
@@ -386,6 +410,7 @@ function ExtraRingButton({
   outwardSmall: number;
   onTapAdd: (id: string, defaultType: TxType) => void; // ✅ タップ = 入力
   onLongPressEditRing: (id: string) => void; // ✅ 長押し = 編集
+  repayInfo?: RepayInfo; // ✅ 返済リング用
 }) {
   // charMode を決める（将来の演出用。今は表示には使わない）
   resolveChara(title, charMode);
@@ -451,6 +476,20 @@ function ExtraRingButton({
         )}
 
         {target > 0 && achieved && <div style={{ fontSize: 11, marginTop: 2, color: "green" }}>🎉 達成！</div>}
+
+        {/* ✅ 返済リングだけ：返済率/残額/完済予測（※みやむ要望：返済だけ%表示） */}
+        {repayInfo?.enabled && (
+          <div style={{ marginTop: 6, fontSize: 11, opacity: 0.85, lineHeight: 1.25 }}>
+            <div>返済率：{repayInfo.progressPct.toFixed(1)}%</div>
+            <div>完済まであと {yen(repayInfo.remaining)}円</div>
+            {repayInfo.months !== null && <div>完済まで：あと {repayInfo.months}ヶ月</div>}
+            {repayInfo.payoffDate && <div>完済予定：{formatYMDDate(repayInfo.payoffDate)}</div>}
+          </div>
+        )}
+
+        {repayInfo && !repayInfo.enabled && (
+          <div style={{ marginTop: 6, fontSize: 11, opacity: 0.75 }}>目標（借入総額）が未設定です（長押しで設定）</div>
+        )}
 
         <div style={{ marginTop: 6, fontSize: 11, opacity: 0.55 }}>タップで入力 / 長押しで編集</div>
       </div>
@@ -839,48 +878,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const lifeTarget = getTarget(ringGoals, ringCategory(FIXED_LIFE_KEY));
   const saveTarget = getTarget(ringGoals, ringCategory(FIXED_SAVE_KEY));
 
-  // =========================
-  // ✅ 返済リング：自動検出 → 進捗% / あと◯ヶ月 / 完済予測日
-  // =========================
-  const repayRing = useMemo(() => {
-    const words = ["返済", "ローン", "借入", "カードローン", "クレカ", "リボ", "分割"];
-    return extraRings.find((r) => words.some((w) => (r.title ?? "").includes(w))) ?? null;
-  }, [extraRings]);
-
-  const repaymentInfo = useMemo(() => {
-    if (!repayRing) {
-      return {
-        exists: false,
-        title: "",
-        totalDebt: 0,
-        repaidTotal: 0,
-        monthlyPayment: 0,
-        result: calcRepayment({ totalDebt: 0, repaidTotal: 0, monthlyPayment: 0, asOf: new Date() }),
-      };
-    }
-
-    const totalDebt = getTarget(ringGoals, ringCategory(repayRing.ringKey)); // 目標=借入総額
-    const repaidTotal = getRingSums(repayRing.ringKey, true).expense; // 累計支出=返済累計
-    const monthlyPayment = getRingSums(repayRing.ringKey, false).expense; // 月次支出=今月返済
-
-    const result = calcRepayment({
-      totalDebt,
-      repaidTotal,
-      monthlyPayment,
-      asOf: new Date(),
-    });
-
-    return {
-      exists: true,
-      title: repayRing.title,
-      totalDebt,
-      repaidTotal,
-      monthlyPayment,
-      result,
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repayRing, ringGoals, sumByCategoryMonthly, sumByCategoryCarry]);
-
   // 追加リング（carryOver に従う）
   const extraComputed = useMemo(() => {
     return extraRings.map((r) => {
@@ -1041,10 +1038,19 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   };
 
   // =========================
-  // ✅ 保存演出（全身モフ/ひな ＋ 一言）
+  // ✅ 保存演出（全身モフ/ひな ＋ 一言） + 見守りモフ吹き出し
   // =========================
   const [saveOverlay, setSaveOverlay] = useState<{ kind: "mofu" | "hina"; message: string; key: number } | null>(null);
   const overlayTimerRef = useRef<number | null>(null);
+
+  // ✅ 見守りモフ吹き出し（保存演出が消えた後に出す）
+  const [watchMofuSpeech, setWatchMofuSpeech] = useState<{ show: boolean; text: string; key: number }>({
+    show: false,
+    text: "",
+    key: 0,
+  });
+  const watchShowTimerRef = useRef<number | null>(null);
+  const watchHideTimerRef = useRef<number | null>(null);
 
   const pickSaveMessage = (kind: "mofu" | "hina") => {
     const mofu: string[] = ["生活費OK。次。", "またコンビニか？（冗談）", "ちゃんと記録できて偉い。", "積み上げろ。", "無理すんなよ。"];
@@ -1053,19 +1059,55 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     return list[Math.floor(Math.random() * list.length)];
   };
 
+  // ✅ 見守りモフの一言
+  const pickWatchMofu = () => {
+    const list = ["見てるぞ。", "その調子。", "記録は裏切らない。", "OK。続けろ。", "無理はするな。"];
+    return list[Math.floor(Math.random() * list.length)];
+  };
+
   const triggerSaveOverlay = (kind: "mofu" | "hina") => {
+    // 既存タイマー掃除
     if (overlayTimerRef.current !== null) {
       window.clearTimeout(overlayTimerRef.current);
       overlayTimerRef.current = null;
     }
+    if (watchShowTimerRef.current !== null) {
+      window.clearTimeout(watchShowTimerRef.current);
+      watchShowTimerRef.current = null;
+    }
+    if (watchHideTimerRef.current !== null) {
+      window.clearTimeout(watchHideTimerRef.current);
+      watchHideTimerRef.current = null;
+    }
+
+    // 吹き出しをいったん消す（連打対策）
+    setWatchMofuSpeech({ show: false, text: "", key: Date.now() });
 
     const message = pickSaveMessage(kind);
     const key = Date.now();
     setSaveOverlay({ kind, message, key });
 
     overlayTimerRef.current = window.setTimeout(() => {
+      // ✅ ヌッ演出を消す
       setSaveOverlay(null);
       overlayTimerRef.current = null;
+
+      // ✅ 生活費（モフ）だけ：消えた後に見守りモフ吹き出しを出す
+      if (kind === "mofu") {
+        // “消えた後ちょい間” → 出現（0.25秒）
+        watchShowTimerRef.current = window.setTimeout(() => {
+          const text = pickWatchMofu();
+          const k = Date.now();
+          setWatchMofuSpeech({ show: true, text, key: k });
+          watchShowTimerRef.current = null;
+
+          // 出てから2秒で消える
+          watchHideTimerRef.current = window.setTimeout(() => {
+            setWatchMofuSpeech((prev) => ({ ...prev, show: false }));
+            watchHideTimerRef.current = null;
+          }, 2000);
+        }, 250);
+      }
     }, 2600);
   };
 
@@ -1074,6 +1116,14 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       if (overlayTimerRef.current !== null) {
         window.clearTimeout(overlayTimerRef.current);
         overlayTimerRef.current = null;
+      }
+      if (watchShowTimerRef.current !== null) {
+        window.clearTimeout(watchShowTimerRef.current);
+        watchShowTimerRef.current = null;
+      }
+      if (watchHideTimerRef.current !== null) {
+        window.clearTimeout(watchHideTimerRef.current);
+        watchHideTimerRef.current = null;
       }
     };
   }, []);
@@ -1209,16 +1259,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
       sub1: `収入 ${yen(monthSummary.income)} / 支出 ${yen(monthSummary.expense)}`,
       sub2: targetBalance > 0 ? `目標まであと ${yen(remainToTarget)}円` : "",
-
-      // ✅ 返済表示
-      sub3: repaymentInfo?.exists ? `返済率：${repaymentInfo.result.progressPct.toFixed(1)}%` : "",
-      sub4:
-        repaymentInfo?.exists && repaymentInfo.result.months !== null ? `完済まで：あと ${repaymentInfo.result.months}ヶ月` : "",
-      sub5:
-        repaymentInfo?.exists && repaymentInfo.result.payoffDate
-          ? `完済予定日：${formatYMDDate(repaymentInfo.result.payoffDate)}`
-          : "",
-
       achieved: balanceAchieved,
     };
   }, [
@@ -1229,7 +1269,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     targetBalance,
     remainToTarget,
     balanceAchieved,
-    repaymentInfo,
   ]);
 
   // =========================
@@ -1435,11 +1474,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   // =========================
   return (
     <div style={{ padding: 14 }}>
-      <GoalRing
-  title="カードローン返済（累計）"
-  current={156015}
-  target={450000}
-/>
       {/* ✅ 保存演出（ヌッと出る） */}
       {saveOverlay && (
         <SaveCharaOverlay
@@ -1651,6 +1685,75 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             }}
           />
 
+          {/* ✅ 見守りモフ吹き出し（頭の上） */}
+          {watchMofuSpeech.show && (
+            <div
+              key={watchMofuSpeech.key}
+              style={{
+                position: "absolute",
+                left: "50%",
+                top: isMobile ? "78px" : "112px", // ←頭の上（必要なら微調整）
+                transform: "translateX(-50%)",
+                background: "rgba(255,255,255,0.92)",
+                border: "1px solid rgba(0,0,0,0.10)",
+                borderRadius: 16,
+                padding: isMobile ? "9px 12px" : "10px 14px",
+                fontSize: isMobile ? 12 : 13,
+                fontWeight: 900,
+                boxShadow: "0 14px 32px rgba(0,0,0,0.12)",
+                zIndex: 2,
+                pointerEvents: "none",
+                animation: "watchMofuPop 220ms ease-out both",
+                maxWidth: "min(420px, 92vw)",
+                textAlign: "center",
+              }}
+            >
+              {watchMofuSpeech.text}
+              {/* しっぽ */}
+              <div
+                style={{
+                  position: "absolute",
+                  left: "50%",
+                  bottom: -8,
+                  transform: "translateX(-50%)",
+                  width: 0,
+                  height: 0,
+                  borderLeft: "8px solid transparent",
+                  borderRight: "8px solid transparent",
+                  borderTop: "8px solid rgba(255,255,255,0.92)",
+                  filter: "drop-shadow(0 6px 8px rgba(0,0,0,0.10))",
+                }}
+              />
+              <div
+                style={{
+                  position: "absolute",
+                  left: "50%",
+                  bottom: -9,
+                  transform: "translateX(-50%)",
+                  width: 0,
+                  height: 0,
+                  borderLeft: "9px solid transparent",
+                  borderRight: "9px solid transparent",
+                  borderTop: "9px solid rgba(0,0,0,0.08)",
+                  zIndex: -1,
+                }}
+              />
+            </div>
+          )}
+
+          <style jsx>{`
+            @keyframes watchMofuPop {
+              from {
+                opacity: 0;
+                transform: translateX(-50%) translateY(10px) scale(0.98);
+              }
+              to {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0) scale(1);
+              }
+            }
+          `}</style>
+
           {/* 中央：総資産（長押しで目標編集） */}
           <button
             type="button"
@@ -1701,9 +1804,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
               {centerCard.sub1 && <div style={{ marginTop: 10, fontSize: 13, opacity: 0.75 }}>{centerCard.sub1}</div>}
               {centerCard.sub2 && <div style={{ marginTop: 8, fontSize: 13, opacity: 0.75 }}>{centerCard.sub2}</div>}
-              {centerCard.sub3 && <div style={{ marginTop: 8, fontSize: 13, opacity: 0.8 }}>{centerCard.sub3}</div>}
-              {centerCard.sub4 && <div style={{ marginTop: 6, fontSize: 13, opacity: 0.8 }}>{centerCard.sub4}</div>}
-              {centerCard.sub5 && <div style={{ marginTop: 6, fontSize: 13, opacity: 0.8 }}>{centerCard.sub5}</div>}
 
               <div style={{ marginTop: 10, fontSize: 11, opacity: 0.55 }}>長押しで「目標」編集</div>
               {centerCard.achieved && <div style={{ marginTop: 6, fontWeight: 900 }}>✅ 目標達成！</div>}
@@ -1814,6 +1914,33 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             const catKey = ringCategory(r.ringKey);
             const target = getTarget(ringGoals, catKey);
 
+            // ✅ 返済リングだけ追加情報（みやむ要望：返済だけ%）
+            const showRepay = isRepayRingLike(r);
+
+            const repayInfo: RepayInfo | undefined = showRepay
+              ? (() => {
+                  const totalDebt = getTarget(ringGoals, ringCategory(r.ringKey)); // 目標=借入総額
+                  const repaidTotal = getRingSums(r.ringKey, true).expense; // 累計支出=返済累計
+                  const monthlyPayment = getRingSums(r.ringKey, false).expense; // 月次支出=今月返済
+
+                  const result = calcRepayment({
+                    totalDebt,
+                    repaidTotal,
+                    monthlyPayment,
+                    asOf: new Date(),
+                  });
+
+                  return {
+                    enabled: totalDebt > 0,
+                    progressPct: result.progressPct,
+                    remaining: result.remaining,
+                    months: result.months,
+                    payoffDate: result.payoffDate,
+                    message: result.message,
+                  };
+                })()
+              : undefined;
+
             return (
               <ExtraRingButton
                 key={r.id}
@@ -1824,6 +1951,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 charMode={r.charMode}
                 sums={rc.sums}
                 target={target}
+                repayInfo={repayInfo}
                 isMobile={isMobile}
                 pos={p}
                 strokeSmall={strokeSmall}
