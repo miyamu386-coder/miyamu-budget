@@ -558,9 +558,7 @@ function SaveCharaOverlay({
         />
 
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900 }}>
-            {kind === "mofu" ? "保存" : "保存"}
-          </div>
+          <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900 }}>{kind === "mofu" ? "保存" : "保存"}</div>
           <div style={{ fontSize: isMobile ? 18 : 20, fontWeight: 900, marginTop: 6, lineHeight: 1.2 }}>
             {message}
           </div>
@@ -1201,8 +1199,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       return;
     }
 
-    const type: TxType =
-      meta.mode === "income_only" ? "income" : meta.mode === "expense_only" ? "expense" : quickType;
+    const type: TxType = meta.mode === "income_only" ? "income" : meta.mode === "expense_only" ? "expense" : quickType;
 
     setIsSavingQuick(true);
     try {
@@ -1709,9 +1706,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           />
         </div>
 
-        <div style={{ marginTop: 10, fontSize: 11, opacity: 0.65 }}>
-          ※リング目標は「各リングを長押し」で編集（モーダルで開きます）
-        </div>
+        <div style={{ marginTop: 10, fontSize: 11, opacity: 0.65 }}>※リング目標は「各リングを長押し」で編集（モーダルで開きます）</div>
       </details>
 
       {/* =========================
@@ -1760,7 +1755,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 fontSize: isMobile ? 12 : 13,
                 fontWeight: 900,
                 boxShadow: "0 14px 32px rgba(0,0,0,0.12)",
-                zIndex: 2,
+                zIndex: 20,
                 pointerEvents: "none",
                 animation: "watchMofuPop 220ms ease-out both",
                 maxWidth: "min(420px, 92vw)",
@@ -2075,9 +2070,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           >
             <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 10 }}>
               リング目標を編集
-              {goalFocusCategory
-                ? `：${goalFocusCategory === GOAL_ASSET_KEY ? "総資産" : resolveCategoryLabel(goalFocusCategory)}`
-                : ""}
+              {goalFocusCategory ? `：${goalFocusCategory === GOAL_ASSET_KEY ? "総資産" : resolveCategoryLabel(goalFocusCategory)}` : ""}
             </div>
 
             <RingGoalEditor
@@ -2150,8 +2143,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
               const mode = meta.mode;
               const showTabs = mode === "both";
-              const forcedType: TxType =
-                mode === "income_only" ? "income" : mode === "expense_only" ? "expense" : quickType;
+              const forcedType: TxType = meta.mode === "income_only" ? "income" : meta.mode === "expense_only" ? "expense" : quickType;
 
               return (
                 <>
