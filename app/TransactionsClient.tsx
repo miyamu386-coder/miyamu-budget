@@ -559,7 +559,7 @@ function SaveCharaOverlay({
 
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900 }}>
-            {kind === "mofu" ? "生活費 保存" : "貯蓄/累計 保存"}
+            {kind === "mofu" ? "保存" : "保存"}
           </div>
           <div style={{ fontSize: isMobile ? 18 : 20, fontWeight: 900, marginTop: 6, lineHeight: 1.2 }}>
             {message}
@@ -1053,19 +1053,81 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const watchHideTimerRef = useRef<number | null>(null);
 
   const pickSaveMessage = (kind: "mofu" | "hina") => {
-    const mofu: string[] = ["生活費OK。次。", "またコンビニか？（冗談）", "ちゃんと記録できて偉い。", "積み上げろ。", "無理すんなよ。"];
+    const mofu: string[] = ["OK。保存した。", "やるじゃん。", "記録は強い。", "積み上げろ。", "無理すんなよ。"];
     const hina: string[] = ["できた！", "コツコツ大事！", "積み立て成功〜！", "明るい未来！", "いい感じ！"];
     const list = kind === "mofu" ? mofu : hina;
     return list[Math.floor(Math.random() * list.length)];
   };
 
-  // ✅ 見守りモフの一言
-  const pickWatchMofu = () => {
-    const list = ["見てるぞ。", "その調子。", "記録は裏切らない。", "OK。続けろ。", "無理はするな。"];
+  // ✅ 見守り吹き出し：トーン（あとで差し替えできるようにlocalStorage管理）
+  type WatchTone = "repay" | "invest" | "save" | "neutral";
+
+  const WATCH_QUOTES_KEY = "miyamu_watch_quotes_v1";
+
+  type WatchQuotes = Record<WatchTone, string[]>;
+
+  const defaultWatchQuotes: WatchQuotes = {
+    repay: ["偉い。返済は正義。", "ちゃんと減ってる。強い。", "その調子。完済は近いぞ。", "やるじゃん（煽り）", "逃げずに向き合ったな。"],
+    invest: ["焦るな。積み上げは裏切らない。", "長期目線でいこう。", "いいね。淡々といこう。", "相場に振り回されるなよ。", "見守ってる。"],
+    save: ["コツコツ、えらい。", "貯める力は武器だ。", "いい流れ。", "守りが固い。", "その調子。"],
+    neutral: ["見てるぞ。", "その調子。", "記録は裏切らない。", "OK。続けろ。", "無理はするな。"],
+  };
+
+  function loadWatchQuotes(): WatchQuotes {
+    if (typeof window === "undefined") return defaultWatchQuotes;
+    try {
+      const raw = localStorage.getItem(WATCH_QUOTES_KEY);
+      if (!raw) return defaultWatchQuotes;
+      const parsed = JSON.parse(raw);
+      return {
+        repay: Array.isArray(parsed?.repay) ? parsed.repay : defaultWatchQuotes.repay,
+        invest: Array.isArray(parsed?.invest) ? parsed.invest : defaultWatchQuotes.invest,
+        save: Array.isArray(parsed?.save) ? parsed.save : defaultWatchQuotes.save,
+        neutral: Array.isArray(parsed?.neutral) ? parsed.neutral : defaultWatchQuotes.neutral,
+      };
+    } catch {
+      return defaultWatchQuotes;
+    }
+  }
+
+  function saveWatchQuotes(next: WatchQuotes) {
+    try {
+      localStorage.setItem(WATCH_QUOTES_KEY, JSON.stringify(next));
+    } catch {}
+  }
+
+  const [watchQuotes, setWatchQuotes] = useState<WatchQuotes>(defaultWatchQuotes);
+
+  useEffect(() => {
+    setWatchQuotes(loadWatchQuotes());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const pickWatchMofu = (tone: WatchTone) => {
+    const list = watchQuotes[tone] ?? watchQuotes.neutral ?? defaultWatchQuotes.neutral;
     return list[Math.floor(Math.random() * list.length)];
   };
 
-  const triggerSaveOverlay = (kind: "mofu" | "hina") => {
+  // ✅ 保存したリング（meta）から「ヌッのキャラ」と「見守りトーン」を決める
+  const decideSaveReaction = (meta: { title: string; ringKey: string }) => {
+    const t = (meta.title ?? "").toLowerCase();
+
+    const repayWords = ["返済", "ローン", "借入", "カードローン", "クレカ", "リボ", "分割"];
+    const investWords = ["投資", "nisa", "ニーサ", "株", "積立", "つみたて", "資産", "運用", "配当"];
+    const saveWords = ["貯蓄", "貯金", "積立", "積み立て", "資産形成"];
+
+    if (repayWords.some((w) => t.includes(w))) return { kind: "mofu" as const, tone: "repay" as const };
+    if (investWords.some((w) => t.includes(w))) return { kind: "hina" as const, tone: "invest" as const };
+    if (saveWords.some((w) => t.includes(w))) return { kind: "hina" as const, tone: "save" as const };
+
+    // 固定リングは保険で分岐（優先したいならここを強めてOK）
+    if (meta.ringKey === FIXED_LIFE_KEY) return { kind: "mofu" as const, tone: "neutral" as const };
+    if (meta.ringKey === FIXED_SAVE_KEY) return { kind: "hina" as const, tone: "save" as const };
+
+    return { kind: "mofu" as const, tone: "neutral" as const };
+  };
+
+  const triggerSaveOverlay = (kind: "mofu" | "hina", tone: WatchTone = "neutral") => {
     // 既存タイマー掃除
     if (overlayTimerRef.current !== null) {
       window.clearTimeout(overlayTimerRef.current);
@@ -1092,22 +1154,19 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       setSaveOverlay(null);
       overlayTimerRef.current = null;
 
-      // ✅ 生活費（モフ）だけ：消えた後に見守りモフ吹き出しを出す
-      if (kind === "mofu") {
-        // “消えた後ちょい間” → 出現（0.25秒）
-        watchShowTimerRef.current = window.setTimeout(() => {
-          const text = pickWatchMofu();
-          const k = Date.now();
-          setWatchMofuSpeech({ show: true, text, key: k });
-          watchShowTimerRef.current = null;
+      // ✅ kind に関係なく、ヌッの後に見守り吹き出しを出す
+      watchShowTimerRef.current = window.setTimeout(() => {
+        const text = pickWatchMofu(tone);
+        const k = Date.now();
+        setWatchMofuSpeech({ show: true, text, key: k });
+        watchShowTimerRef.current = null;
 
-          // 出てから2秒で消える
-          watchHideTimerRef.current = window.setTimeout(() => {
-            setWatchMofuSpeech((prev) => ({ ...prev, show: false }));
-            watchHideTimerRef.current = null;
-          }, 2000);
-        }, 250);
-      }
+        // 出てから2秒で消える
+        watchHideTimerRef.current = window.setTimeout(() => {
+          setWatchMofuSpeech((prev) => ({ ...prev, show: false }));
+          watchHideTimerRef.current = null;
+        }, 2000);
+      }, 250);
     }, 2600);
   };
 
@@ -1158,9 +1217,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       setTransactions((prev) => [tx, ...prev]);
       closeQuickAdd();
 
-      // ✅ 生活費＝モフ / 貯蓄＝ひな
-      if (meta.ringKey === FIXED_LIFE_KEY) triggerSaveOverlay("mofu");
-      if (meta.ringKey === FIXED_SAVE_KEY) triggerSaveOverlay("hina");
+      // ✅ 全リング：保存 → ヌッ（mofu/hina）→ 見守り吹き出し（repay/invest/save/neutral）
+      const reaction = decideSaveReaction(meta);
+      triggerSaveOverlay(reaction.kind, reaction.tone);
     } catch (e) {
       console.error(e);
       alert("保存に失敗しました（ネットワーク or API）。Vercel Logsも確認してね。");
