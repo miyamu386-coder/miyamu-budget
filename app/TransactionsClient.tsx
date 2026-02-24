@@ -266,7 +266,9 @@ function Ring({
     >
       <circle cx={cx} cy={cy} r={r} fill="none" stroke={trackColor} strokeWidth={stroke} />
       <circle
-        cx={cx} cy={cy} r={r}
+        cx={cx}
+        cy={cy}
+        r={r}
         fill="none"
         stroke={color}
         strokeWidth={stroke}
@@ -553,7 +555,7 @@ function SaveCharaOverlay({
         />
 
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900 }}>保存</div>
+          <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900 }}>{kind === "mofu" ? "保存" : "保存"}</div>
           <div style={{ fontSize: isMobile ? 18 : 20, fontWeight: 900, marginTop: 6, lineHeight: 1.2 }}>
             {message}
           </div>
@@ -563,12 +565,24 @@ function SaveCharaOverlay({
 
       <style jsx>{`
         @keyframes miyamuPopIn {
-          from { opacity: 0; transform: translateY(16px) scale(0.98); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
+          from {
+            opacity: 0;
+            transform: translateY(16px) scale(0.98);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
         }
         @keyframes miyamuNutto {
-          from { opacity: 0; transform: translateY(18px); }
-          to { opacity: 1; transform: translateY(0); }
+          from {
+            opacity: 0;
+            transform: translateY(18px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
       `}</style>
     </div>
@@ -585,6 +599,35 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   // ✅ userKey
   const [userKey, setUserKey] = useState<string>("");
 
+  // ✅ ユーザーID表示（Safari/ホーム画面でも確認できる）
+  const [userIdOpen, setUserIdOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const copyText = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      // fallback（iOS古め対策）
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      try {
+        document.execCommand("copy");
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1200);
+      } finally {
+        document.body.removeChild(ta);
+      }
+    }
+  };
+
+  // 初回：userKey決定（getOrCreateUserKeyが内部でlocalStorageを見る想定）
   useEffect(() => {
     (async () => {
       try {
@@ -597,6 +640,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     })();
   }, []);
 
+  // ✅ userKeyが変わったらデータ再取得
   useEffect(() => {
     if (!userKey) return;
 
@@ -643,6 +687,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   };
 
   const regenerateUserKey = async () => {
+    // ✅ 既存の保存キーを消して「新規作成させる」
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch {}
@@ -660,6 +705,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   // --- 月切替（UTCズレ対策でローカル日付を使う）
   const nowYm = ymdToMonthKey(todayYMD());
 
+  // ✅ 月状態はlocalStorageに保存して「次回も同じ月」を開ける
   const selectedYmKey = useMemo(() => {
     const k = userKey || "anonymous";
     return `miyamu_selected_ym:${k}`;
@@ -675,6 +721,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     }
   });
 
+  // userKeyが確定したら、ユーザー別キーで読み直す
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -708,6 +755,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   }, [transactions, selectedYm]);
 
   const carryOverTransactions = useMemo(() => {
+    // selectedYmの月末までの全データ（未来分は入れない）
     return transactions.filter((t) => {
       const ymd = (t.occurredAt ?? "").slice(0, 10);
       if (!ymd) return false;
@@ -772,7 +820,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
           return {
             id: x.id,
-            ringKey: typeof x.ringKey === "string" ? x.ringKey : x.id,
+            ringKey: typeof x.ringKey === "string" ? x.ringKey : x.id, // 旧データ救済
             title,
             mode,
             color: x.color || "#60a5fa",
@@ -835,8 +883,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     return { ...s, balance };
   };
 
-  const lifeSums = getRingSums(FIXED_LIFE_KEY, false);
-  const saveSums = getRingSums(FIXED_SAVE_KEY, true);
+  // 固定リング
+  const lifeSums = getRingSums(FIXED_LIFE_KEY, false); // ✅ 生活費は月次
+  const saveSums = getRingSums(FIXED_SAVE_KEY, true); // ✅ 貯蓄は累計
 
   // =========================
   // ✅ 目標（ringGoals.ts）から取得
@@ -852,6 +901,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const lifeTarget = getTarget(ringGoals, ringCategory(FIXED_LIFE_KEY));
   const saveTarget = getTarget(ringGoals, ringCategory(FIXED_SAVE_KEY));
 
+  // 追加リング（carryOver に従う）
   const extraComputed = useMemo(() => {
     return extraRings.map((r) => {
       const s = getRingSums(r.ringKey, !!r.carryOver);
@@ -860,10 +910,11 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [extraRings, sumByCategoryMonthly, sumByCategoryCarry]);
 
+  // 総資産（中央）= 全リング残高の合計（各リングのスコープで計算）
   const totalAssetBalance = useMemo(() => {
     let total = 0;
-    total += lifeSums.balance;
-    total += saveSums.balance;
+    total += lifeSums.balance; // 月次
+    total += saveSums.balance; // 累計
     for (const r of extraComputed) total += r.sums.balance;
     return total;
   }, [lifeSums.balance, saveSums.balance, extraComputed]);
@@ -872,10 +923,12 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const remainToTarget = Math.max(0, targetBalance - totalAssetBalance);
   const balanceAchieved = targetBalance > 0 ? totalAssetBalance >= targetBalance : false;
 
+  // 生活費：月次（支出のみ想定）
   const lifeSpent = lifeSums.expense;
   const lifeRingProgress = lifeTarget > 0 ? clamp01(lifeSpent / lifeTarget) : 0;
   const lifeAchieved = lifeTarget > 0 ? lifeSpent >= lifeTarget : false;
 
+  // 貯蓄：累計（収入のみ想定でもOK）
   const savedTotal = saveSums.income;
   const saveRingProgress = saveTarget > 0 ? clamp01(savedTotal / saveTarget) : 0;
   const saveAchieved = saveTarget > 0 ? savedTotal >= saveTarget : false;
@@ -958,7 +1011,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const [quickType, setQuickType] = useState<TxType>("expense");
   const [quickAmountStr, setQuickAmountStr] = useState("");
   const [quickDate, setQuickDate] = useState(todayYMD());
-  const [quickDetail, setQuickDetail] = useState("");
+  const [quickDetail, setQuickDetail] = useState(""); // ✅ 内訳
   const [isSavingQuick, setIsSavingQuick] = useState(false);
 
   const openQuickAdd = (target: QuickAddTarget, defaultType: TxType) => {
@@ -1008,11 +1061,12 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   };
 
   // =========================
-  // ✅ 保存演出 + 見守りモフ吹き出し
+  // ✅ 保存演出（全身モフ/ひな ＋ 一言） + 見守りモフ吹き出し
   // =========================
   const [saveOverlay, setSaveOverlay] = useState<{ kind: "mofu" | "hina"; message: string; key: number } | null>(null);
   const overlayTimerRef = useRef<number | null>(null);
 
+  // ✅ 見守りモフ吹き出し（保存演出が消えた後に出す）
   const [watchMofuSpeech, setWatchMofuSpeech] = useState<{ show: boolean; text: string; key: number }>({
     show: false,
     text: "",
@@ -1028,9 +1082,10 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     return list[Math.floor(Math.random() * list.length)];
   };
 
+  // ✅ 見守り吹き出し：トーン
   type WatchTone = "repay" | "invest" | "save" | "neutral";
-  const WATCH_QUOTES_KEY = "miyamu_watch_quotes_v1";
 
+  const WATCH_QUOTES_KEY = "miyamu_watch_quotes_v1";
   type WatchQuotes = Record<WatchTone, string[]>;
 
   const defaultWatchQuotes: WatchQuotes = {
@@ -1069,6 +1124,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     return list[Math.floor(Math.random() * list.length)];
   };
 
+  // ✅ 保存したリング（meta）から「ヌッのキャラ」と「見守りトーン」を決める
   const decideSaveReaction = (meta: { title: string; ringKey: string }) => {
     const t = (meta.title ?? "").toLowerCase();
 
@@ -1087,6 +1143,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   };
 
   const triggerSaveOverlay = (kind: "mofu" | "hina", tone: WatchTone = "neutral") => {
+    // 既存タイマー掃除
     if (overlayTimerRef.current !== null) {
       window.clearTimeout(overlayTimerRef.current);
       overlayTimerRef.current = null;
@@ -1100,6 +1157,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       watchHideTimerRef.current = null;
     }
 
+    // 吹き出しをいったん消す（連打対策）
     setWatchMofuSpeech({ show: false, text: "", key: Date.now() });
 
     const message = pickSaveMessage(kind);
@@ -1107,15 +1165,18 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     setSaveOverlay({ kind, message, key });
 
     overlayTimerRef.current = window.setTimeout(() => {
+      // ✅ ヌッ演出を消す
       setSaveOverlay(null);
       overlayTimerRef.current = null;
 
+      // ✅ ヌッの後に見守り吹き出しを出す
       watchShowTimerRef.current = window.setTimeout(() => {
         const text = pickWatchMofu(tone);
         const k = Date.now();
         setWatchMofuSpeech({ show: true, text, key: k });
         watchShowTimerRef.current = null;
 
+        // 出てから2秒で消える
         watchHideTimerRef.current = window.setTimeout(() => {
           setWatchMofuSpeech((prev) => ({ ...prev, show: false }));
           watchHideTimerRef.current = null;
@@ -1155,8 +1216,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       return;
     }
 
-    const type: TxType =
-      meta.mode === "income_only" ? "income" : meta.mode === "expense_only" ? "expense" : quickType;
+    const type: TxType = meta.mode === "income_only" ? "income" : meta.mode === "expense_only" ? "expense" : quickType;
 
     setIsSavingQuick(true);
     try {
@@ -1171,6 +1231,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       setTransactions((prev) => [tx, ...prev]);
       closeQuickAdd();
 
+      // ✅ 全リング：保存 → ヌッ（mofu/hina）→ 見守り吹き出し
       const reaction = decideSaveReaction(meta);
       triggerSaveOverlay(reaction.kind, reaction.tone);
     } catch (e) {
@@ -1268,6 +1329,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       value: totalAssetBalance,
       progress: progressToTarget,
       color: "#9ca3af",
+
       sub1: `収入 ${yen(monthSummary.income)} / 支出 ${yen(monthSummary.expense)}`,
       sub2: targetBalance > 0 ? `目標まであと ${yen(remainToTarget)}円` : "",
       achieved: balanceAchieved,
@@ -1300,6 +1362,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     return categoryLabelMap.get(c) ?? c;
   };
 
+  // Form側で「生活費」「貯蓄」「追加リング名」を打った時に ring:* に変換するため
   const ringTitleResolver = useMemo(() => {
     const pairs: Array<{ title: string; category: string }> = [];
     pairs.push({ title: "生活費", category: ringCategory(FIXED_LIFE_KEY) });
@@ -1327,6 +1390,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     const radiusX = isMobile ? 120 : 210;
     const radiusY = isMobile ? 210 : 300;
 
+    // 下 → 左下 → 右下 → 左上 → 右上
     const angles = [-90, -140, -40, 180, 0];
 
     return extraRings.slice(0, angles.length).map((r, i) => {
@@ -1516,6 +1580,24 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           </>
         )}
 
+        {/* ✅ 本番でも使える：ユーザーID確認ボタン */}
+        <button
+          type="button"
+          onClick={() => setUserIdOpen(true)}
+          style={{
+            padding: "8px 10px",
+            borderRadius: 10,
+            border: "1px solid #ddd",
+            background: "#fff",
+            cursor: "pointer",
+            fontWeight: 900,
+            fontSize: 12,
+          }}
+          title="この端末のユーザーID（userKey）を表示"
+        >
+          ユーザーID
+        </button>
+
         <div style={{ flex: 1 }} />
 
         <button
@@ -1564,6 +1646,91 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           ▶
         </button>
       </div>
+
+      {/* ✅ userKey表示モーダル（本番OK） */}
+      {userIdOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 10000,
+          }}
+          onClick={() => setUserIdOpen(false)}
+        >
+          <div
+            style={{
+              width: "min(560px, 96vw)",
+              background: "#fff",
+              borderRadius: 16,
+              padding: 16,
+              boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 10 }}>この端末のユーザーID（userKey）</div>
+
+            <div
+              style={{
+                border: "1px solid #eee",
+                borderRadius: 12,
+                padding: 12,
+                fontSize: 12,
+                wordBreak: "break-all",
+                background: "#fafafa",
+                fontWeight: 800,
+              }}
+            >
+              {userKey || "（取得中…）"}
+            </div>
+
+            <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => copyText(userKey)}
+                disabled={!userKey}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 12,
+                  border: "1px solid #111",
+                  background: "#111",
+                  color: "#fff",
+                  fontWeight: 900,
+                  cursor: userKey ? "pointer" : "not-allowed",
+                  opacity: userKey ? 1 : 0.6,
+                }}
+              >
+                {copied ? "コピーした！" : "コピー"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setUserIdOpen(false)}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 12,
+                  border: "1px solid #ddd",
+                  background: "#fff",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                閉じる
+              </button>
+            </div>
+
+            <div style={{ marginTop: 10, fontSize: 11, opacity: 0.65 }}>
+              ※ Safari と ホーム画面でデータがズレる時は、このIDが同じか確認してね
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* userKey切替UI（ローカルのみ） */}
       {SHOW_USERKEY_UI && keyEditingOpen && (
@@ -1629,7 +1796,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
         </div>
       )}
 
-      {/* ✅ 手入力フォーム */}
+      {/* ✅ 手入力フォーム（スマホは折りたたみ / PCは開く） */}
       <details
         open={!isMobile}
         style={{
@@ -1659,13 +1826,11 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           />
         </div>
 
-        <div style={{ marginTop: 10, fontSize: 11, opacity: 0.65 }}>
-          ※リング目標は「各リングを長押し」で編集（モーダルで開きます）
-        </div>
+        <div style={{ marginTop: 10, fontSize: 11, opacity: 0.65 }}>※リング目標は「各リングを長押し」で編集（モーダルで開きます）</div>
       </details>
 
       {/* =========================
-          ✅ 円グラフエリア
+          ✅ 円グラフエリア（固定3＋追加）
          ========================= */}
       <div ref={layoutRef} style={{ maxWidth: 980, margin: "0 auto" }}>
         <div
@@ -1678,7 +1843,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             alignItems: "center",
           }}
         >
-          {/* ✅ 見守りモフ：背景（透かし） */}
+          {/* ✅ 見守りモフ：円グラフ背景に透かし常駐 */}
           <img
             src="/mofu-watch.png"
             alt="watch mofu"
@@ -1688,30 +1853,11 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               top: isMobile ? "-10px" : "-40px",
               transform: "translateX(-50%)",
               width: isMobile ? 280 : 520,
-              opacity: watchMofuSpeech.show ? 0.28 : 0.5, // ←吹き出し中は薄くして差が分かる
+              opacity: 0.5,
               pointerEvents: "none",
               zIndex: 1,
             }}
           />
-
-          {/* ✅ ✅ 追加：吹き出し中だけ “前面モフ” を表示（これが無かった！） */}
-          {watchMofuSpeech.show && (
-            <img
-              src="/mofu-watch.png"
-              alt="watch mofu front"
-              style={{
-                position: "absolute",
-                left: "50%",
-                top: isMobile ? "-10px" : "-40px",
-                transform: "translateX(-50%) scale(1.06)",
-                width: isMobile ? 280 : 520,
-                opacity: 1,
-                pointerEvents: "none",
-                zIndex: 50, // ←リング(3)より上
-                filter: "drop-shadow(0 20px 40px rgba(0,0,0,0.25))",
-              }}
-            />
-          )}
 
           {/* ✅ 見守りモフ吹き出し（頭の上） */}
           {watchMofuSpeech.show && (
@@ -1729,7 +1875,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 fontSize: isMobile ? 12 : 13,
                 fontWeight: 900,
                 boxShadow: "0 14px 32px rgba(0,0,0,0.12)",
-                zIndex: 60,
+                zIndex: 20,
                 pointerEvents: "none",
                 animation: "watchMofuPop 220ms ease-out both",
                 maxWidth: "min(420px, 92vw)",
@@ -1737,6 +1883,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               }}
             >
               {watchMofuSpeech.text}
+              {/* しっぽ */}
               <div
                 style={{
                   position: "absolute",
@@ -1807,9 +1954,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               top: "40%",
               transform: "translate(-50%, -50%)",
               overflow: "visible",
-              boxShadow: centerCard.achieved
-                ? "0 0 28px rgba(34,197,94,0.45)"
-                : "0 10px 25px rgba(0,0,0,0.06)",
+              boxShadow: centerCard.achieved ? "0 0 28px rgba(34,197,94,0.45)" : "0 10px 25px rgba(0,0,0,0.06)",
               zIndex: 3,
               touchAction: "manipulation",
               cursor: "pointer",
@@ -1881,14 +2026,10 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               <div style={{ marginTop: 4, fontSize: 11, opacity: 0.6 }}>今月</div>
 
               {lifeTarget > 0 && lifeTarget - lifeSpent > 0 && (
-                <div style={{ fontSize: 11, marginTop: 2, opacity: 0.75 }}>
-                  目標まであと {(lifeTarget - lifeSpent).toLocaleString()}円
-                </div>
+                <div style={{ fontSize: 11, marginTop: 2, opacity: 0.75 }}>目標まであと {(lifeTarget - lifeSpent).toLocaleString()}円</div>
               )}
 
-              {lifeTarget > 0 && lifeTarget - lifeSpent <= 0 && (
-                <div style={{ fontSize: 11, marginTop: 2, color: "green" }}>🎉 達成！</div>
-              )}
+              {lifeTarget > 0 && lifeTarget - lifeSpent <= 0 && <div style={{ fontSize: 11, marginTop: 2, color: "green" }}>🎉 達成！</div>}
 
               <div style={{ marginTop: 6, fontSize: 11, opacity: 0.55 }}>タップで入力 / 長押しで目標編集</div>
             </div>
@@ -1947,13 +2088,14 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             const catKey = ringCategory(r.ringKey);
             const target = getTarget(ringGoals, catKey);
 
+            // ✅ 返済リングだけ追加情報
             const showRepay = isRepayRingLike(r);
 
             const repayInfo: RepayInfo | undefined = showRepay
               ? (() => {
-                  const totalDebt = getTarget(ringGoals, ringCategory(r.ringKey));
-                  const repaidTotal = getRingSums(r.ringKey, true).expense;
-                  const monthlyPayment = getRingSums(r.ringKey, false).expense;
+                  const totalDebt = getTarget(ringGoals, ringCategory(r.ringKey)); // 目標=借入総額
+                  const repaidTotal = getRingSums(r.ringKey, true).expense; // 累計支出=返済累計
+                  const monthlyPayment = getRingSums(r.ringKey, false).expense; // 月次支出=今月返済
 
                   const result = calcRepayment({
                     totalDebt,
@@ -2048,9 +2190,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           >
             <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 10 }}>
               リング目標を編集
-              {goalFocusCategory
-                ? `：${goalFocusCategory === GOAL_ASSET_KEY ? "総資産" : resolveCategoryLabel(goalFocusCategory)}`
-                : ""}
+              {goalFocusCategory ? `：${goalFocusCategory === GOAL_ASSET_KEY ? "総資産" : resolveCategoryLabel(goalFocusCategory)}` : ""}
             </div>
 
             <RingGoalEditor
@@ -2123,8 +2263,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
               const mode = meta.mode;
               const showTabs = mode === "both";
-              const forcedType: TxType =
-                meta.mode === "income_only" ? "income" : meta.mode === "expense_only" ? "expense" : quickType;
+              const forcedType: TxType = meta.mode === "income_only" ? "income" : meta.mode === "expense_only" ? "expense" : quickType;
 
               return (
                 <>
