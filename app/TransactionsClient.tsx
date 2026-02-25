@@ -1602,6 +1602,56 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           onClose={() => setSaveOverlay(null)}
         />
       )}
+      {/* ✅ 見守りモフ（常に最前面） */}
+{watchMofuSpeech.show && (
+  <div
+    style={{
+      position: "fixed",
+      inset: 0,
+      zIndex: 99999,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      pointerEvents: "none",
+    }}
+  >
+    <div style={{ position: "relative" }}>
+      {/* 吹き出し */}
+      <div
+        style={{
+          position: "absolute",
+          top: -70,
+          left: "50%",
+          transform: "translateX(-50%)",
+          background: "white",
+          border: "1px solid #ddd",
+          borderRadius: 14,
+          padding: "10px 14px",
+          fontSize: 14,
+          fontWeight: 700,
+          boxShadow: "0 6px 18px rgba(0,0,0,0.12)",
+          zIndex: 2,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {watchMofuSpeech.text}
+      </div>
+
+      {/* モフ本体 */}
+      <img
+        src="/mofu-watch.png"  // ← ここを実際の見守り画像名に
+        alt="watch mofu"
+        style={{
+          width: 260,
+          height: "auto",
+          display: "block",
+          position: "relative",
+          zIndex: 1,
+        }}
+      />
+    </div>
+  </div>
+)}
 
       {/* 月切替 */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
