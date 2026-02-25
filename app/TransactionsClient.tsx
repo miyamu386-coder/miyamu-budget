@@ -2042,21 +2042,24 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             alignItems: "center",
           }}
         >
-          {/* ✅ 見守りモフ：円グラフ背景に透かし常駐 */}
-          <img
-            src="/mofu-watch.png"
-            alt="watch mofu"
-            style={{
-              position: "absolute",
-              left: "50%",
-              top: isMobile ? "-10px" : "-40px",
-              transform: "translateX(-50%)",
-              width: isMobile ? 280 : 520,
-              opacity: 0.5,
-              pointerEvents: "none",
-              zIndex: 1,
-            }}
-          />
+         {/* ✅ 見守りモフ：円グラフ背景に透かし常駐（ただし前面演出中は消す） */}
+{!watchMofuSpeech.show && (
+  <img
+    src="/mofu-watch.png"
+    alt="watch mofu"
+    style={{
+      position: "absolute",
+      left: "50%",
+      top: isMobile ? "-10px" : "-40px",
+      transform: "translateX(-50%)",
+      width: isMobile ? 280 : 520,
+      opacity: 0.5,
+      pointerEvents: "none",
+      zIndex: 1,
+    }}
+  />
+)}
+          /
 
           {/* ✅ 見守りモフ吹き出し（頭の上） */}
           {watchMofuSpeech.show && (
