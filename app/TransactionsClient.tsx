@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import TransactionForm from "./TransactionForm";
 import TransactionList from "./TransactionList";
 import type { Transaction } from "./types";
-import { getOrCreateUserKey } from "../lib/userKey";
+import { getOrCreateUserKey, clearUserKeyCache, getUserKeyName, setUserKeyName } from "../lib/userKey";
 import styles from "./TransactionsClient.module.css";
 
 // ✅ リング目標（localStorage）
@@ -603,6 +603,49 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const [userIdOpen, setUserIdOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // ✅ ユーザーID貼り付け切替＋命名
+  const [pasteKey, setPasteKey] = useState("");
+  const [pasteName, setPasteName] = useState("");
+  const [currentName, setCurrentName] = useState("");
+
+  useEffect(() => {
+    if (!userIdOpen) return;
+    setPasteKey("");
+    setPasteName("");
+    setCurrentName(getUserKeyName(userKey));
+  }, [userIdOpen, userKey]);
+
+  const isValidUserKey = (s: string) => {
+    const v = s.trim();
+    // 既存は 32桁hex が多い（例: 3e15a0...）
+    if (/^[0-9a-f]{32}$/i.test(v)) return true;
+    // 一応 8〜64 の任意キーも許容（ローカル用切替との互換）
+    if (v.length >= 8 && v.length <= 64) return true;
+    return false;
+  };
+
+  const applyPastedKey = () => {
+    const next = normalizeUserKeyInput(pasteKey);
+
+    if (!isValidUserKey(next)) {
+      alert("ユーザーIDの形式が違うみたい（32桁の英数字 or 8〜64文字）");
+      return;
+    }
+
+    // ✅ 名前（ユーザーネーム）を保存
+    const nm = pasteName.trim();
+    if (nm) setUserKeyName(next, nm);
+
+    // ✅ この端末の userKey を切替（Safari/ホーム画面で合わせる用）
+    try {
+      localStorage.setItem(STORAGE_KEY, next);
+    } catch {}
+
+    clearUserKeyCache();
+    setUserKey(next);
+    setUserIdOpen(false);
+  };
+
   const copyText = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -682,6 +725,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     }
 
     localStorage.setItem(STORAGE_KEY, next);
+    clearUserKeyCache();
     setUserKey(next);
     setKeyEditingOpen(false);
   };
@@ -693,6 +737,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     } catch {}
 
     try {
+      clearUserKeyCache();
       const k = await getOrCreateUserKey();
       setUserKey(k);
       setKeyEditingOpen(false);
@@ -1562,7 +1607,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
         {SHOW_USERKEY_UI && (
           <>
-            <div style={{ fontSize: 12, opacity: 0.75 }}>userKey: {maskKey(userKey)}</div>
+            <div style={{ fontSize: 12, opacity: 0.75 }}>
+              userKey: {maskKey(userKey)} {getUserKeyName(userKey) ? `（${getUserKeyName(userKey)}）` : ""}
+            </div>
             <button
               type="button"
               onClick={() => setKeyEditingOpen((v) => !v)}
@@ -1690,6 +1737,12 @@ export default function TransactionsClient({ initialTransactions }: Props) {
               {userKey || "（取得中…）"}
             </div>
 
+            {currentName && (
+              <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
+                ユーザーネーム：<b>{currentName}</b>
+              </div>
+            )}
+
             <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
               <button
                 type="button"
@@ -1727,6 +1780,84 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
             <div style={{ marginTop: 10, fontSize: 11, opacity: 0.65 }}>
               ※ Safari と ホーム画面でデータがズレる時は、このIDが同じか確認してね
+            </div>
+
+            {/* ✅ 追加：貼り付けで userKey を揃える */}
+            <hr style={{ margin: "12px 0" }} />
+
+            <div style={{ fontSize: 11, opacity: 0.7, fontWeight: 900, marginBottom: 6 }}>
+              別のユーザーIDを貼り付けて、この端末のIDを揃える
+            </div>
+            <div style={{ fontSize: 11, opacity: 0.65, marginBottom: 8 }}>※ このユーザーIDは第三者に送らないでください</div>
+
+            <input
+              value={pasteKey}
+              onChange={(e) => setPasteKey(e.target.value)}
+              placeholder="32桁のユーザーID を貼り付け（例：3e15a0...）"
+              style={{
+                width: "100%",
+                padding: 10,
+                borderRadius: 10,
+                border: "1px solid #ccc",
+                fontSize: 12,
+              }}
+            />
+
+            {pasteKey.trim() && pasteKey.trim() !== userKey && (
+              <>
+                <div style={{ marginTop: 10, fontSize: 11, opacity: 0.7, fontWeight: 900 }}>このIDのユーザーネーム（任意）</div>
+                <input
+                  value={pasteName}
+                  onChange={(e) => setPasteName(e.target.value)}
+                  placeholder="例）Safari用 / ホーム画面用 / いっちー"
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    borderRadius: 10,
+                    border: "1px solid #ccc",
+                    fontSize: 12,
+                    marginTop: 6,
+                  }}
+                />
+              </>
+            )}
+
+            <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={applyPastedKey}
+                disabled={!pasteKey.trim()}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 12,
+                  border: "1px solid #111",
+                  background: "#111",
+                  color: "#fff",
+                  fontWeight: 900,
+                  cursor: pasteKey.trim() ? "pointer" : "not-allowed",
+                  opacity: pasteKey.trim() ? 1 : 0.6,
+                }}
+              >
+                このIDに切り替える
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPasteKey("");
+                  setPasteName("");
+                }}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 12,
+                  border: "1px solid #ddd",
+                  background: "#fff",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                クリア
+              </button>
             </div>
           </div>
         </div>
