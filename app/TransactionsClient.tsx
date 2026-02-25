@@ -1603,58 +1603,56 @@ export default function TransactionsClient({ initialTransactions }: Props) {
         />
       )}
 
-      {/* ✅ 保存後だけ：見守りモフ＋吹き出しを最前面に（位置固定 / 常に最前面） */}
-      {watchMofuSpeech.show && (
-        <div
-          key={watchMofuSpeech.key}
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 99999,
-            pointerEvents: "none",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "flex-start",
-          }}
-        >
-          <div
-            style={{
-              position: "relative",
-              marginTop: isMobile ? 160 : 190,
-            }}
-          >
-            {/* 吹き出し */}
-            <div
-              style={{
-                position: "absolute",
-                top: isMobile ? -58 : -70,
-                left: "50%",
-                transform: "translateX(-50%)",
-                background: "rgba(255,255,255,0.96)",
-                borderRadius: 16,
-                padding: isMobile ? "9px 12px" : "10px 14px",
-                fontSize: isMobile ? 12 : 14,
-                fontWeight: 900,
-                boxShadow: "0 14px 32px rgba(0,0,0,0.12)",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {watchMofuSpeech.text}
-            </div>
+      {/* ✅ 保存後だけ：見守りモフ＋吹き出し（下に張り付け固定） */}
+{watchMofuSpeech.show && (
+  <div
+    key={watchMofuSpeech.key}
+    style={{
+      position: "fixed",
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 99999,
+      pointerEvents: "none",
+      display: "flex",
+      justifyContent: "center",
+      paddingBottom: isMobile ? 18 : 24, // 下余白
+    }}
+  >
+    <div style={{ position: "relative" }}>
+      {/* 吹き出し */}
+      <div
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: isMobile ? -62 : -74,
+          transform: "translateX(-50%)",
+          background: "rgba(255,255,255,0.96)",
+          borderRadius: 16,
+          padding: isMobile ? "9px 12px" : "10px 14px",
+          fontSize: isMobile ? 12 : 14,
+          fontWeight: 900,
+          boxShadow: "0 14px 32px rgba(0,0,0,0.12)",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {watchMofuSpeech.text}
+      </div>
 
-            {/* モフ本体 */}
-            <img
-              src="/mofu-watch.png"
-              alt="watch mofu"
-              style={{
-                width: isMobile ? 260 : 340,
-                display: "block",
-                filter: "drop-shadow(0 20px 40px rgba(0,0,0,0.25))",
-              }}
-            />
-          </div>
-        </div>
-      )}
+      {/* モフ本体 */}
+      <img
+        src="/mofu-watch.png"
+        alt="watch mofu"
+        style={{
+          width: isMobile ? 260 : 340,
+          height: "auto",
+          display: "block",
+          filter: "drop-shadow(0 20px 40px rgba(0,0,0,0.25))",
+        }}
+      />
+    </div>
+  </div>
+)}
 
       {/* 月切替 */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
