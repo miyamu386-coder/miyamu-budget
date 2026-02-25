@@ -676,17 +676,12 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   };
 
   // 初回：userKey決定（getOrCreateUserKeyが内部でlocalStorageを見る想定）
-  useEffect(() => {
-    (async () => {
-      try {
-        const k = await getOrCreateUserKey();
-        setUserKey(k);
-      } catch (e) {
-        console.error("getOrCreateUserKey failed:", e);
-        setUserKey(`fallback_${Date.now()}`);
-      }
-    })();
-  }, []);
+ useEffect(() => {
+  (async () => {
+    const k = await getOrCreateUserKey();
+    setUserKey(k);
+  })();
+}, []);
 
   // ✅ userKeyが変わったらデータ再取得
   useEffect(() => {
