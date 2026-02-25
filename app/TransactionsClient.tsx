@@ -1587,7 +1587,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     }
   };
 
-  // =========================
+   // =========================
   // ✅ ここが “returnでJSXを包む”
   // =========================
   return (
@@ -1602,56 +1602,59 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           onClose={() => setSaveOverlay(null)}
         />
       )}
-      {/* ✅ 見守りモフ（常に最前面） */}
-{watchMofuSpeech.show && (
-  <div
-    style={{
-      position: "fixed",
-      inset: 0,
-      zIndex: 99999,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      pointerEvents: "none",
-    }}
-  >
-    <div style={{ position: "relative" }}>
-      {/* 吹き出し */}
-      <div
-        style={{
-          position: "absolute",
-          top: -70,
-          left: "50%",
-          transform: "translateX(-50%)",
-          background: "white",
-          border: "1px solid #ddd",
-          borderRadius: 14,
-          padding: "10px 14px",
-          fontSize: 14,
-          fontWeight: 700,
-          boxShadow: "0 6px 18px rgba(0,0,0,0.12)",
-          zIndex: 2,
-          whiteSpace: "nowrap",
-        }}
-      >
-        {watchMofuSpeech.text}
-      </div>
 
-      {/* モフ本体 */}
-      <img
-        src="/mofu-watch.png"  // ← ここを実際の見守り画像名に
-        alt="watch mofu"
-        style={{
-          width: 260,
-          height: "auto",
-          display: "block",
-          position: "relative",
-          zIndex: 1,
-        }}
-      />
-    </div>
-  </div>
-)}
+      {/* ✅ 保存後だけ：見守りモフ＋吹き出しを最前面に（位置固定 / 常に最前面） */}
+      {watchMofuSpeech.show && (
+        <div
+          key={watchMofuSpeech.key}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 99999,
+            pointerEvents: "none",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "flex-start",
+          }}
+        >
+          <div
+            style={{
+              position: "relative",
+              marginTop: isMobile ? 160 : 190,
+            }}
+          >
+            {/* 吹き出し */}
+            <div
+              style={{
+                position: "absolute",
+                top: isMobile ? -58 : -70,
+                left: "50%",
+                transform: "translateX(-50%)",
+                background: "rgba(255,255,255,0.96)",
+                borderRadius: 16,
+                padding: isMobile ? "9px 12px" : "10px 14px",
+                fontSize: isMobile ? 12 : 14,
+                fontWeight: 900,
+                boxShadow: "0 14px 32px rgba(0,0,0,0.12)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {watchMofuSpeech.text}
+            </div>
+
+            {/* モフ本体 */}
+            <img
+              src="/mofu-watch.png"
+              alt="watch mofu"
+              style={{
+                width: isMobile ? 260 : 340,
+                display: "block",
+                filter: "drop-shadow(0 20px 40px rgba(0,0,0,0.25))",
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* 月切替 */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
@@ -1660,6 +1663,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             <div style={{ fontSize: 12, opacity: 0.75 }}>
               userKey: {maskKey(userKey)} {getUserKeyName(userKey) ? `（${getUserKeyName(userKey)}）` : ""}
             </div>
+
             <button
               type="button"
               onClick={() => setKeyEditingOpen((v) => !v)}
@@ -1674,21 +1678,22 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             >
               切替
             </button>
+
             <button
-  type="button"
-  onClick={hardReload}
-  style={{
-    padding: "8px 10px",
-    borderRadius: 10,
-    border: "1px solid #ddd",
-    background: "#fff",
-    cursor: "pointer",
-    fontWeight: 900,
-    fontSize: 12,
-  }}
->
-  最新版読み直し
-</button>
+              type="button"
+              onClick={hardReload}
+              style={{
+                padding: "8px 10px",
+                borderRadius: 10,
+                border: "1px solid #ddd",
+                background: "#fff",
+                cursor: "pointer",
+                fontWeight: 900,
+                fontSize: 12,
+              }}
+            >
+              最新版読み直し
+            </button>
           </>
         )}
 
