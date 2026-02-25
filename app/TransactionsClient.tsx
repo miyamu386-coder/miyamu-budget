@@ -1809,7 +1809,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 <input
                   value={pasteName}
                   onChange={(e) => setPasteName(e.target.value)}
-                  placeholder="例）Safari用 / ホーム画面用 / いっちー"
+                  placeholder="例）任意の名前 / "
                   style={{
                     width: "100%",
                     padding: 10,
@@ -2491,7 +2491,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                           fontSize: 16,
                           marginTop: 6,
                         }}
-                        placeholder={forcedType === "income" ? "例）手もみ / 介護 / XCREAM" : "例）コンビニ / 外食 / スーパー"}
+                        placeholder={forcedType === "income" ? "例）報酬 / 給与 / その他" : "例）コンビニ / 外食 / スーパー"}
                       />
                     </label>
 
