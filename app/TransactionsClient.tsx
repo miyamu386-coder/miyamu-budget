@@ -608,6 +608,11 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const [pasteName, setPasteName] = useState("");
   const [currentName, setCurrentName] = useState("");
 
+  const hardReload = () => {
+  const url = new URL(window.location.href);
+  url.searchParams.set("v", String(Date.now()));
+  window.location.replace(url.toString());
+};
   useEffect(() => {
     if (!userIdOpen) return;
     setPasteKey("");
@@ -1624,6 +1629,21 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             >
               切替
             </button>
+            <button
+  type="button"
+  onClick={hardReload}
+  style={{
+    padding: "8px 10px",
+    borderRadius: 10,
+    border: "1px solid #ddd",
+    background: "#fff",
+    cursor: "pointer",
+    fontWeight: 900,
+    fontSize: 12,
+  }}
+>
+  最新版読み直し
+</button>
           </>
         )}
 
