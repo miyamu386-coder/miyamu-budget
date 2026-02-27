@@ -266,9 +266,7 @@ function Ring({
     >
       <circle cx={cx} cy={cy} r={r} fill="none" stroke={trackColor} strokeWidth={stroke} />
       <circle
-        cx={cx}
-        cy={cy}
-        r={r}
+        cx={cx} cy={cy} r={r}
         fill="none"
         stroke={color}
         strokeWidth={stroke}
@@ -609,10 +607,11 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const [currentName, setCurrentName] = useState("");
 
   const hardReload = () => {
-  const url = new URL(window.location.href);
-  url.searchParams.set("v", String(Date.now()));
-  window.location.replace(url.toString());
-};
+    const url = new URL(window.location.href);
+    url.searchParams.set("v", String(Date.now()));
+    window.location.replace(url.toString());
+  };
+
   useEffect(() => {
     if (!userIdOpen) return;
     setPasteKey("");
@@ -676,12 +675,12 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   };
 
   // 初回：userKey決定（getOrCreateUserKeyが内部でlocalStorageを見る想定）
- useEffect(() => {
-  (async () => {
-    const k = await getOrCreateUserKey();
-    setUserKey(k);
-  })();
-}, []);
+  useEffect(() => {
+    (async () => {
+      const k = await getOrCreateUserKey();
+      setUserKey(k);
+    })();
+  }, []);
 
   // ✅ userKeyが変わったらデータ再取得
   useEffect(() => {
@@ -1544,7 +1543,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   <div class="box">
     <div style="font-weight:900; margin-bottom:8px;">支出内訳（detailCategory）</div>
     <table>
-      <thead><tr><th>内訳</th><th class="right">金額</th></tr></thead>
+      <thead><tr><th>内訳</th><th class="right">金額</th></tr> </thead>
       <tbody>${breakdownRows || "<tr><td colspan='2'>（支出がありません）</td></tr>"}</tbody>
     </table>
   </div>
@@ -1587,9 +1586,11 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     }
   };
 
-   // =========================
+  // =========================
   // ✅ ここが “returnでJSXを包む”
   // =========================
+  const watchPop = watchMofuSpeech.show;
+
   return (
     <div style={{ padding: 14 }}>
       {/* ✅ 保存演出（ヌッと出る） */}
@@ -1602,57 +1603,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           onClose={() => setSaveOverlay(null)}
         />
       )}
-
-      {/* ✅ 保存後だけ：見守りモフ＋吹き出し（下に張り付け固定） */}
-{watchMofuSpeech.show && (
-  <div
-    key={watchMofuSpeech.key}
-    style={{
-      position: "fixed",
-      left: 0,
-      right: 0,
-      bottom: 0,
-      zIndex: 99999,
-      pointerEvents: "none",
-      display: "flex",
-      justifyContent: "center",
-      paddingBottom: isMobile ? 18 : 24, // 下余白
-    }}
-  >
-    <div style={{ position: "relative" }}>
-      {/* 吹き出し */}
-      <div
-        style={{
-          position: "absolute",
-          left: "50%",
-          top: isMobile ? -62 : -74,
-          transform: "translateX(-50%)",
-          background: "rgba(255,255,255,0.96)",
-          borderRadius: 16,
-          padding: isMobile ? "9px 12px" : "10px 14px",
-          fontSize: isMobile ? 12 : 14,
-          fontWeight: 900,
-          boxShadow: "0 14px 32px rgba(0,0,0,0.12)",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {watchMofuSpeech.text}
-      </div>
-
-      {/* モフ本体 */}
-      <img
-        src="/mofu-watch.png"
-        alt="watch mofu"
-        style={{
-          width: isMobile ? 260 : 340,
-          height: "auto",
-          display: "block",
-          filter: "drop-shadow(0 20px 40px rgba(0,0,0,0.25))",
-        }}
-      />
-    </div>
-  </div>
-)}
 
       {/* 月切替 */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
@@ -2042,26 +1992,29 @@ export default function TransactionsClient({ initialTransactions }: Props) {
             alignItems: "center",
           }}
         >
-         {/* ✅ 見守りモフ：円グラフ背景に透かし常駐（ただし前面演出中は消す） */}
-{!watchMofuSpeech.show && (
-  <img
-    src="/mofu-watch.png"
-    alt="watch mofu"
-    style={{
-      position: "absolute",
-      left: "50%",
-      top: isMobile ? "-10px" : "-40px",
-      transform: "translateX(-50%)",
-      width: isMobile ? 280 : 520,
-      opacity: 0.5,
-      pointerEvents: "none",
-      zIndex: 1,
-    }}
-  />
-)}
-          /
+          {/* ✅ 見守りモフ：常駐は背景、セリフ中だけ“前にヌッ” */}
+          <img
+            src="/mofu-watch.png"
+            alt="watch mofu"
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: isMobile ? "-10px" : "-40px",
+              width: isMobile ? 280 : 520,
+              pointerEvents: "none",
 
-          {/* ✅ 見守りモフ吹き出し（頭の上） */}
+              // ✅ セリフ中は背景→前面化
+              opacity: watchPop ? 0.98 : 0.5,
+              zIndex: watchPop ? 6 : 1,
+              transform: watchPop
+                ? "translateX(-50%) translateY(8px) scale(1.02)"
+                : "translateX(-50%) translateY(0px) scale(1)",
+              transition: "opacity 220ms ease, transform 260ms cubic-bezier(.2,.9,.2,1)",
+              filter: watchPop ? "drop-shadow(0 20px 30px rgba(0,0,0,0.22))" : "none",
+            }}
+          />
+
+          {/* ✅ 見守りモフ吹き出し（モフの上／必ず最前面） */}
           {watchMofuSpeech.show && (
             <div
               key={watchMofuSpeech.key}
@@ -2077,7 +2030,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                 fontSize: isMobile ? 12 : 13,
                 fontWeight: 900,
                 boxShadow: "0 14px 32px rgba(0,0,0,0.12)",
-                zIndex: 20,
+                zIndex: 7, // ✅ モフより必ず上
                 pointerEvents: "none",
                 animation: "watchMofuPop 220ms ease-out both",
                 maxWidth: "min(420px, 92vw)",
