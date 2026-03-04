@@ -301,8 +301,8 @@ function makeId() {
   return `ring_${Math.random().toString(36).slice(2, 9)}_${Date.now()}`;
 }
 
-// ✅ 安全設計：固定3 + 追加5 = 合計8
-const MAX_EXTRA_RINGS = 5;
+// ✅ 安全設計：固定3 + 追加7 = 合計10
+const MAX_EXTRA_RINGS = 7;
 
 // ✅ ringKey → category に入れる
 function ringCategory(ringKey: string) {
@@ -1427,29 +1427,23 @@ useEffect(() => {
   // =========================
   // ✅ 追加リングの配置
   // =========================
-  const extraPositions = useMemo(() => {
-    const n = extraRings.length;
-    if (n === 0) return [];
+  const extraPositions = (() => {
+  const baseSize = smallSize;
+  const size = Math.max(isMobile ? 120 : 160, Math.min(baseSize, /* ... */));
 
-    const padding = isMobile ? 10 : 16;
-    const available = Math.max(320, layoutW - padding * 2);
+  const radiusX = isMobile ? 115 : 210;
+  const radiusY = isMobile ? 225 : 300;
 
-    const baseSize = smallSize;
-    const size = Math.max(isMobile ? 120 : 160, Math.min(baseSize, Math.floor(available / 3)));
+  const angles = [-90, -140, -40, 180, 0, -220, 40];
 
-    const radiusX = isMobile ? 115 : 210;
-    const radiusY = isMobile ? 225 : 300;
-
-    // 下 → 左下 → 右下 → 左上 → 右上
-    const angles = [-90, -140, -40, 180, 0, -220, 40];
-
-    return extraRings.slice(0, angles.length).map((r, i) => {
-      const rad = (angles[i] * Math.PI) / 180;
-      const x = Math.cos(rad) * radiusX;
-      const y = Math.sin(rad) * radiusY;
-      return { id: r.id, x, y, size };
-    });
-  }, [extraRings, isMobile, layoutW, smallSize]);
+  return extraRings.slice(0, angles.length).map((r, i) => {
+    const rad = (angles[i] * Math.PI) / 180;
+    const x = Math.cos(rad) * radiusX;
+    const y = Math.sin(rad) * radiusY;
+    return { id: r.id, x, y, size };
+  });
+})();
+  
 
   const areaH = isMobile ? 820 : 860;
 
