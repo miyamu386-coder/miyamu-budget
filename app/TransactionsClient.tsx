@@ -1451,7 +1451,7 @@ useEffect(() => {
     });
   }, [extraRings, isMobile, layoutW, smallSize]);
 
-  const areaH = isMobile ? 820 : 860;
+  const areaH = isMobile ? 700 : 860;
 
   // =========================
   // ✅ 固定リングの長押し
