@@ -1437,8 +1437,8 @@ useEffect(() => {
     const baseSize = smallSize;
     const size = Math.max(isMobile ? 120 : 160, Math.min(baseSize, Math.floor(available / 3)));
 
-    const radiusX = isMobile ? 100 : 210;
-    const radiusY = isMobile ? 170 : 300;
+    const radiusX = isMobile ? 115 : 210;
+    const radiusY = isMobile ? 225 : 300;
 
     // 下 → 左下 → 右下 → 左上 → 右上
     const angles = [-90, -140, -40, 180, 0];
