@@ -1441,7 +1441,7 @@ useEffect(() => {
     const radiusY = isMobile ? 225 : 300;
 
     // 下 → 左下 → 右下 → 左上 → 右上
-    const angles = [-90, -140, -40, 180, 0];
+    const angles = [-90, -140, -40, 180, 0, -220, 40];
 
     return extraRings.slice(0, angles.length).map((r, i) => {
       const rad = (angles[i] * Math.PI) / 180;
