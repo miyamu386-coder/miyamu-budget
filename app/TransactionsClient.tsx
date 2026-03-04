@@ -1431,6 +1431,8 @@ useEffect(() => {
   const baseSize = smallSize;
   const size = Math.max(isMobile ? 120 : 160, Math.min(baseSize, /* ... */));
 
+  const extraSize = isMobile ? 115 : 160;
+
   const radiusX = isMobile ? 115 : 210;
   const radiusY = isMobile ? 225 : 300;
 
@@ -1440,7 +1442,7 @@ useEffect(() => {
     const rad = (angles[i] * Math.PI) / 180;
     const x = Math.cos(rad) * radiusX;
     const y = Math.sin(rad) * radiusY;
-    return { id: r.id, x, y, size };
+    return { id: r.id, x, y, size: extraSize };
   });
 })();
   
