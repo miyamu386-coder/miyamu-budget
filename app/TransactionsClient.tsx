@@ -2665,7 +2665,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                     </div>
                   </div>
 
-                 <div
+                <div
   style={{
     display: "flex",
     gap: 10,
@@ -2673,9 +2673,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     position: "sticky",
     bottom: 0,
     background: "#fff",
-    paddingTop: 12,
-    paddingBottom: 4,
-    zIndex: 2,
+    paddingTop: 10,
   }}
 >
   <button
@@ -2741,12 +2739,14 @@ export default function TransactionsClient({ initialTransactions }: Props) {
         >
           <div
             style={{
-              width: "min(520px, 96vw)",
-              background: "#fff",
-              borderRadius: 16,
-              padding: 16,
-              boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
-            }}
+  width: "min(520px, 96vw)",
+  maxHeight: "88vh",
+  overflowY: "auto",
+  background: "#fff",
+  borderRadius: 16,
+  padding: 16,
+  boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+}}
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 10 }}>追加リングを作る</div>
