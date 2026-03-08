@@ -2539,13 +2539,16 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           onClick={closeQuickAdd}
         >
           <div
-            style={{
-              width: "min(520px, 96vw)",
-              background: "#fff",
-              borderRadius: 16,
-              padding: 16,
-              boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
-            }}
+           style={{
+           width: "min(520px, 96vw)",
+           maxHeight: "88vh",
+           overflowY: "auto",
+           WebkitOverflowScrolling: "touch",
+           background: "#fff",
+           borderRadius: 16,
+           padding: 16,
+           boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+         }}
             onClick={(e) => e.stopPropagation()}
           >
             {(() => {
@@ -2662,44 +2665,57 @@ export default function TransactionsClient({ initialTransactions }: Props) {
                     </div>
                   </div>
 
-                  <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-                    <button
-                      type="button"
-                      onClick={saveQuickAdd}
-                      disabled={isSavingQuick}
-                      style={{
-                        padding: "12px 14px",
-                        borderRadius: 12,
-                        border: "1px solid #111",
-                        background: "#111",
-                        color: "#fff",
-                        fontWeight: 900,
-                        width: 140,
-                        cursor: isSavingQuick ? "not-allowed" : "pointer",
-                        opacity: isSavingQuick ? 0.6 : 1,
-                      }}
-                    >
-                      {isSavingQuick ? "保存中…" : "保存"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={closeQuickAdd}
-                      disabled={isSavingQuick}
-                      style={{
-                        padding: "12px 14px",
-                        borderRadius: 12,
-                        border: "1px solid #ddd",
-                        background: "#fff",
-                        color: "#333",
-                        fontWeight: 900,
-                        width: 140,
-                        cursor: isSavingQuick ? "not-allowed" : "pointer",
-                        opacity: isSavingQuick ? 0.6 : 1,
-                      }}
-                    >
-                      キャンセル
-                    </button>
-                  </div>
+                 <div
+  style={{
+    display: "flex",
+    gap: 10,
+    marginTop: 12,
+    position: "sticky",
+    bottom: 0,
+    background: "#fff",
+    paddingTop: 12,
+    paddingBottom: 4,
+    zIndex: 2,
+  }}
+>
+  <button
+    type="button"
+    onClick={saveQuickAdd}
+    disabled={isSavingQuick}
+    style={{
+      padding: "12px 14px",
+      borderRadius: 12,
+      border: "1px solid #111",
+      background: "#111",
+      color: "#fff",
+      fontWeight: 900,
+      width: 140,
+      cursor: isSavingQuick ? "not-allowed" : "pointer",
+      opacity: isSavingQuick ? 0.6 : 1,
+    }}
+  >
+    {isSavingQuick ? "保存中…" : "保存"}
+  </button>
+
+  <button
+    type="button"
+    onClick={closeQuickAdd}
+    disabled={isSavingQuick}
+    style={{
+      padding: "12px 14px",
+      borderRadius: 12,
+      border: "1px solid #ddd",
+      background: "#fff",
+      color: "#333",
+      fontWeight: 900,
+      width: 140,
+      cursor: isSavingQuick ? "not-allowed" : "pointer",
+      opacity: isSavingQuick ? 0.6 : 1,
+    }}
+  >
+    キャンセル
+  </button>
+</div>
                 </>
               );
             })()}
