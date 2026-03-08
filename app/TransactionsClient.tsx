@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import confetti from "canvas-confetti";
 import TransactionForm from "./TransactionForm";
 import TransactionList from "./TransactionList";
 import type { Transaction } from "./types";
@@ -292,8 +293,7 @@ type ExtraRing = {
   mode: RingMode;
   color: string;
   charMode?: CharaMode;
-
-  // ✅ A案：このリングは月またぎ（累計）にするか
+  ringType?: "asset" | "debt";
   carryOver?: boolean;
 };
 
@@ -310,7 +310,7 @@ function ringCategory(ringKey: string) {
 }
 
 const FIXED_LIFE_KEY = "life"; // ✅ 生活費（月次）
-const FIXED_SAVE_KEY = "save"; // ✅ 貯蓄（累計）
+const FIXED_SAVE_KEY = "save"; // ✅ 貯蓄（月次）
 const GOAL_ASSET_KEY = "ring:asset"; // ✅ 総資産 目標だけは「目標専用キー」
 
 function pickCharaAuto(title: string): Exclude<CharaMode, "auto"> {
@@ -348,9 +348,9 @@ function resolveChara(title: string, mode?: CharaMode): Exclude<CharaMode, "auto
 function guessCarryOver(title: string, mode: RingMode) {
   const t = title ?? "";
   const repayWords = ["返済", "ローン", "借入", "カード", "クレカ", "リボ", "分割"];
-  if (repayWords.some((w) => t.includes(w))) return true; // 返済っぽい → 累計
-  if (mode === "income_only") return true; // 投資/積立系は累計の方が自然
-  if (mode === "expense_only") return true; // 固定費/返済は累計の方が自然
+  if (repayWords.some((w) => t.includes(w))) return true;
+  if (mode === "income_only") return true;
+  if (mode === "expense_only") return true;
   return false;
 }
 
@@ -359,17 +359,16 @@ function isRepayRingLike(r: { title: string; mode: RingMode; carryOver?: boolean
   const t = (r.title ?? "").toLowerCase();
   const words = ["返済", "ローン", "借入", "カードローン", "クレカ", "リボ", "分割"];
 
-  const byMode = r.mode === "expense_only" && !!r.carryOver; // ←基本はこれ
+  const byMode = r.mode === "expense_only" && !!r.carryOver;
   const byTitle = words.some((w) => t.includes(w));
 
-  // 誤爆させたくないので「両方一致」で厳しめ
   return byMode && byTitle;
 }
 
 type TxType = "income" | "expense";
 
 type RepayInfo = {
-  enabled: boolean; // 目標（借入総額）が入っているか
+  enabled: boolean;
   progressPct: number;
   remaining: number;
   months: number | null;
@@ -393,6 +392,7 @@ function ExtraRingButton({
   onTapAdd,
   onLongPressEditRing,
   repayInfo,
+  isGlowing = false,
 }: {
   id: string;
   title: string;
@@ -400,16 +400,16 @@ function ExtraRingButton({
   mode: RingMode;
   charMode?: CharaMode;
   sums: { income: number; expense: number; balance: number };
-  target: number; // 目標
+  target: number;
   isMobile: boolean;
   pos: { x: number; y: number; size: number };
   strokeSmall: number;
   outwardSmall: number;
-  onTapAdd: (id: string, defaultType: TxType) => void; // ✅ タップ = 入力
-  onLongPressEditRing: (id: string) => void; // ✅ 長押し = 編集
-  repayInfo?: RepayInfo; // ✅ 返済リング用
+  onTapAdd: (id: string, defaultType: TxType) => void;
+  onLongPressEditRing: (id: string) => void;
+  repayInfo?: RepayInfo;
+  isGlowing?: boolean;
 }) {
-  // charMode を決める（将来の演出用。今は表示には使わない）
   resolveChara(title, charMode);
 
   const valueForProgress =
@@ -417,14 +417,11 @@ function ExtraRingButton({
 
   const prog = target > 0 ? clamp01(valueForProgress / target) : 0;
 
-  // ✅ shouldIgnoreClick はDOMへ渡さない！
   const lp = useLongPressHandlers(() => onLongPressEditRing(id), 650);
   const { shouldIgnoreClick, ...lpProps } = lp;
 
   const defaultType: TxType = mode === "income_only" ? "income" : "expense";
-
   const displayValue = mode === "income_only" ? sums.income : mode === "expense_only" ? sums.expense : sums.balance;
-
   const remain = target > 0 ? Math.max(0, target - displayValue) : 0;
   const achieved = target > 0 ? displayValue >= target : false;
 
@@ -456,9 +453,12 @@ function ExtraRingButton({
         textAlign: "center",
         overflow: "visible",
         cursor: "pointer",
-        boxShadow: "0 10px 25px rgba(0,0,0,0.05)",
-        zIndex: 2,
+        boxShadow: isGlowing
+          ? "0 0 0 8px rgba(251,191,36,0.18), 0 0 30px rgba(251,191,36,0.65), 0 10px 25px rgba(0,0,0,0.10)"
+          : "0 10px 25px rgba(0,0,0,0.05)",
+        zIndex: isGlowing ? 8 : 2,
         touchAction: "manipulation",
+        animation: isGlowing ? "miyamuRingGlow 1s ease-in-out infinite alternate" : undefined,
       }}
       title="タップ：入力 / 長押し：リング編集"
     >
@@ -474,7 +474,6 @@ function ExtraRingButton({
 
         {target > 0 && achieved && <div style={{ fontSize: 11, marginTop: 2, color: "green" }}>🎉 達成！</div>}
 
-        {/* ✅ 返済リングだけ：返済率/残額/完済予測 */}
         {repayInfo?.enabled && (
           <div style={{ marginTop: 6, fontSize: 11, opacity: 0.85, lineHeight: 1.25 }}>
             <div>返済率：{repayInfo.progressPct.toFixed(1)}%</div>
@@ -490,6 +489,17 @@ function ExtraRingButton({
 
         <div style={{ marginTop: 6, fontSize: 11, opacity: 0.55 }}>タップで入力 / 長押しで編集</div>
       </div>
+
+      <style jsx>{`
+        @keyframes miyamuRingGlow {
+          from {
+            transform: scale(1);
+          }
+          to {
+            transform: scale(1.035);
+          }
+        }
+      `}</style>
     </button>
   );
 }
@@ -555,10 +565,8 @@ function SaveCharaOverlay({
         />
 
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900 }}>{kind === "mofu" ? "保存" : "保存"}</div>
-          <div style={{ fontSize: isMobile ? 18 : 20, fontWeight: 900, marginTop: 6, lineHeight: 1.2 }}>
-            {message}
-          </div>
+          <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900 }}>保存</div>
+          <div style={{ fontSize: isMobile ? 18 : 20, fontWeight: 900, marginTop: 6, lineHeight: 1.2 }}>{message}</div>
           <div style={{ marginTop: 8, fontSize: 11, opacity: 0.6 }}>※タップで閉じる</div>
         </div>
       </div>
@@ -589,17 +597,96 @@ function SaveCharaOverlay({
   );
 }
 
+function PayoffModal({
+  title,
+  amount,
+  date,
+  onClose,
+  isMobile,
+}: {
+  title: string;
+  amount: number;
+  date: string;
+  onClose: () => void;
+  isMobile: boolean;
+}) {
+  
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.35)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 10060,
+        padding: 16,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "min(720px,96vw)",
+          background: "#fff",
+          borderRadius: 24,
+          padding: isMobile ? 20 : 28,
+          textAlign: "center",
+          boxShadow: "0 24px 80px rgba(0,0,0,0.28)",
+        }}
+      >
+        <img
+          src="/payoff.png"
+          alt="完済おめでとう"
+          style={{
+            width: "min(360px,70vw)",
+            margin: "0 auto 18px",
+            display: "block",
+          }}
+        />
+
+        <div style={{ fontSize: 14, opacity: 0.7, fontWeight: 900 }}>完済</div>
+
+        <div style={{ marginTop: 10, fontWeight: 900 }}>完済額：{yen(amount)}円</div>
+        <div style={{ marginTop: 6, fontWeight: 900 }}>完済日：{date}</div>
+
+        <div style={{ marginTop: 22, fontSize: isMobile ? 26 : 30, fontWeight: 900 }}>
+          {title} 完済！！
+        </div>
+
+        <button
+          onClick={onClose}
+          style={{
+            marginTop: 24,
+            padding: "12px 16px",
+            borderRadius: 12,
+            border: "1px solid #ddd",
+            background: "#fff",
+            fontWeight: 900,
+            cursor: "pointer",
+          }}
+        >
+          閉じる
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function TransactionsClient({ initialTransactions }: Props) {
-  // =========================
-  // ✅ transactions は「APIの結果」を正にする（localStorageと競合させない）
-  // =========================
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [asOf, setAsOf] = useState<Date | null>(null);
+  const [mounted, setMounted] = useState(false);
 
-useEffect(() => {
-  setAsOf(new Date());
-}, []);
+  useEffect(() => {
+    setAsOf(new Date());
+  }, []);
+  useEffect(() => {
+  setMounted(true);
+  }, []);
 
   // ✅ userKey
   const [userKey, setUserKey] = useState<string>("");
@@ -614,10 +701,11 @@ useEffect(() => {
   const [currentName, setCurrentName] = useState("");
 
   const hardReload = () => {
-  const url = new URL(window.location.href);
-  url.searchParams.set("v", String(Date.now()));
-  window.location.replace(url.toString());
-};
+    const url = new URL(window.location.href);
+    url.searchParams.set("v", String(Date.now()));
+    window.location.replace(url.toString());
+  };
+
   useEffect(() => {
     if (!userIdOpen) return;
     setPasteKey("");
@@ -627,9 +715,7 @@ useEffect(() => {
 
   const isValidUserKey = (s: string) => {
     const v = s.trim();
-    // 既存は 32桁hex が多い（例: 3e15a0...）
     if (/^[0-9a-f]{32}$/i.test(v)) return true;
-    // 一応 8〜64 の任意キーも許容（ローカル用切替との互換）
     if (v.length >= 8 && v.length <= 64) return true;
     return false;
   };
@@ -642,11 +728,9 @@ useEffect(() => {
       return;
     }
 
-    // ✅ 名前（ユーザーネーム）を保存
     const nm = pasteName.trim();
     if (nm) setUserKeyName(next, nm);
 
-    // ✅ この端末の userKey を切替（Safari/ホーム画面で合わせる用）
     try {
       localStorage.setItem(STORAGE_KEY, next);
     } catch {}
@@ -662,7 +746,6 @@ useEffect(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1200);
     } catch {
-      // fallback（iOS古め対策）
       const ta = document.createElement("textarea");
       ta.value = text;
       ta.style.position = "fixed";
@@ -680,15 +763,13 @@ useEffect(() => {
     }
   };
 
-  // 初回：userKey決定（getOrCreateUserKeyが内部でlocalStorageを見る想定）
- useEffect(() => {
-  (async () => {
-    const k = await getOrCreateUserKey();
-    setUserKey(k);
-  })();
-}, []);
+  useEffect(() => {
+    (async () => {
+      const k = await getOrCreateUserKey();
+      setUserKey(k);
+    })();
+  }, []);
 
-  // ✅ userKeyが変わったらデータ再取得
   useEffect(() => {
     if (!userKey) return;
 
@@ -713,7 +794,6 @@ useEffect(() => {
     })();
   }, [userKey]);
 
-  // ✅ userKey切替（ローカル用）
   const [keyEditingOpen, setKeyEditingOpen] = useState(false);
   const [userKeyInput, setUserKeyInput] = useState("");
 
@@ -736,7 +816,6 @@ useEffect(() => {
   };
 
   const regenerateUserKey = async () => {
-    // ✅ 既存の保存キーを消して「新規作成させる」
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch {}
@@ -752,10 +831,8 @@ useEffect(() => {
     }
   };
 
-  // --- 月切替（UTCズレ対策でローカル日付を使う）
   const nowYm = ymdToMonthKey(todayYMD());
 
-  // ✅ 月状態はlocalStorageに保存して「次回も同じ月」を開ける
   const selectedYmKey = useMemo(() => {
     const k = userKey || "anonymous";
     return `miyamu_selected_ym:${k}`;
@@ -771,7 +848,6 @@ useEffect(() => {
     }
   });
 
-  // userKeyが確定したら、ユーザー別キーで読み直す
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -781,8 +857,7 @@ useEffect(() => {
     } catch {
       setSelectedYm(nowYm);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedYmKey]);
+  }, [selectedYmKey, nowYm]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -805,7 +880,6 @@ useEffect(() => {
   }, [transactions, selectedYm]);
 
   const carryOverTransactions = useMemo(() => {
-    // selectedYmの月末までの全データ（未来分は入れない）
     return transactions.filter((t) => {
       const ymd = (t.occurredAt ?? "").slice(0, 10);
       if (!ymd) return false;
@@ -815,9 +889,6 @@ useEffect(() => {
 
   const monthSummary = useMemo(() => calcSummary(monthTransactions), [monthTransactions]);
 
-  // =========================
-  // ✅ 月PDF用：月次データをlocalStorageへ保存
-  // =========================
   const monthStorageKey = useMemo(() => {
     const k = userKey || "anonymous";
     return `miyamu_month:${k}:${selectedYm}`;
@@ -830,7 +901,6 @@ useEffect(() => {
     } catch {}
   }, [monthStorageKey, monthTransactions]);
 
-  // ✅ カテゴリ候補（ring:* はUI汚れるので候補からは外す）
   const categorySuggestions = useMemo(() => {
     const set = new Set<string>();
     for (const t of transactions) {
@@ -870,12 +940,13 @@ useEffect(() => {
 
           return {
             id: x.id,
-            ringKey: typeof x.ringKey === "string" ? x.ringKey : x.id, // 旧データ救済
+            ringKey: typeof x.ringKey === "string" ? x.ringKey : x.id,
             title,
             mode,
-            color: x.color || "#60a5fa",
-            charMode: (x.charMode ?? "auto") as CharaMode,
+            color: typeof x.color === "string" ? x.color : "#60a5fa",
+            ringType: x.ringType ?? (isRepayRingLike({ title, mode, carryOver }) ? "debt" : "asset"),
             carryOver,
+            charMode: x.charMode ?? "auto",
           };
         });
 
@@ -933,9 +1004,8 @@ useEffect(() => {
     return { ...s, balance };
   };
 
-  // 固定リング
-  const lifeSums = getRingSums(FIXED_LIFE_KEY, false); // ✅ 生活費は月次
-  const saveSums = getRingSums(FIXED_SAVE_KEY, true); // ✅ 貯蓄は累計
+  const lifeSums = getRingSums(FIXED_LIFE_KEY, false);
+  const saveSums = getRingSums(FIXED_SAVE_KEY, false);
 
   // =========================
   // ✅ 目標（ringGoals.ts）から取得
@@ -951,37 +1021,33 @@ useEffect(() => {
   const lifeTarget = getTarget(ringGoals, ringCategory(FIXED_LIFE_KEY));
   const saveTarget = getTarget(ringGoals, ringCategory(FIXED_SAVE_KEY));
 
-  // 追加リング（carryOver に従う）
   const extraComputed = useMemo(() => {
     return extraRings.map((r) => {
       const s = getRingSums(r.ringKey, !!r.carryOver);
       return { ...r, sums: s };
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [extraRings, sumByCategoryMonthly, sumByCategoryCarry]);
 
-  // 総資産（中央）= 全リング残高の合計（各リングのスコープで計算）
   const totalAssetBalance = useMemo(() => {
     let total = 0;
-    total += lifeSums.balance; // 月次
-    total += saveSums.balance; // 累計
-    for (const r of extraComputed) total += r.sums.balance;
+    for (const r of extraComputed) {
+      if (!r.carryOver) continue;
+      total += r.sums.balance;
+    }
     return total;
-  }, [lifeSums.balance, saveSums.balance, extraComputed]);
+  }, [extraComputed]);
 
   const progressToTarget = targetBalance > 0 ? clamp01(totalAssetBalance / targetBalance) : 0;
   const remainToTarget = Math.max(0, targetBalance - totalAssetBalance);
   const balanceAchieved = targetBalance > 0 ? totalAssetBalance >= targetBalance : false;
 
-  // 生活費：月次（支出のみ想定）
   const lifeSpent = lifeSums.expense;
   const lifeRingProgress = lifeTarget > 0 ? clamp01(lifeSpent / lifeTarget) : 0;
   const lifeAchieved = lifeTarget > 0 ? lifeSpent >= lifeTarget : false;
 
-  // 貯蓄：累計（収入のみ想定でもOK）
-  const savedTotal = saveSums.income;
-  const saveRingProgress = saveTarget > 0 ? clamp01(savedTotal / saveTarget) : 0;
-  const saveAchieved = saveTarget > 0 ? savedTotal >= saveTarget : false;
+  const savedThisMonth = saveSums.income;
+  const saveRingProgress = saveTarget > 0 ? clamp01(savedThisMonth / saveTarget) : 0;
+  const saveAchieved = saveTarget > 0 ? savedThisMonth >= saveTarget : false;
 
   // =========================
   // ✅ スマホ判定
@@ -999,7 +1065,7 @@ useEffect(() => {
   // ✅ コンテナ幅（配置計算に使う）
   // =========================
   const layoutRef = useRef<HTMLDivElement | null>(null);
-  const [layoutW, setLayoutW] = useState(980);
+  const [, setLayoutW] = useState(980);
 
   useEffect(() => {
     const el = layoutRef.current;
@@ -1061,7 +1127,7 @@ useEffect(() => {
   const [quickType, setQuickType] = useState<TxType>("expense");
   const [quickAmountStr, setQuickAmountStr] = useState("");
   const [quickDate, setQuickDate] = useState(todayYMD());
-  const [quickDetail, setQuickDetail] = useState(""); // ✅ 内訳
+  const [quickDetail, setQuickDetail] = useState("");
   const [isSavingQuick, setIsSavingQuick] = useState(false);
 
   const openQuickAdd = (target: QuickAddTarget, defaultType: TxType) => {
@@ -1083,7 +1149,7 @@ useEffect(() => {
   const getQuickMeta = (): { ringKey: string; title: string; mode: RingMode } | null => {
     if (!quickTarget) return null;
     if (quickTarget.kind === "life") return { ringKey: FIXED_LIFE_KEY, title: "生活費", mode: "expense_only" };
-    if (quickTarget.kind === "save") return { ringKey: FIXED_SAVE_KEY, title: "貯蓄（累計）", mode: "income_only" };
+    if (quickTarget.kind === "save") return { ringKey: FIXED_SAVE_KEY, title: "貯蓄（今月）", mode: "income_only" };
     const r = extraRings.find((x) => x.id === quickTarget.id);
     if (!r) return null;
     return { ringKey: r.ringKey, title: r.title, mode: r.mode };
@@ -1111,12 +1177,17 @@ useEffect(() => {
   };
 
   // =========================
-  // ✅ 保存演出（全身モフ/ひな ＋ 一言） + 見守りモフ吹き出し
+  // ✅ 保存演出（全身モフ/ひな ＋ 一言） + 見守りモフ吹き出し、完済エフェクト
   // =========================
   const [saveOverlay, setSaveOverlay] = useState<{ kind: "mofu" | "hina"; message: string; key: number } | null>(null);
   const overlayTimerRef = useRef<number | null>(null);
 
-  // ✅ 見守りモフ吹き出し（保存演出が消えた後に出す）
+  const [payoffModal, setPayoffModal] = useState<{
+    title: string;
+    amount: number;
+    date: string;
+  } | null>(null);
+
   const [watchMofuSpeech, setWatchMofuSpeech] = useState<{ show: boolean; text: string; key: number }>({
     show: false,
     text: "",
@@ -1125,6 +1196,10 @@ useEffect(() => {
   const watchShowTimerRef = useRef<number | null>(null);
   const watchHideTimerRef = useRef<number | null>(null);
 
+  // ✅ 光らせる対象は「リングid」
+  const [glowRingId, setGlowRingId] = useState<string | null>(null);
+  const glowTimerRef = useRef<number | null>(null);
+
   const pickSaveMessage = (kind: "mofu" | "hina") => {
     const mofu: string[] = ["OK。保存した。", "やるじゃん。", "記録は強い。", "積み上げろ。", "無理すんなよ。"];
     const hina: string[] = ["できた！", "コツコツ大事！", "積み立て成功〜！", "明るい未来！", "いい感じ！"];
@@ -1132,7 +1207,6 @@ useEffect(() => {
     return list[Math.floor(Math.random() * list.length)];
   };
 
-  // ✅ 見守り吹き出し：トーン
   type WatchTone = "repay" | "invest" | "save" | "neutral";
 
   const WATCH_QUOTES_KEY = "miyamu_watch_quotes_v1";
@@ -1166,7 +1240,6 @@ useEffect(() => {
 
   useEffect(() => {
     setWatchQuotes(loadWatchQuotes());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const pickWatchMofu = (tone: WatchTone) => {
@@ -1174,7 +1247,6 @@ useEffect(() => {
     return list[Math.floor(Math.random() * list.length)];
   };
 
-  // ✅ 保存したリング（meta）から「ヌッのキャラ」と「見守りトーン」を決める
   const decideSaveReaction = (meta: { title: string; ringKey: string }) => {
     const t = (meta.title ?? "").toLowerCase();
 
@@ -1193,7 +1265,6 @@ useEffect(() => {
   };
 
   const triggerSaveOverlay = (kind: "mofu" | "hina", tone: WatchTone = "neutral") => {
-    // 既存タイマー掃除
     if (overlayTimerRef.current !== null) {
       window.clearTimeout(overlayTimerRef.current);
       overlayTimerRef.current = null;
@@ -1207,7 +1278,6 @@ useEffect(() => {
       watchHideTimerRef.current = null;
     }
 
-    // 吹き出しをいったん消す（連打対策）
     setWatchMofuSpeech({ show: false, text: "", key: Date.now() });
 
     const message = pickSaveMessage(kind);
@@ -1215,24 +1285,35 @@ useEffect(() => {
     setSaveOverlay({ kind, message, key });
 
     overlayTimerRef.current = window.setTimeout(() => {
-      // ✅ ヌッ演出を消す
       setSaveOverlay(null);
       overlayTimerRef.current = null;
 
-      // ✅ ヌッの後に見守り吹き出しを出す
       watchShowTimerRef.current = window.setTimeout(() => {
         const text = pickWatchMofu(tone);
         const k = Date.now();
         setWatchMofuSpeech({ show: true, text, key: k });
         watchShowTimerRef.current = null;
 
-        // 出てから2秒で消える
         watchHideTimerRef.current = window.setTimeout(() => {
           setWatchMofuSpeech((prev) => ({ ...prev, show: false }));
           watchHideTimerRef.current = null;
         }, 2000);
       }, 250);
     }, 2600);
+  };
+
+  const triggerRingGlow = (ringId: string) => {
+    setGlowRingId(ringId);
+
+    if (glowTimerRef.current !== null) {
+      window.clearTimeout(glowTimerRef.current);
+      glowTimerRef.current = null;
+    }
+
+    glowTimerRef.current = window.setTimeout(() => {
+      setGlowRingId(null);
+      glowTimerRef.current = null;
+    }, 2200);
   };
 
   useEffect(() => {
@@ -1249,11 +1330,16 @@ useEffect(() => {
         window.clearTimeout(watchHideTimerRef.current);
         watchHideTimerRef.current = null;
       }
+      if (glowTimerRef.current !== null) {
+        window.clearTimeout(glowTimerRef.current);
+        glowTimerRef.current = null;
+      }
     };
   }, []);
 
   const saveQuickAdd = async () => {
     if (isSavingQuick) return;
+
     const meta = getQuickMeta();
     if (!meta) {
       alert("リング情報が見つかりませんでした");
@@ -1266,9 +1352,11 @@ useEffect(() => {
       return;
     }
 
-    const type: TxType = meta.mode === "income_only" ? "income" : meta.mode === "expense_only" ? "expense" : quickType;
+    const type: TxType =
+      meta.mode === "income_only" ? "income" : meta.mode === "expense_only" ? "expense" : quickType;
 
     setIsSavingQuick(true);
+
     try {
       const tx = await createTransaction({
         type,
@@ -1281,9 +1369,51 @@ useEffect(() => {
       setTransactions((prev) => [tx, ...prev]);
       closeQuickAdd();
 
-      // ✅ 全リング：保存 → ヌッ（mofu/hina）→ 見守り吹き出し
+      // ✅ 保存演出は常に出す
       const reaction = decideSaveReaction(meta);
       triggerSaveOverlay(reaction.kind, reaction.tone);
+
+            // ✅ 返済リングだけ：保存後に完済判定
+      const targetRing = extraRings.find((r) => r.ringKey === meta.ringKey);
+
+      if (targetRing && isRepayRingLike(targetRing) && type === "expense") {
+        const totalDebt = getTarget(ringGoals, ringCategory(targetRing.ringKey));
+        const currentCarry = getRingSums(targetRing.ringKey, true).expense;
+        const nextRepaidTotal = currentCarry + amount;
+        const remainingAfterSave = Math.max(0, totalDebt - nextRepaidTotal);
+
+        if (totalDebt > 0 && remainingAfterSave === 0) {
+          triggerRingGlow(targetRing.id);
+          window.setTimeout(() => {
+          confetti({
+          particleCount: 80,
+          spread: 70,
+          origin: { x: 0.25, y: 0.9 },
+          });
+
+         confetti({
+         particleCount: 80,
+         spread: 70,
+         origin: { x: 0.75, y: 0.9 },
+       });
+    }, 2850);
+         window.setTimeout(() => {
+         confetti({
+         particleCount: 120,
+         spread: 100,
+         origin: { x: 0.5, y: 0.8 },
+          });
+    }, 3050);
+
+          window.setTimeout(() => {
+            setPayoffModal({
+              title: targetRing.title,
+              amount: nextRepaidTotal,
+              date: quickDate,
+            });
+          }, 3200);
+        }
+      }
     } catch (e) {
       console.error(e);
       alert("保存に失敗しました（ネットワーク or API）。Vercel Logsも確認してね。");
@@ -1324,8 +1454,9 @@ useEffect(() => {
       title,
       mode: createMode,
       color: "#60a5fa",
-      charMode: "auto",
+      ringType: isRepayRingLike({ title, mode: createMode, carryOver }) ? "debt" : "asset",
       carryOver,
+      charMode: "auto",
     };
 
     setExtraRings((prev) => [...prev, next]);
@@ -1359,7 +1490,19 @@ useEffect(() => {
     const mode = extraDraft.mode;
     const carryOver = !!extraDraft.carryOver;
 
-    setExtraRings((prev) => prev.map((x) => (x.id === extraEditId ? { ...x, title, mode, carryOver } : x)));
+    setExtraRings((prev) =>
+      prev.map((x) =>
+        x.id === extraEditId
+          ? {
+              ...x,
+              title,
+              mode,
+              carryOver,
+              ringType: isRepayRingLike({ title, mode, carryOver }) ? "debt" : "asset",
+            }
+          : x
+      )
+    );
     setExtraEditId(null);
   };
 
@@ -1379,7 +1522,6 @@ useEffect(() => {
       value: totalAssetBalance,
       progress: progressToTarget,
       color: "#9ca3af",
-
       sub1: `収入 ${yen(monthSummary.income)} / 支出 ${yen(monthSummary.expense)}`,
       sub2: targetBalance > 0 ? `目標まであと ${yen(remainToTarget)}円` : "",
       achieved: balanceAchieved,
@@ -1400,7 +1542,7 @@ useEffect(() => {
   const categoryLabelMap = useMemo(() => {
     const map = new Map<string, string>();
     map.set(ringCategory(FIXED_LIFE_KEY), "生活費");
-    map.set(ringCategory(FIXED_SAVE_KEY), "貯蓄（累計）");
+    map.set(ringCategory(FIXED_SAVE_KEY), "貯蓄（今月）");
     for (const r of extraRings) {
       map.set(ringCategory(r.ringKey), r.title);
     }
@@ -1412,7 +1554,6 @@ useEffect(() => {
     return categoryLabelMap.get(c) ?? c;
   };
 
-  // Form側で「生活費」「貯蓄」「追加リング名」を打った時に ring:* に変換するため
   const ringTitleResolver = useMemo(() => {
     const pairs: Array<{ title: string; category: string }> = [];
     pairs.push({ title: "生活費", category: ringCategory(FIXED_LIFE_KEY) });
@@ -1427,25 +1568,19 @@ useEffect(() => {
   // =========================
   // ✅ 追加リングの配置
   // =========================
-  const extraPositions = (() => {
-  const baseSize = smallSize;
-  const size = Math.max(isMobile ? 120 : 160, Math.min(baseSize, /* ... */));
+  const extraPositions = useMemo(() => {
+    const extraSize = isMobile ? 115 : 160;
+    const radiusX = isMobile ? 115 : 210;
+    const radiusY = isMobile ? 225 : 300;
+    const angles = [-90, -140, -40, 180, 0, -220, 40];
 
-  const extraSize = isMobile ? 115 : 160;
-
-  const radiusX = isMobile ? 115 : 210;
-  const radiusY = isMobile ? 225 : 300;
-
-  const angles = [-90, -140, -40, 180, 0, -220, 40];
-
-  return extraRings.slice(0, angles.length).map((r, i) => {
-    const rad = (angles[i] * Math.PI) / 180;
-    const x = Math.cos(rad) * radiusX;
-    const y = Math.sin(rad) * radiusY;
-    return { id: r.id, x, y, size: extraSize };
-  });
-})();
-  
+    return extraRings.slice(0, angles.length).map((r, i) => {
+      const rad = (angles[i] * Math.PI) / 180;
+      const x = Math.cos(rad) * radiusX;
+      const y = Math.sin(rad) * radiusY;
+      return { id: r.id, x, y, size: extraSize };
+    });
+  }, [extraRings, isMobile]);
 
   const areaH = isMobile ? 820 : 860;
 
@@ -1588,12 +1723,20 @@ useEffect(() => {
     }
   };
 
-   // =========================
-  // ✅ ここが “returnでJSXを包む”
-  // =========================
+  if (!mounted) return null;
+
   return (
     <div style={{ padding: 14 }}>
-      {/* ✅ 保存演出（ヌッと出る） */}
+      {payoffModal && (
+        <PayoffModal
+          title={payoffModal.title}
+          amount={payoffModal.amount}
+          date={payoffModal.date}
+          isMobile={isMobile}
+          onClose={() => setPayoffModal(null)}
+        />
+      )}
+
       {saveOverlay && (
         <SaveCharaOverlay
           key={saveOverlay.key}
@@ -1604,56 +1747,53 @@ useEffect(() => {
         />
       )}
 
-      {/* ✅ 保存後だけ：見守りモフ＋吹き出し（下に張り付け固定） */}
-{watchMofuSpeech.show && (
-  <div
-    key={watchMofuSpeech.key}
-    style={{
-      position: "fixed",
-      left: 0,
-      right: 0,
-      bottom: 0,
-      zIndex: 99999,
-      pointerEvents: "none",
-      display: "flex",
-      justifyContent: "center",
-      paddingBottom: isMobile ? 18 : 24, // 下余白
-    }}
-  >
-    <div style={{ position: "relative" }}>
-      {/* 吹き出し */}
-      <div
-        style={{
-          position: "absolute",
-          left: "50%",
-          top: isMobile ? -62 : -74,
-          transform: "translateX(-50%)",
-          background: "rgba(255,255,255,0.96)",
-          borderRadius: 16,
-          padding: isMobile ? "9px 12px" : "10px 14px",
-          fontSize: isMobile ? 12 : 14,
-          fontWeight: 900,
-          boxShadow: "0 14px 32px rgba(0,0,0,0.12)",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {watchMofuSpeech.text}
-      </div>
+      {watchMofuSpeech.show && (
+        <div
+          key={watchMofuSpeech.key}
+          style={{
+            position: "fixed",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 99999,
+            pointerEvents: "none",
+            display: "flex",
+            justifyContent: "center",
+            paddingBottom: isMobile ? 18 : 24,
+          }}
+        >
+          <div style={{ position: "relative" }}>
+            <div
+              style={{
+                position: "absolute",
+                left: "50%",
+                top: isMobile ? -62 : -74,
+                transform: "translateX(-50%)",
+                background: "rgba(255,255,255,0.96)",
+                borderRadius: 16,
+                padding: isMobile ? "9px 12px" : "10px 14px",
+                fontSize: isMobile ? 12 : 14,
+                fontWeight: 900,
+                boxShadow: "0 14px 32px rgba(0,0,0,0.12)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {watchMofuSpeech.text}
+            </div>
 
-      {/* モフ本体 */}
-      <img
-        src="/mofu-watch.png"
-        alt="watch mofu"
-        style={{
-          width: isMobile ? 260 : 340,
-          height: "auto",
-          display: "block",
-          filter: "drop-shadow(0 20px 40px rgba(0,0,0,0.25))",
-        }}
-      />
-    </div>
-  </div>
-)}
+            <img
+              src="/mofu-watch.png"
+              alt="watch mofu"
+              style={{
+                width: isMobile ? 260 : 340,
+                height: "auto",
+                display: "block",
+                filter: "drop-shadow(0 20px 40px rgba(0,0,0,0.25))",
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* 月切替 */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
@@ -1696,7 +1836,6 @@ useEffect(() => {
           </>
         )}
 
-        {/* ✅ 本番でも使える：ユーザーID確認ボタン */}
         <button
           type="button"
           onClick={() => setUserIdOpen(true)}
@@ -1851,7 +1990,6 @@ useEffect(() => {
               ※ Safari と ホーム画面でデータがズレる時は、このIDが同じか確認してね
             </div>
 
-            {/* ✅ 追加：貼り付けで userKey を揃える */}
             <hr style={{ margin: "12px 0" }} />
 
             <div style={{ fontSize: 11, opacity: 0.7, fontWeight: 900, marginBottom: 6 }}>
@@ -1932,7 +2070,6 @@ useEffect(() => {
         </div>
       )}
 
-      {/* userKey切替UI（ローカルのみ） */}
       {SHOW_USERKEY_UI && keyEditingOpen && (
         <div style={{ border: "1px dashed #ddd", borderRadius: 12, padding: 12, marginBottom: 12 }}>
           <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>userKeyを切り替える（デモ用）</div>
@@ -1996,7 +2133,6 @@ useEffect(() => {
         </div>
       )}
 
-      {/* ✅ 手入力フォーム（スマホは折りたたみ / PCは開く） */}
       <details
         open={!isMobile}
         style={{
@@ -2029,9 +2165,6 @@ useEffect(() => {
         <div style={{ marginTop: 10, fontSize: 11, opacity: 0.65 }}>※リング目標は「各リングを長押し」で編集（モーダルで開きます）</div>
       </details>
 
-      {/* =========================
-          ✅ 円グラフエリア（固定3＋追加）
-         ========================= */}
       <div ref={layoutRef} style={{ maxWidth: 980, margin: "0 auto" }}>
         <div
           style={{
@@ -2043,26 +2176,23 @@ useEffect(() => {
             alignItems: "center",
           }}
         >
-         {/* ✅ 見守りモフ：円グラフ背景に透かし常駐（ただし前面演出中は消す） */}
-{!watchMofuSpeech.show && (
-  <img
-    src="/mofu-watch.png"
-    alt="watch mofu"
-    style={{
-      position: "absolute",
-      left: "50%",
-      top: isMobile ? "-10px" : "-40px",
-      transform: "translateX(-50%)",
-      width: isMobile ? 280 : 520,
-      opacity: 0.5,
-      pointerEvents: "none",
-      zIndex: 1,
-    }}
-  />
-)}
-          /
+          {!watchMofuSpeech.show && (
+            <img
+              src="/mofu-watch.png"
+              alt="watch mofu"
+              style={{
+                position: "absolute",
+                left: "50%",
+                top: isMobile ? "-10px" : "-40px",
+                transform: "translateX(-50%)",
+                width: isMobile ? 280 : 520,
+                opacity: 0.5,
+                pointerEvents: "none",
+                zIndex: 1,
+              }}
+            />
+          )}
 
-          {/* ✅ 見守りモフ吹き出し（頭の上） */}
           {watchMofuSpeech.show && (
             <div
               key={watchMofuSpeech.key}
@@ -2086,7 +2216,6 @@ useEffect(() => {
               }}
             >
               {watchMofuSpeech.text}
-              {/* しっぽ */}
               <div
                 style={{
                   position: "absolute",
@@ -2131,7 +2260,7 @@ useEffect(() => {
             }
           `}</style>
 
-          {/* 中央：総資産（長押しで目標編集） */}
+          {/* 中央：総資産 */}
           <button
             type="button"
             {...lpGoalAssetProps}
@@ -2187,7 +2316,7 @@ useEffect(() => {
             </div>
           </button>
 
-          {/* 左下：生活費（月次） */}
+          {/* 左下：生活費 */}
           <button
             type="button"
             {...lpGoalLifeProps}
@@ -2238,7 +2367,7 @@ useEffect(() => {
             </div>
           </button>
 
-          {/* 右下：貯蓄（累計） */}
+          {/* 右下：貯蓄 */}
           <button
             type="button"
             {...lpGoalSaveProps}
@@ -2276,8 +2405,8 @@ useEffect(() => {
 
             <div style={{ zIndex: 2 }}>
               <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>貯蓄</div>
-              <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900 }}>{yen(savedTotal)}円</div>
-              <div style={{ marginTop: 4, fontSize: 11, opacity: 0.6 }}>累計</div>
+              <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900 }}>{yen(savedThisMonth)}円</div>
+              <div style={{ marginTop: 4, fontSize: 11, opacity: 0.6 }}>今月</div>
               <div style={{ marginTop: 6, fontSize: 11, opacity: 0.55 }}>タップで入力 / 長押しで目標編集</div>
             </div>
           </button>
@@ -2290,15 +2419,13 @@ useEffect(() => {
 
             const catKey = ringCategory(r.ringKey);
             const target = getTarget(ringGoals, catKey);
-
-            // ✅ 返済リングだけ追加情報
             const showRepay = isRepayRingLike(r);
 
             const repayInfo: RepayInfo | undefined = showRepay
               ? (() => {
-                  const totalDebt = getTarget(ringGoals, ringCategory(r.ringKey)); // 目標=借入総額
-                  const repaidTotal = getRingSums(r.ringKey, true).expense; // 累計支出=返済累計
-                  const monthlyPayment = getRingSums(r.ringKey, false).expense; // 月次支出=今月返済
+                  const totalDebt = getTarget(ringGoals, ringCategory(r.ringKey));
+                  const repaidTotal = getRingSums(r.ringKey, true).expense;
+                  const monthlyPayment = getRingSums(r.ringKey, false).expense;
 
                   const result = calcRepayment({
                     totalDebt,
@@ -2329,6 +2456,7 @@ useEffect(() => {
                 sums={rc.sums}
                 target={target}
                 repayInfo={repayInfo}
+                isGlowing={glowRingId === r.id}
                 isMobile={isMobile}
                 pos={p}
                 strokeSmall={strokeSmall}
@@ -2340,7 +2468,6 @@ useEffect(() => {
           })}
         </div>
 
-        {/* ✅ 追加リングボタン */}
         <div style={{ display: "flex", justifyContent: "center", marginTop: 10 }}>
           <button
             type="button"
@@ -2362,9 +2489,6 @@ useEffect(() => {
         </div>
       </div>
 
-      {/* =========================
-          ✅ 目標編集モーダル
-         ========================= */}
       {goalModalOpen && (
         <div
           role="dialog"
@@ -2431,9 +2555,6 @@ useEffect(() => {
         </div>
       )}
 
-      {/* =========================
-          ✅ クイック入力モーダル
-         ========================= */}
       {quickAddOpen && (
         <div
           role="dialog"
@@ -2466,7 +2587,8 @@ useEffect(() => {
 
               const mode = meta.mode;
               const showTabs = mode === "both";
-              const forcedType: TxType = meta.mode === "income_only" ? "income" : meta.mode === "expense_only" ? "expense" : quickType;
+              const forcedType: TxType =
+                meta.mode === "income_only" ? "income" : meta.mode === "expense_only" ? "expense" : quickType;
 
               return (
                 <>
@@ -2618,7 +2740,6 @@ useEffect(() => {
         </div>
       )}
 
-      {/* ✅ 追加リング作成モーダル */}
       {createOpen && (
         <div
           role="dialog"
@@ -2736,7 +2857,6 @@ useEffect(() => {
         </div>
       )}
 
-      {/* ✅ 追加リング編集モーダル */}
       {extraEditId && (
         <div
           role="dialog"
