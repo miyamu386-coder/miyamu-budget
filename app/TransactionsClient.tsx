@@ -627,16 +627,19 @@ function PayoffModal({
       }}
     >
       <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "min(720px,96vw)",
-          background: "#fff",
-          borderRadius: 24,
-          padding: isMobile ? 20 : 28,
-          textAlign: "center",
-          boxShadow: "0 24px 80px rgba(0,0,0,0.28)",
-        }}
-      >
+  onClick={(e) => e.stopPropagation()}
+  style={{
+    width: "min(720px, 96vw)",
+    maxHeight: "88vh",
+    overflowY: "auto",
+    WebkitOverflowScrolling: "touch",
+    background: "#fff",
+    borderRadius: 24,
+    padding: isMobile ? 20 : 28,
+    textAlign: "center",
+    boxShadow: "0 24px 80px rgba(0,0,0,0.28)",
+  }}
+>
         <img
           src="/payoff.png"
           alt="完済おめでとう"
@@ -1187,6 +1190,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     amount: number;
     date: string;
   } | null>(null);
+  const [pendingGlowRingId, setPendingGlowRingId] = useState<string | null>(null);
 
   const [watchMofuSpeech, setWatchMofuSpeech] = useState<{ show: boolean; text: string; key: number }>({
     show: false,
@@ -1383,7 +1387,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
         const remainingAfterSave = Math.max(0, totalDebt - nextRepaidTotal);
 
         if (totalDebt > 0 && remainingAfterSave === 0) {
-          triggerRingGlow(targetRing.id);
+          setPendingGlowRingId(targetRing.id);
           window.setTimeout(() => {
           confetti({
           particleCount: 80,
