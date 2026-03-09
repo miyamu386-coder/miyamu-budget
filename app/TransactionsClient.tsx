@@ -7,6 +7,7 @@ import TransactionList from "./TransactionList";
 import type { Transaction } from "./types";
 import { getOrCreateUserKey, clearUserKeyCache, getUserKeyName, setUserKeyName } from "../lib/userKey";
 import styles from "./TransactionsClient.module.css";
+import { toPng } from "html-to-image";
 
 // ✅ リング目標（localStorage）
 import RingGoalEditor from "./components/RingGoalEditor";
@@ -610,7 +611,32 @@ function PayoffModal({
   onClose: () => void;
   isMobile: boolean;
 }) {
-  
+  const captureRef = useRef<HTMLDivElement | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const saveAsImage = async () => {
+    if (!captureRef.current || isDownloading) return;
+
+    try {
+      setIsDownloading(true);
+
+      const dataUrl = await toPng(captureRef.current, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#ffffff",
+      });
+
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = `payoff-${date}.png`;
+      link.click();
+    } catch (e) {
+      console.error(e);
+      alert("画像保存に失敗しました");
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   return (
     <div
@@ -627,52 +653,89 @@ function PayoffModal({
       }}
     >
       <div
-  onClick={(e) => e.stopPropagation()}
-  style={{
-    width: "min(720px, 96vw)",
-    maxHeight: "88vh",
-    overflowY: "auto",
-    WebkitOverflowScrolling: "touch",
-    background: "#fff",
-    borderRadius: 24,
-    padding: isMobile ? 20 : 28,
-    textAlign: "center",
-    boxShadow: "0 24px 80px rgba(0,0,0,0.28)",
-  }}
->
-        <img
-          src="/payoff.png"
-          alt="完済おめでとう"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "min(720px,96vw)",
+          maxHeight: "88vh",
+          overflowY: "auto",
+          WebkitOverflowScrolling: "touch",
+          background: "#fff",
+          borderRadius: 24,
+          padding: isMobile ? 20 : 28,
+          textAlign: "center",
+          boxShadow: "0 24px 80px rgba(0,0,0,0.28)",
+        }}
+      >
+        {/* ↓ ここが画像化される範囲 */}
+        <div
+          ref={captureRef}
           style={{
-            width: "min(360px,70vw)",
-            margin: "0 auto 18px",
-            display: "block",
-          }}
-        />
-
-        <div style={{ fontSize: 14, opacity: 0.7, fontWeight: 900 }}>完済</div>
-
-        <div style={{ marginTop: 10, fontWeight: 900 }}>完済額：{yen(amount)}円</div>
-        <div style={{ marginTop: 6, fontWeight: 900 }}>完済日：{date}</div>
-
-        <div style={{ marginTop: 22, fontSize: isMobile ? 26 : 30, fontWeight: 900 }}>
-          {title} 完済！！
-        </div>
-
-        <button
-          onClick={onClose}
-          style={{
-            marginTop: 24,
-            padding: "12px 16px",
-            borderRadius: 12,
-            border: "1px solid #ddd",
             background: "#fff",
-            fontWeight: 900,
-            cursor: "pointer",
+            borderRadius: 24,
+            padding: isMobile ? 20 : 28,
           }}
         >
-          閉じる
-        </button>
+          <img
+            src="/payoff.png"
+            alt="完済おめでとう"
+            style={{
+              width: "min(360px,70vw)",
+              margin: "0 auto 18px",
+              display: "block",
+            }}
+          />
+
+          <div style={{ fontSize: 14, opacity: 0.7, fontWeight: 900 }}>完済</div>
+
+          <div style={{ marginTop: 10, fontWeight: 900 }}>完済額：{yen(amount)}円</div>
+          <div style={{ marginTop: 6, fontWeight: 900 }}>完済日：{date}</div>
+
+          <div style={{ marginTop: 22, fontSize: isMobile ? 26 : 30, fontWeight: 900 }}>
+            {title} 完済！！
+          </div>
+        </div>
+
+        {/* 操作ボタン */}
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            marginTop: 16,
+            justifyContent: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <button
+            onClick={saveAsImage}
+            disabled={isDownloading}
+            style={{
+              padding: "12px 16px",
+              borderRadius: 12,
+              border: "1px solid #111",
+              background: "#111",
+              color: "#fff",
+              fontWeight: 900,
+              cursor: isDownloading ? "not-allowed" : "pointer",
+              opacity: isDownloading ? 0.6 : 1,
+            }}
+          >
+            {isDownloading ? "保存中…" : "画像を保存"}
+          </button>
+
+          <button
+            onClick={onClose}
+            style={{
+              padding: "12px 16px",
+              borderRadius: 12,
+              border: "1px solid #ddd",
+              background: "#fff",
+              fontWeight: 900,
+              cursor: "pointer",
+            }}
+          >
+            閉じる
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1733,12 +1796,21 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     <div style={{ padding: 14 }}>
       {payoffModal && (
         <PayoffModal
-          title={payoffModal.title}
-          amount={payoffModal.amount}
-          date={payoffModal.date}
-          isMobile={isMobile}
-          onClose={() => setPayoffModal(null)}
-        />
+  title={payoffModal.title}
+  amount={payoffModal.amount}
+  date={payoffModal.date}
+  isMobile={isMobile}
+  onClose={() => {
+    setPayoffModal(null);
+
+    if (pendingGlowRingId) {
+      window.setTimeout(() => {
+        triggerRingGlow(pendingGlowRingId);
+        setPendingGlowRingId(null);
+      }, 120);
+    }
+  }}
+/>
       )}
 
       {saveOverlay && (
