@@ -59,18 +59,28 @@ export default function TransactionForm({
 }: Props) {
   const [type, setType] = useState<TxType>(editing?.type ?? "expense");
   const [amountStr, setAmountStr] = useState(editing ? String(editing.amount) : "");
-  const [category, setCategory] = useState(editing?.category ?? "");
+  const [category, setCategory] = useState(() => {
+  const raw = editing?.category ?? "";
+  const hit = ringTitleResolver.find((p) => p.category === raw);
+  return hit ? hit.title : raw;
+});
   const [occurredAt, setOccurredAt] = useState(
     editing?.occurredAt ? toYMD(editing.occurredAt) : toYMD(new Date().toISOString())
   );
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    setType(editing?.type ?? "expense");
-    setAmountStr(editing ? String(editing.amount) : "");
-    setCategory(editing?.category ?? "");
-    setOccurredAt(editing?.occurredAt ? toYMD(editing.occurredAt) : toYMD(new Date().toISOString()));
-  }, [editing]);
+  setType(editing?.type ?? "expense");
+  setAmountStr(editing ? String(editing.amount) : "");
+
+  const raw = editing?.category ?? "";
+  const hit = ringTitleResolver.find((p) => p.category === raw);
+  setCategory(hit ? hit.title : raw);
+
+  setOccurredAt(
+    editing?.occurredAt ? toYMD(editing.occurredAt) : toYMD(new Date().toISOString())
+  );
+}, [editing, ringTitleResolver]);
 
   // ✅ 保存成功トースト
   const [toast, setToast] = useState<null | { kind: ToastKind; text: string }>(null);
