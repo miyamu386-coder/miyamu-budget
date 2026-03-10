@@ -272,7 +272,7 @@ function Ring({
         cy={cy}
         r={r}
         fill="none"
-        stroke={color}
+        stroke={p >= 0.999 ? "#FFD700" : color}
         strokeWidth={stroke}
         strokeLinecap="round"
         strokeDasharray={c}
@@ -894,6 +894,9 @@ function PayoffModal({
 }
 
 export default function TransactionsClient({ initialTransactions }: Props) {
+
+  const GOLD = "#FFD700";
+
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [formOpen, setFormOpen] = useState(true);
