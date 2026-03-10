@@ -266,13 +266,30 @@ function Ring({
       }}
       viewBox={`0 0 ${full} ${full}`}
     >
+     <defs>
+  <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+    <stop offset="0%" stopColor="#FFF7AE" />
+    <stop offset="35%" stopColor="#FFD700" />
+    <stop offset="60%" stopColor="#FFC300" />
+    <stop offset="100%" stopColor="#FFB300" />
+  </linearGradient>
+
+  <filter id="goldGlow">
+    <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+    <feMerge>
+      <feMergeNode in="coloredBlur"/>
+      <feMergeNode in="SourceGraphic"/>
+    </feMerge>
+  </filter>
+</defs>
       <circle cx={cx} cy={cy} r={r} fill="none" stroke={trackColor} strokeWidth={stroke} />
       <circle
         cx={cx}
         cy={cy}
         r={r}
         fill="none"
-        stroke={p >= 0.999 ? "#FFD700" : color}
+        stroke={p >= 0.999 ? "url(#gold)" : color}
+        filter={p >= 0.999 ? "url(#goldGlow)" : undefined}
         strokeWidth={stroke}
         strokeLinecap="round"
         strokeDasharray={c}
