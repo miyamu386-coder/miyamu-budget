@@ -896,8 +896,21 @@ function PayoffModal({
 export default function TransactionsClient({ initialTransactions }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
   const [editing, setEditing] = useState<Transaction | null>(null);
+  const [formOpen, setFormOpen] = useState(true);
+  const formRef = useRef<HTMLDivElement | null>(null);
   const [asOf, setAsOf] = useState<Date | null>(null);
   const [mounted, setMounted] = useState(false);
+  const startEdit = (t: Transaction) => {
+  setEditing(t);
+  setFormOpen(true);
+
+  setTimeout(() => {
+    formRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }, 50);
+};
 
   useEffect(() => {
     setAsOf(new Date());
@@ -1271,13 +1284,18 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   // ✅ スマホ判定
   // =========================
   const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 600px)");
-    const apply = () => setIsMobile(mq.matches);
-    apply();
-    mq.addEventListener?.("change", apply);
-    return () => mq.removeEventListener?.("change", apply);
-  }, []);
+
+useEffect(() => {
+  const mq = window.matchMedia("(max-width: 600px)");
+  const apply = () => setIsMobile(mq.matches);
+  apply();
+  mq.addEventListener?.("change", apply);
+  return () => mq.removeEventListener?.("change", apply);
+}, []);
+
+useEffect(() => {
+  setFormOpen(!isMobile);
+}, [isMobile]);
 
   // =========================
   // ✅ コンテナ幅（配置計算に使う）
@@ -2312,9 +2330,10 @@ export default function TransactionsClient({ initialTransactions }: Props) {
           <div style={{ marginTop: 8, fontSize: 11, opacity: 0.65 }}>※切替すると、その場で一覧を再取得します</div>
         </div>
       )}
-
+   <div ref={formRef}>
       <details
-        open={!isMobile}
+        open={formOpen}
+        onToggle={(e) => setFormOpen((e.currentTarget as HTMLDetailsElement).open)}
         style={{
           border: "1px solid #eee",
           borderRadius: 12,
@@ -2344,6 +2363,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
         <div style={{ marginTop: 10, fontSize: 11, opacity: 0.65 }}>※リング目標は「各リングを長押し」で編集（モーダルで開きます）</div>
       </details>
+    </div>
 
       <div ref={layoutRef} style={{ maxWidth: 980, margin: "0 auto" }}>
         <div
@@ -3205,7 +3225,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
       <TransactionList
         transactions={monthTransactions}
-        onEdit={(t) => setEditing(t)}
+        onEdit={startEdit}
         onDeleted={(id) => {
           setTransactions((prev) => prev.filter((t) => t.id !== id));
           if (editing?.id === id) setEditing(null);
