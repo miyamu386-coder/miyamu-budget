@@ -229,6 +229,7 @@ function Ring({
   stroke,
   progress,
   color,
+  selected,
   trackColor = "#e5e7eb",
   outward = 0,
   offsetDeg = -90,
@@ -237,10 +238,17 @@ function Ring({
   stroke: number;
   progress: number;
   color: string;
+  selected?: boolean;
   trackColor?: string;
   outward?: number;
   offsetDeg?: number;
 }) {
+  // 選択時の強調
+const activeStroke = selected ? stroke + 4 : stroke;
+const activeScale = selected ? 1.03 : 1;
+const activeFilter = selected
+  ? "drop-shadow(0 6px 12px rgba(0,0,0,0.22))"
+  : "none";
   const p = clamp01(progress);
 
   const pad = Math.max(0, outward) + stroke;
@@ -258,12 +266,19 @@ function Ring({
       width={full}
       height={full}
       style={{
-        position: "absolute",
-        top: -pad,
-        left: -pad,
-        pointerEvents: "none",
-        overflow: "visible",
-      }}
+  position: "absolute",
+  top: -pad,
+  left: -pad,
+  pointerEvents: "none",
+  overflow: "visible",
+
+  transform: `scale(${activeScale})`,
+  transformOrigin: "center",
+  filter: activeFilter,
+  transition: "transform 0.18s ease, filter 0.18s ease",
+
+  zIndex: selected ? 20 : 1,
+}}
       viewBox={`0 0 ${full} ${full}`}
     >
      <defs>
@@ -480,7 +495,11 @@ function ExtraRingButton({
       }}
       title="タップ：入力 / 長押し：リング編集"
     >
-      <Ring size={pos.size} stroke={strokeSmall} outward={outwardSmall} progress={prog} color={color} />
+      <Ring size={pos.size} 
+      stroke={strokeSmall} 
+      outward={outwardSmall} 
+      progress={prog} 
+      color={color} />
 
       <div style={{ zIndex: 2 }}>
         <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>{title}</div>
@@ -920,6 +939,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const formRef = useRef<HTMLDivElement | null>(null);
   const [asOf, setAsOf] = useState<Date | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [selectedRing, setSelectedRing] = useState<string | null>(null);
   const startEdit = (t: Transaction) => {
   setEditing(t);
   setFormOpen(true);
@@ -2555,13 +2575,15 @@ useEffect(() => {
           <button
             type="button"
             {...lpGoalLifeProps}
-            onClick={(e) => {
-              if (shouldIgnoreLife()) {
-                e.preventDefault();
-                return;
-              }
-              openQuickAdd({ kind: "life" }, "expense");
-            }}
+           onClick={(e) => {
+           if (shouldIgnoreLife()) {
+           e.preventDefault();
+            return;
+            }
+           setSelectedRing("life");   // ←これ追加
+
+           openQuickAdd({ kind: "life" }, "expense");
+           }}
             style={{
               position: "absolute",
               left: "50%",
@@ -2585,7 +2607,14 @@ useEffect(() => {
             }}
             title="タップ：生活費を入力 / 長押し：生活費目標を編集"
           >
-            <Ring size={smallSize} stroke={strokeSmall} outward={outwardSmall} progress={lifeRingProgress} color="#d1d5db" />
+            <Ring
+           size={smallSize}
+           stroke={strokeSmall}
+           outward={outwardSmall}
+           progress={lifeRingProgress}
+           color="#d1d5db"
+           selected={selectedRing === "life"}
+           />
 
             <div style={{ zIndex: 2 }}>
               <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>生活費</div>
