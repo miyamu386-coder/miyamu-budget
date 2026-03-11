@@ -305,7 +305,7 @@ const activeFilter = selected
         fill="none"
         stroke={p >= 0.999 ? "url(#gold)" : color}
         filter={p >= 0.999 ? "url(#goldGlow)" : undefined}
-        strokeWidth={stroke}
+        strokeWidth={activeStroke}
         strokeLinecap="round"
         strokeDasharray={c}
         strokeDashoffset={dashOffset}
@@ -473,7 +473,8 @@ function ExtraRingButton({
         position: "absolute",
         left: "50%",
         top: "40%",
-        transform: `translate(calc(-50% + ${pos.x}px), calc(-50% + ${pos.y}px))`,
+        transform: `translate(calc(-50% + ${pos.x}px), calc(-50% + ${pos.y}px))scale(${isGlowing ? 1.04 : 1})`,
+        transition: "transform 0.15s ease",
         width: pos.size,
         height: pos.size,
         borderRadius: 999,
@@ -2580,7 +2581,6 @@ useEffect(() => {
            e.preventDefault();
             return;
             }
-           setSelectedRing("life");   // ←これ追加
 
            openQuickAdd({ kind: "life" }, "expense");
            }}
@@ -2613,7 +2613,6 @@ useEffect(() => {
            outward={outwardSmall}
            progress={lifeRingProgress}
            color="#d1d5db"
-           selected={selectedRing === "life"}
            />
 
             <div style={{ zIndex: 2 }}>
