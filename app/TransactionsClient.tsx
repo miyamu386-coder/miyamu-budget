@@ -1029,7 +1029,50 @@ const importBackup = async (file: File) => {
       return;
     }
 
-    alert("復元機能は次のステップで追加します");
+    const ok = window.confirm("現在のデータを上書きして復元します。よろしいですか？");
+    if (!ok) return;
+
+    const nextUserKey = normalizeUserKeyInput(data.userKey || userKey);
+    const nextSelectedYm = data.selectedYm || nowYm;
+    const nextRingGoals = Array.isArray(data.ringGoals) ? (data.ringGoals as RingGoal[]) : [];
+    const nextExtraRings = Array.isArray(data.extraRings) ? (data.extraRings as ExtraRing[]) : [];
+    const nextTransactions = Array.isArray(data.transactions) ? (data.transactions as Transaction[]) : [];
+
+    // userKey復元
+    try {
+      localStorage.setItem(STORAGE_KEY, nextUserKey);
+    } catch {}
+
+    clearUserKeyCache();
+    setUserKey(nextUserKey);
+
+    // selectedYm復元
+    try {
+      localStorage.setItem(`miyamu_selected_ym:${nextUserKey}`, nextSelectedYm);
+    } catch {}
+
+    // extraRings復元
+    try {
+      localStorage.setItem(`miyamu_maker_extra_rings_v6:${nextUserKey}`, JSON.stringify(nextExtraRings));
+    } catch {}
+
+    // ringGoals復元
+    try {
+      localStorage.setItem("miyamu_ring_goals_v1", JSON.stringify(nextRingGoals));
+    } catch {
+      try {
+        localStorage.setItem("ringGoals", JSON.stringify(nextRingGoals));
+      } catch {}
+    }
+
+    // state反映
+    setSelectedYm(nextSelectedYm);
+    setExtraRings(nextExtraRings);
+    setRingGoals(nextRingGoals);
+    setTransactions(nextTransactions);
+
+    alert("バックアップを復元しました。画面を再読み込みします。");
+    hardReload();
   } catch (e) {
     console.error(e);
     alert("復元に失敗しました");
@@ -2141,8 +2184,6 @@ useEffect(() => {
           </>
         )}
 
-
-        
         <button
         type="button"
         onClick={exportBackup}
