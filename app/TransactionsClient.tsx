@@ -426,6 +426,7 @@ function ExtraRingButton({
   onLongPressEditRing,
   repayInfo,
   isGlowing = false,
+  selected = false,
 }: {
   id: string;
   title: string;
@@ -442,6 +443,7 @@ function ExtraRingButton({
   onLongPressEditRing: (id: string) => void;
   repayInfo?: RepayInfo;
   isGlowing?: boolean;
+  selected?: boolean;
 }) {
   resolveChara(title, charMode);
 
@@ -500,7 +502,9 @@ function ExtraRingButton({
       stroke={strokeSmall} 
       outward={outwardSmall} 
       progress={prog} 
-      color={color} />
+      color={color} 
+      selected={selected}
+      />
 
       <div style={{ zIndex: 2 }}>
         <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>{title}</div>
@@ -2720,11 +2724,15 @@ useEffect(() => {
                 target={target}
                 repayInfo={repayInfo}
                 isGlowing={glowRingId === r.id}
+                selected={selectedRing === r.id}
                 isMobile={isMobile}
                 pos={p}
                 strokeSmall={strokeSmall}
                 outwardSmall={outwardSmall}
-                onTapAdd={(id, defaultType) => openQuickAdd({ kind: "extra", id }, defaultType)}
+                onTapAdd={(id, defaultType) => {
+                setSelectedRing(id);
+                openQuickAdd({ kind: "extra", id }, defaultType);
+                }}
                 onLongPressEditRing={(id) => openExtraEdit(id)}
               />
             );
