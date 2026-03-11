@@ -2079,22 +2079,6 @@ useEffect(() => {
           </>
         )}
 
-        <button
-          type="button"
-          onClick={() => setUserIdOpen(true)}
-          style={{
-            padding: "8px 10px",
-            borderRadius: 10,
-            border: "1px solid #ddd",
-            background: "#fff",
-            cursor: "pointer",
-            fontWeight: 900,
-            fontSize: 12,
-          }}
-          title="この端末のユーザーID（userKey）を表示"
-        >
-          ユーザーID
-        </button>
 
         <div style={{ flex: 1 }} />
 
