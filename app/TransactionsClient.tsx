@@ -492,7 +492,7 @@ function ExtraRingButton({
         boxShadow: isGlowing
           ? "0 0 0 8px rgba(251,191,36,0.18), 0 0 30px rgba(251,191,36,0.65), 0 10px 25px rgba(0,0,0,0.10)"
           : "0 10px 25px rgba(0,0,0,0.05)",
-        zIndex: isGlowing ? 8 : 2,
+        zIndex: selected ? 30 : isGlowing ? 8 : 2,
         touchAction: "manipulation",
         animation: isGlowing ? "miyamuRingGlow 1s ease-in-out infinite alternate" : undefined,
       }}
