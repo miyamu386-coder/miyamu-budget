@@ -510,7 +510,7 @@ function ExtraRingButton({
         <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>{title}</div>
         <div style={{ fontSize: isMobile ? 20 : 22, fontWeight: 900 }}>{yen(displayValue)}円</div>
 
-        {target > 0 && !achieved && (
+        {target > 0 && !achieved && !repayInfo?.enabled && (
           <div style={{ fontSize: 11, marginTop: 2, opacity: 0.75 }}>目標まであと {yen(remain)}円</div>
         )}
 
