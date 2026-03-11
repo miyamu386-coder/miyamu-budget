@@ -506,7 +506,7 @@ function ExtraRingButton({
       selected={selected}
       />
 
-      <div style={{ zIndex: 2 }}>
+      <div style={{ zIndex: selected ? 30 : 2 }}>
         <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>{title}</div>
         <div style={{ fontSize: isMobile ? 20 : 22, fontWeight: 900 }}>{yen(displayValue)}円</div>
 
