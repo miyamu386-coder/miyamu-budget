@@ -2129,6 +2129,22 @@ useEffect(() => {
 
   return (
     <div style={{ padding: 14 }}>
+      <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+  <button
+    onClick={exportMonthlyImage}
+    style={{
+      padding: "10px 12px",
+      borderRadius: 12,
+      border: "1px solid #111",
+      background: "#fff",
+      cursor: "pointer",
+      fontWeight: 900,
+      fontSize: 12,
+    }}
+  >
+    月レポート保存
+  </button>
+</div>
       {payoffModal && (
         <PayoffModal
   title={payoffModal.title}
@@ -2566,8 +2582,8 @@ useEffect(() => {
       </details>
     </div>
 
-      <div ref={layoutRef} style={{ maxWidth: 980, margin: "0 auto" }}>
-        <div id="miyamu-report">
+      <div id="miyamu-report" ref={layoutRef} style={{ maxWidth: 980, margin: "0 auto" }}>
+
          <div
           style={{
             position: "relative",
@@ -3437,7 +3453,6 @@ useEffect(() => {
         }}
         resolveCategoryLabel={resolveCategoryLabel}
       />
-    </div>
-    </div>
+    </div> 
   );
 }
