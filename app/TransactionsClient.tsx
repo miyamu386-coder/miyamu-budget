@@ -2093,7 +2093,15 @@ useEffect(() => {
       )}
 
       {/* 月切替 */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+      <div
+  style={{
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 12,
+    flexWrap: "wrap",
+  }}
+>
         {SHOW_USERKEY_UI && (
           <>
             <div style={{ fontSize: 12, opacity: 0.75 }}>
@@ -2134,20 +2142,20 @@ useEffect(() => {
         )}
 
 
-        <div style={{ flex: 1 }} />
+        
         <button
-  type="button"
-  onClick={exportBackup}
-  style={{
-    padding: "10px 12px",
-    borderRadius: 12,
-    border: "1px solid #111",
-    background: "#fff",
-    color: "#111",
-    cursor: "pointer",
-    fontWeight: 900,
-    fontSize: 12,
-  }}
+        type="button"
+        onClick={exportBackup}
+        style={{
+        padding: "10px 12px",
+        borderRadius: 12,
+        border: "1px solid #111",
+        background: "#fff",
+        color: "#111",
+        cursor: "pointer",
+        fontWeight: 900,
+        fontSize: 12,
+      }}
 >
   バックアップ
 </button>
