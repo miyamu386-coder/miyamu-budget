@@ -941,6 +941,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [formOpen, setFormOpen] = useState(true);
   const formRef = useRef<HTMLDivElement | null>(null);
+  const importFileRef = useRef<HTMLInputElement | null>(null);
   const [asOf, setAsOf] = useState<Date | null>(null);
   const [mounted, setMounted] = useState(false);
   const [selectedRing, setSelectedRing] = useState<string | null>(null);
@@ -980,6 +981,60 @@ export default function TransactionsClient({ initialTransactions }: Props) {
     url.searchParams.set("v", String(Date.now()));
     window.location.replace(url.toString());
   };
+  type BackupData = {
+  version: 1;
+  exportedAt: string;
+  userKey: string;
+  transactions: Transaction[];
+  ringGoals: RingGoal[];
+  selectedYm: string;
+  extraRings: ExtraRing[];
+};
+
+const exportBackup = () => {
+  try {
+    const backup: BackupData = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      userKey,
+      transactions,
+      ringGoals,
+      selectedYm,
+      extraRings,
+    };
+
+    const blob = new Blob([JSON.stringify(backup, null, 2)], {
+      type: "application/json",
+    });
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `miyamuMaker-backup-${selectedYm}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error(e);
+    alert("バックアップ作成に失敗しました");
+  }
+};
+
+const importBackup = async (file: File) => {
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text) as Partial<BackupData>;
+
+    if (!data || data.version !== 1) {
+      alert("バックアップファイルの形式が違います");
+      return;
+    }
+
+    alert("復元機能は次のステップで追加します");
+  } catch (e) {
+    console.error(e);
+    alert("復元に失敗しました");
+  }
+};
 
   useEffect(() => {
     if (!userIdOpen) return;
@@ -2080,6 +2135,52 @@ useEffect(() => {
 
 
         <div style={{ flex: 1 }} />
+        <button
+  type="button"
+  onClick={exportBackup}
+  style={{
+    padding: "10px 12px",
+    borderRadius: 12,
+    border: "1px solid #111",
+    background: "#fff",
+    color: "#111",
+    cursor: "pointer",
+    fontWeight: 900,
+    fontSize: 12,
+  }}
+>
+  バックアップ
+</button>
+
+<button
+  type="button"
+  onClick={() => importFileRef.current?.click()}
+  style={{
+    padding: "10px 12px",
+    borderRadius: 12,
+    border: "1px solid #111",
+    background: "#fff",
+    color: "#111",
+    cursor: "pointer",
+    fontWeight: 900,
+    fontSize: 12,
+  }}
+>
+  復元
+</button>
+
+<input
+  ref={importFileRef}
+  type="file"
+  accept="application/json"
+  style={{ display: "none" }}
+  onChange={async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await importBackup(file);
+    e.currentTarget.value = "";
+  }}
+/>
 
         <button
           onClick={openPrintView}
