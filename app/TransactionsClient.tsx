@@ -8,6 +8,7 @@ import type { Transaction } from "./types";
 import { getOrCreateUserKey, clearUserKeyCache, getUserKeyName, setUserKeyName } from "../lib/userKey";
 import styles from "./TransactionsClient.module.css";
 import { toPng } from "html-to-image";
+import html2canvas from "html2canvas";
 
 // ✅ リング目標（localStorage）
 import RingGoalEditor from "./components/RingGoalEditor";
@@ -2101,7 +2102,29 @@ useEffect(() => {
       }, 250);
     }
   };
+  const exportMonthlyImage = async () => {
+  try {
+    const el = document.getElementById("miyamu-report");
 
+    if (!el) {
+      alert("レポートが見つかりません");
+      return;
+    }
+
+    const canvas = await html2canvas(el, {
+      backgroundColor: "#ffffff",
+      scale: 2,
+    });
+
+    const link = document.createElement("a");
+    link.download = `miyamu-report-${selectedYm}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  } catch (e) {
+    console.error(e);
+    alert("画像作成に失敗しました");
+  }
+};
   if (!mounted) return null;
 
   return (
@@ -2544,7 +2567,8 @@ useEffect(() => {
     </div>
 
       <div ref={layoutRef} style={{ maxWidth: 980, margin: "0 auto" }}>
-        <div
+        <div id="miyamu-report">
+         <div
           style={{
             position: "relative",
             width: "100%",
@@ -2589,6 +2613,7 @@ useEffect(() => {
         animation: "watchMofuNutto 220ms ease-out both",
       }}
     />
+
 
     <div
       key={watchMofuSpeech.key}
@@ -3412,6 +3437,7 @@ useEffect(() => {
         }}
         resolveCategoryLabel={resolveCategoryLabel}
       />
+    </div>
     </div>
   );
 }
