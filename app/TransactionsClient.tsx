@@ -496,7 +496,6 @@ function ExtraRingButton({
         touchAction: "manipulation",
         animation: isGlowing ? "miyamuRingGlow 1s ease-in-out infinite alternate" : undefined,
       }}
-      title="タップ：入力 / 長押し：リング編集"
     >
       <Ring size={pos.size} 
       stroke={strokeSmall} 
@@ -529,7 +528,7 @@ function ExtraRingButton({
           <div style={{ marginTop: 6, fontSize: 11, opacity: 0.75 }}>目標（借入総額）が未設定です（長押しで設定）</div>
         )}
 
-        <div style={{ marginTop: 6, fontSize: 11, opacity: 0.55 }}>タップで入力 / 長押しで編集</div>
+        
       </div>
 
       <style jsx>{`
@@ -2535,7 +2534,6 @@ useEffect(() => {
               touchAction: "manipulation",
               cursor: "pointer",
             }}
-            title="長押し：総資産の目標を編集"
           >
             <Ring size={bigSize} stroke={strokeBig} outward={outwardBig} progress={centerCard.progress} color={centerCard.color} />
 
@@ -2554,8 +2552,6 @@ useEffect(() => {
 
               {centerCard.sub1 && <div style={{ marginTop: 10, fontSize: 13, opacity: 0.75 }}>{centerCard.sub1}</div>}
               {centerCard.sub2 && <div style={{ marginTop: 8, fontSize: 13, opacity: 0.75 }}>{centerCard.sub2}</div>}
-
-              <div style={{ marginTop: 10, fontSize: 11, opacity: 0.55 }}>長押しで「目標」編集</div>
               {centerCard.achieved && <div style={{ marginTop: 6, fontWeight: 900 }}>✅ 目標達成！</div>}
             </div>
           </button>
@@ -2593,7 +2589,6 @@ useEffect(() => {
               zIndex: 3,
               touchAction: "manipulation",
             }}
-            title="タップ：生活費を入力 / 長押し：生活費目標を編集"
           >
             <Ring
            size={smallSize}
@@ -2614,7 +2609,6 @@ useEffect(() => {
 
               {lifeTarget > 0 && lifeTarget - lifeSpent <= 0 && <div style={{ fontSize: 11, marginTop: 2, color: "green" }}>🎉 達成！</div>}
 
-              <div style={{ marginTop: 6, fontSize: 11, opacity: 0.55 }}>タップで入力 / 長押しで目標編集</div>
             </div>
           </button>
 
@@ -2650,7 +2644,6 @@ useEffect(() => {
               zIndex: 3,
               touchAction: "manipulation",
             }}
-            title="タップ：貯蓄を入力 / 長押し：貯蓄目標を編集"
           >
             <Ring size={smallSize} stroke={strokeSmall} outward={outwardSmall} progress={saveRingProgress} color="#22c55e" />
 
@@ -2658,7 +2651,6 @@ useEffect(() => {
               <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>貯蓄</div>
               <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900 }}>{yen(savedThisMonth)}円</div>
               <div style={{ marginTop: 4, fontSize: 11, opacity: 0.6 }}>今月</div>
-              <div style={{ marginTop: 6, fontSize: 11, opacity: 0.55 }}>タップで入力 / 長押しで目標編集</div>
             </div>
           </button>
 
@@ -3255,8 +3247,6 @@ useEffect(() => {
                 このリングを削除
               </button>
             </div>
-
-            <div style={{ marginTop: 10, fontSize: 11, opacity: 0.65 }}>※タップは入力、長押しは編集（この画面）</div>
           </div>
         </div>
       )}
