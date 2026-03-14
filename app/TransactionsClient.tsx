@@ -221,6 +221,27 @@ function maskKey(k: string) {
 function normalizeUserKeyInput(s: string) {
   return s.trim().slice(0, 64);
 }
+  function isTransferTransaction(tx: Transaction) {
+  const text = [
+    tx.category ?? "",
+    tx.detailCategory ?? "",
+  ]
+    .join(" ")
+    .toLowerCase();
+  const keywords = [
+    "資金移動",
+    "送金",
+    "振替",
+    "振り替え",
+    "口座移動",
+    "移し替え",
+    "口座振替",
+    "transfer",
+  ];
+
+  return keywords.some((kw) => text.includes(kw.toLowerCase()));
+}
+  
 
 /**
  * ✅ 外周リング描画（SVG）
@@ -1401,15 +1422,38 @@ const importBackup = async (file: File) => {
       return { ...r, sums: s };
     });
   }, [extraRings, sumByCategoryMonthly, sumByCategoryCarry]);
+  const carryOverRingCategorySet = useMemo(() => {
+    return new Set(
+      extraRings
+        .filter((r) => !!r.carryOver)
+        .map((r) => ringCategory(r.ringKey))
+    );
+  }, [extraRings]);
+  const totalAssetTransferAdjustment = useMemo(() => {
+    let adjust = 0;
+
+    for (const t of carryOverTransactions) {
+      const cat = (t.category ?? "").trim();
+      if (!carryOverRingCategorySet.has(cat)) continue;
+      if (!isTransferTransaction(t)) continue;
+
+      if (t.type === "income") adjust += t.amount;
+      else adjust -= t.amount;
+    }
+
+    return adjust;
+  }, [carryOverTransactions, carryOverRingCategorySet]);
+
 
   const totalAssetBalance = useMemo(() => {
-    let total = 0;
-    for (const r of extraComputed) {
-      if (!r.carryOver) continue;
-      total += r.sums.balance;
-    }
-    return total;
-  }, [extraComputed]);
+  let total = 0;
+  for (const r of extraComputed) {
+    if (!r.carryOver) continue;
+    total += r.sums.balance;
+  }
+  return total - totalAssetTransferAdjustment;
+}, [extraComputed, totalAssetTransferAdjustment]);
+
 
   const progressToTarget = targetBalance > 0 ? clamp01(totalAssetBalance / targetBalance) : 0;
   const remainToTarget = Math.max(0, targetBalance - totalAssetBalance);
