@@ -228,12 +228,15 @@ function normalizeUserKeyInput(s: string) {
   ]
     .join(" ")
     .toLowerCase();
+
   const keywords = [
     "資金移動",
     "送金",
     "振替",
     "振り替え",
     "口座移動",
+    "口座間移動",
+    "銀行移動",
     "移し替え",
     "口座振替",
     "transfer",
