@@ -1946,15 +1946,13 @@ useEffect(() => {
       value: totalAssetBalance,
       progress: progressToTarget,
       color: "#9ca3af",
-      sub1: `収入 ${yen(monthSummary.income)} / 支出 ${yen(monthSummary.expense)}`,
+      sub1: ``,
       sub2: targetBalance > 0 ? `目標まであと ${yen(remainToTarget)}円` : "",
       achieved: balanceAchieved,
     };
   }, [
     totalAssetBalance,
     progressToTarget,
-    monthSummary.income,
-    monthSummary.expense,
     targetBalance,
     remainToTarget,
     balanceAchieved,
