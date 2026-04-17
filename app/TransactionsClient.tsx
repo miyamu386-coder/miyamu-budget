@@ -359,8 +359,8 @@ function makeId() {
   return `ring_${Math.random().toString(36).slice(2, 9)}_${Date.now()}`;
 }
 
-// ✅ 安全設計：固定3 + 追加7 = 合計10
-const MAX_EXTRA_RINGS = 7;
+// ✅ 安全設計：固定3 + 追加10 = 合計13
+const MAX_EXTRA_RINGS = 10;
 
 // ✅ ringKey → category に入れる
 function ringCategory(ringKey: string) {
@@ -965,6 +965,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [formOpen, setFormOpen] = useState(true);
+  const [showFixedRings, setShowFixedRings] = useState(true); // ←これ追加
   const formRef = useRef<HTMLDivElement | null>(null);
   const importFileRef = useRef<HTMLInputElement | null>(null);
   const [asOf, setAsOf] = useState<Date | null>(null);
@@ -1425,13 +1426,13 @@ const importBackup = async (file: File) => {
       return { ...r, sums: s };
     });
   }, [extraRings, sumByCategoryMonthly, sumByCategoryCarry]);
-  const carryOverRingCategorySet = useMemo(() => {
-    return new Set(
-      extraRings
-        .filter((r) => !!r.carryOver)
-        .map((r) => ringCategory(r.ringKey))
-    );
-  }, [extraRings]);
+ const carryOverRingCategorySet = useMemo(() => {
+  return new Set(
+    extraRings
+      .filter((r) => !!r.carryOver && r.ringType === "asset")
+      .map((r) => ringCategory(r.ringKey))
+  );
+}, [extraRings]);
   const totalAssetTransferAdjustment = useMemo(() => {
     let adjust = 0;
 
@@ -1450,10 +1451,13 @@ const importBackup = async (file: File) => {
 
   const totalAssetBalance = useMemo(() => {
   let total = 0;
+
   for (const r of extraComputed) {
     if (!r.carryOver) continue;
+    if (r.ringType !== "asset") continue;
     total += r.sums.balance;
   }
+
   return total - totalAssetTransferAdjustment;
 }, [extraComputed, totalAssetTransferAdjustment]);
 
@@ -1794,6 +1798,7 @@ useEffect(() => {
       });
 
       setTransactions((prev) => [tx, ...prev]);
+      setSelectedRing(null);
       closeQuickAdd();
 
       // ✅ 保存演出は常に出す
@@ -2345,7 +2350,27 @@ useEffect(() => {
           ◀
         </button>
 
-        <div style={{ fontWeight: 900, fontSize: 18 }}>{fmtYM(selectedYm)}</div>
+        <div style={{ fontWeight: 900, fontSize: 18 }}>
+  {fmtYM(selectedYm)}
+</div>
+
+<div style={{ marginTop: 8 }}>
+  <button
+    type="button"
+    onClick={() => setShowFixedRings((v) => !v)}
+    style={{
+      padding: "6px 10px",
+      borderRadius: 10,
+      border: "1px solid #ccc",
+      background: "#fff",
+      cursor: "pointer",
+      fontWeight: 800,
+      fontSize: 12,
+    }}
+  >
+    {showFixedRings ? "固定リング非表示" : "固定リング表示"}
+  </button>
+</div>
 
         <button
           onClick={() => setSelectedYm((v) => addMonths(v, 1))}
@@ -2792,7 +2817,9 @@ useEffect(() => {
             </div>
           </button>
 
-          {/* 左下：生活費 */}
+         {showFixedRings && (
+         <>
+           {/* 左下：生活費 */}
           <button
             type="button"
             {...lpGoalLifeProps}
@@ -2881,7 +2908,7 @@ useEffect(() => {
               touchAction: "manipulation",
             }}
           >
-            <Ring size={smallSize} stroke={strokeSmall} outward={outwardSmall} progress={saveRingProgress} color="#22c55e" />
+           <Ring size={smallSize} stroke={strokeSmall} outward={outwardSmall} progress={saveRingProgress} color="#22c55e" />
 
             <div style={{ zIndex: 2 }}>
               <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>貯蓄</div>
@@ -2889,6 +2916,8 @@ useEffect(() => {
               <div style={{ marginTop: 4, fontSize: 11, opacity: 0.6 }}>今月</div>
             </div>
           </button>
+          </>
+            )}
 
           {/* ✅ 追加リング群 */}
           {extraPositions.map((p) => {
