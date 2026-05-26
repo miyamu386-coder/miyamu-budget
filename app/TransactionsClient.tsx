@@ -1858,7 +1858,7 @@ useEffect(() => {
   // =========================
   const [createOpen, setCreateOpen] = useState(false);
   const [createTitle, setCreateTitle] = useState("カードローン返済");
-  const [createMode, setCreateMode] = useState<RingMode>("expense_only");
+  const [createMode, setCreateMode] = useState<RingMode>("both");
   const [createCarryOver, setCreateCarryOver] = useState(true);
 
   const openCreate = () => {
@@ -1867,7 +1867,7 @@ useEffect(() => {
       return;
     }
     setCreateTitle("カードローン返済");
-    setCreateMode("expense_only");
+    setCreateMode("both");
     setCreateCarryOver(true);
     setCreateOpen(true);
   };
@@ -1999,20 +1999,24 @@ useEffect(() => {
   // ✅ 追加リングの配置
   // =========================
   const extraPositions = useMemo(() => {
-    const extraSize = isMobile ? 115 : 160;
-    const radiusX = isMobile ? 115 : 210;
-    const radiusY = isMobile ? 225 : 300;
-    const angles = [-90, -140, -40, 180, 0, -220, 40];
+  const extraSize = isMobile ? 115 : 160;
+  const radiusX = isMobile ? 115 : 210;
+  const radiusY = isMobile ? 225 : 300;
+  const angles = [-90, -140, -40, 180, 0, -220, 40];
 
-    return extraRings.slice(0, angles.length).map((r, i) => {
-      const rad = (angles[i] * Math.PI) / 180;
-      const x = Math.cos(rad) * radiusX;
-      const y = Math.sin(rad) * radiusY;
-      return { id: r.id, x, y, size: extraSize };
-    });
-  }, [extraRings, isMobile]);
+  return extraRings.map((r, i) => {
+    const angle = angles[i % angles.length];
+    const lap = Math.floor(i / angles.length); // 何周目か
+    const rad = (angle * Math.PI) / 180;
 
-  const areaH = isMobile ? 820 : 860;
+    // 周回ごとに少し外側へずらす
+    const x = Math.cos(rad) * (radiusX + lap * (isMobile ? 38 : 55));
+    const y = Math.sin(rad) * (radiusY + lap * (isMobile ? 48 : 65));
+
+    return { id: r.id, x, y, size: extraSize };
+  });
+}, [extraRings, isMobile]);
+const areaH = isMobile ? 820 : 860;
 
   // =========================
   // ✅ 固定リングの長押し
@@ -3102,6 +3106,10 @@ useEffect(() => {
 
               const mode = meta.mode;
               const showTabs = mode === "both";
+              const isDebt = meta.title.includes("ローン");
+
+             const expenseLabel = isDebt ? "返済" : "支出";
+             const incomeLabel = isDebt ? "借入" : "収入";
               const forcedType: TxType =
                 meta.mode === "income_only" ? "income" : meta.mode === "expense_only" ? "expense" : quickType;
 
@@ -3124,7 +3132,7 @@ useEffect(() => {
                           flex: 1,
                         }}
                       >
-                        支出
+                        {expenseLabel}
                       </button>
                       <button
                         type="button"
@@ -3139,7 +3147,7 @@ useEffect(() => {
                           flex: 1,
                         }}
                       >
-                        収入
+                        {incomeLabel}
                       </button>
                     </div>
                   )}
@@ -3205,7 +3213,7 @@ useEffect(() => {
                     </label>
 
                     <div style={{ fontSize: 11, opacity: 0.6 }}>
-                      保存すると「{forcedType === "income" ? "収入" : "支出"}」として追加されます。<br />
+                     保存すると「{forcedType === "income" ? incomeLabel : expenseLabel}」として追加されます。
                       category は自動で {ringCategory(meta.ringKey)} になります
                     </div>
                   </div>
