@@ -963,7 +963,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [formOpen, setFormOpen] = useState(true);
-  const [showFixedRings, setShowFixedRings] = useState(true); // ←これ追加
+  const [showFixedRings, setShowFixedRings] = useState(false);
   const formRef = useRef<HTMLDivElement | null>(null);
   const importFileRef = useRef<HTMLInputElement | null>(null);
   const [asOf, setAsOf] = useState<Date | null>(null);
