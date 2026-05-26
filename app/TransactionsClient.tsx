@@ -1341,7 +1341,7 @@ const importBackup = async (file: File) => {
             title,
             mode,
             color: typeof x.color === "string" ? x.color : "#60a5fa",
-            ringType: x.ringType ?? (isRepayRingLike({ title, mode, carryOver }) ? "debt" : "asset"),
+            ringType: isRepayRingLike({ title, mode, carryOver })? "debt": (x.ringType ?? "asset"),
             carryOver,
             charMode: x.charMode ?? "auto",
           };
