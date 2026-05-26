@@ -416,11 +416,9 @@ function guessCarryOver(title: string, mode: RingMode) {
 function isRepayRingLike(r: { title: string; mode: RingMode; carryOver?: boolean }) {
   const t = (r.title ?? "").toLowerCase();
   const words = ["返済", "ローン", "借入", "カードローン", "クレカ", "リボ", "分割"];
-
-  const byMode = r.mode === "expense_only" && !!r.carryOver;
   const byTitle = words.some((w) => t.includes(w));
 
-  return byMode && byTitle;
+  return byTitle;
 }
 
 type TxType = "income" | "expense";
@@ -1899,20 +1897,27 @@ useEffect(() => {
   // ✅ 追加リング編集（長押し）
   // =========================
   const [extraEditId, setExtraEditId] = useState<string | null>(null);
-  const [extraDraft, setExtraDraft] = useState<{ title: string; mode: RingMode; carryOver: boolean }>({
-    title: "",
-    mode: "both",
-    carryOver: false,
-  });
+  const [extraDraft, setExtraDraft] = useState<{
+  title: string;
+  mode: RingMode;
+  carryOver: boolean;
+  ringType: "asset" | "debt";
+}>({
+  title: "",
+  mode: "both",
+  carryOver: false,
+  ringType: "asset",
+});
 
   const openExtraEdit = (id: string) => {
     const r = extraRings.find((x) => x.id === id);
     if (!r) return;
     setExtraDraft({
-      title: r.title,
-      mode: r.mode,
-      carryOver: !!r.carryOver,
-    });
+  title: r.title,
+  mode: r.mode,
+  carryOver: !!r.carryOver,
+  ringType: r.ringType ?? "asset",
+});
     setExtraEditId(id);
   };
 
