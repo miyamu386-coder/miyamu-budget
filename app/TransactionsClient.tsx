@@ -963,7 +963,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [formOpen, setFormOpen] = useState(true);
-  const [showFixedRings, setShowFixedRings] = useState(false);
   const formRef = useRef<HTMLDivElement | null>(null);
   const importFileRef = useRef<HTMLInputElement | null>(null);
   const [asOf, setAsOf] = useState<Date | null>(null);
@@ -1401,9 +1400,6 @@ const importBackup = async (file: File) => {
     return { ...s, balance };
   };
 
-  const lifeSums = getRingSums(FIXED_LIFE_KEY, false);
-  const saveSums = getRingSums(FIXED_SAVE_KEY, false);
-
   // =========================
   // ✅ 目標（ringGoals.ts）から取得
   // =========================
@@ -1415,8 +1411,6 @@ const importBackup = async (file: File) => {
   }, [userKey]);
 
   const targetBalance = getTarget(ringGoals, GOAL_ASSET_KEY);
-  const lifeTarget = getTarget(ringGoals, ringCategory(FIXED_LIFE_KEY));
-  const saveTarget = getTarget(ringGoals, ringCategory(FIXED_SAVE_KEY));
 
   const extraComputed = useMemo(() => {
     return extraRings.map((r) => {
@@ -1464,14 +1458,6 @@ const importBackup = async (file: File) => {
   const remainToTarget = Math.max(0, targetBalance - totalAssetBalance);
   const balanceAchieved = targetBalance > 0 ? totalAssetBalance >= targetBalance : false;
 
-  const lifeSpent = lifeSums.expense;
-  const lifeRingProgress = lifeTarget > 0 ? clamp01(lifeSpent / lifeTarget) : 0;
-  const lifeAchieved = lifeTarget > 0 ? lifeSpent >= lifeTarget : false;
-
-  const savedThisMonth = saveSums.income;
-  const saveRingProgress = saveTarget > 0 ? clamp01(savedThisMonth / saveTarget) : 0;
-  const saveAchieved = saveTarget > 0 ? savedThisMonth >= saveTarget : false;
-
   // =========================
   // ✅ スマホ判定
   // =========================
@@ -1518,15 +1504,6 @@ useEffect(() => {
 
   const outwardBig = isMobile ? 10 : 12;
   const outwardSmall = isMobile ? 8 : 10;
-
-  // =========================
-  // ✅ 三角配置（固定3）
-  // =========================
-  const tri = useMemo(() => {
-    const dx = isMobile ? 120 : 210;
-    const dy = isMobile ? 220 : 300;
-    return { dx, dy };
-  }, [isMobile]);
 
   // =========================
   // ✅ 目標編集モーダル（A案）
@@ -2029,12 +2006,6 @@ const areaH = isMobile ? 820 : 860;
   const lpGoalAsset = useLongPressHandlers(() => openGoalEditor(GOAL_ASSET_KEY), 650);
   const { shouldIgnoreClick: shouldIgnoreAsset, ...lpGoalAssetProps } = lpGoalAsset;
 
-  const lpGoalLife = useLongPressHandlers(() => openGoalEditor(ringCategory(FIXED_LIFE_KEY)), 650);
-  const { shouldIgnoreClick: shouldIgnoreLife, ...lpGoalLifeProps } = lpGoalLife;
-
-  const lpGoalSave = useLongPressHandlers(() => openGoalEditor(ringCategory(FIXED_SAVE_KEY)), 650);
-  const { shouldIgnoreClick: shouldIgnoreSave, ...lpGoalSaveProps } = lpGoalSave;
-
   // =========================
   // ✅ 印刷 / PDF（新規タブ方式）
   // =========================
@@ -2363,23 +2334,6 @@ const areaH = isMobile ? 820 : 860;
   {fmtYM(selectedYm)}
 </div>
 
-<div style={{ marginTop: 8 }}>
-  <button
-    type="button"
-    onClick={() => setShowFixedRings((v) => !v)}
-    style={{
-      padding: "6px 10px",
-      borderRadius: 10,
-      border: "1px solid #ccc",
-      background: "#fff",
-      cursor: "pointer",
-      fontWeight: 800,
-      fontSize: 12,
-    }}
-  >
-    {showFixedRings ? "固定リング非表示" : "固定リング表示"}
-  </button>
-</div>
 
         <button
           onClick={() => setSelectedYm((v) => addMonths(v, 1))}
@@ -2825,108 +2779,6 @@ const areaH = isMobile ? 820 : 860;
               {centerCard.achieved && <div style={{ marginTop: 6, fontWeight: 900 }}>✅ 目標達成！</div>}
             </div>
           </button>
-
-         {showFixedRings && (
-         <>
-           {/* 左下：生活費 */}
-          <button
-            type="button"
-            {...lpGoalLifeProps}
-           onClick={(e) => {
-           if (shouldIgnoreLife()) {
-           e.preventDefault();
-            return;
-            }
-
-           openQuickAdd({ kind: "life" }, "expense");
-           }}
-            style={{
-              position: "absolute",
-              left: "50%",
-              top: "40%",
-              transform: `translate(calc(-50% - ${tri.dx}px), calc(-50% + ${tri.dy}px))`,
-              width: smallSize,
-              height: smallSize,
-              borderRadius: 999,
-              border: "1px solid #e5e5e5",
-              background: "#fff",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              textAlign: "center",
-              overflow: "visible",
-              cursor: "pointer",
-              boxShadow: lifeAchieved ? "0 0 28px rgba(34,197,94,0.45)" : "0 10px 25px rgba(0,0,0,0.05)",
-              zIndex: 3,
-              touchAction: "manipulation",
-            }}
-          >
-            <Ring
-           size={smallSize}
-           stroke={strokeSmall}
-           outward={outwardSmall}
-           progress={lifeRingProgress}
-           color="#d1d5db"
-           />
-
-            <div style={{ zIndex: 2 }}>
-              <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>生活費</div>
-              <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900 }}>{yen(lifeSpent)}円</div>
-              <div style={{ marginTop: 4, fontSize: 11, opacity: 0.6 }}>今月</div>
-
-              {lifeTarget > 0 && lifeTarget - lifeSpent > 0 && (
-                <div style={{ fontSize: 11, marginTop: 2, opacity: 0.75 }}>目標まであと {(lifeTarget - lifeSpent).toLocaleString()}円</div>
-              )}
-
-              {lifeTarget > 0 && lifeTarget - lifeSpent <= 0 && <div style={{ fontSize: 11, marginTop: 2, color: "green" }}>🎉 達成！</div>}
-
-            </div>
-          </button>
-
-          {/* 右下：貯蓄 */}
-          <button
-            type="button"
-            {...lpGoalSaveProps}
-            onClick={(e) => {
-              if (shouldIgnoreSave()) {
-                e.preventDefault();
-                return;
-              }
-              openQuickAdd({ kind: "save" }, "income");
-            }}
-            style={{
-              position: "absolute",
-              left: "50%",
-              top: "40%",
-              transform: `translate(calc(-50% + ${tri.dx}px), calc(-50% + ${tri.dy}px))`,
-              width: smallSize,
-              height: smallSize,
-              borderRadius: 999,
-              border: "1px solid #e5e5e5",
-              background: "#fff",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              textAlign: "center",
-              overflow: "visible",
-              cursor: "pointer",
-              boxShadow: saveAchieved ? "0 0 28px rgba(34,197,94,0.45)" : "0 10px 25px rgba(0,0,0,0.05)",
-              zIndex: 3,
-              touchAction: "manipulation",
-            }}
-          >
-           <Ring size={smallSize} stroke={strokeSmall} outward={outwardSmall} progress={saveRingProgress} color="#22c55e" />
-
-            <div style={{ zIndex: 2 }}>
-              <div style={{ fontSize: 13, opacity: 0.75, fontWeight: 800 }}>貯蓄</div>
-              <div style={{ fontSize: isMobile ? 26 : 30, fontWeight: 900 }}>{yen(savedThisMonth)}円</div>
-              <div style={{ marginTop: 4, fontSize: 11, opacity: 0.6 }}>今月</div>
-            </div>
-          </button>
-          </>
-            )}
 
           {/* ✅ 追加リング群 */}
           {extraPositions.map((p) => {
