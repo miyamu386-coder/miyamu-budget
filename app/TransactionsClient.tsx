@@ -1935,7 +1935,7 @@ useEffect(() => {
       title: "総資産",
       value: totalAssetBalance,
       progress: progressToTarget,
-      color: "#9ca3af",
+      color: "#f59e0b",
       sub1: ``,
       sub2: targetBalance > 0 ? `目標まであと ${yen(remainToTarget)}円` : "",
       achieved: balanceAchieved,
