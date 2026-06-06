@@ -1783,9 +1783,9 @@ useEffect(() => {
             // ✅ 返済リングだけ：保存後に完済判定
       const targetRing = extraRings.find((r) => r.ringKey === meta.ringKey);
 
-      if (targetRing && isRepayRingLike(targetRing) && type === "expense") {
+      if (targetRing && isRepayRingLike(targetRing) && type === "income") {
         const totalDebt = getTarget(ringGoals, ringCategory(targetRing.ringKey));
-        const currentCarry = getRingSums(targetRing.ringKey, true).expense;
+        const currentCarry = getRingSums(targetRing.ringKey, true).income;
         const nextRepaidTotal = currentCarry + amount;
         const remainingAfterSave = Math.max(0, totalDebt - nextRepaidTotal);
 
@@ -2793,8 +2793,8 @@ const areaH = isMobile ? 820 : 860;
             const repayInfo: RepayInfo | undefined = showRepay
               ? (() => {
                   const totalDebt = getTarget(ringGoals, ringCategory(r.ringKey));
-                  const repaidTotal = getRingSums(r.ringKey, true).expense;
-                  const monthlyPayment = getRingSums(r.ringKey, false).expense;
+                  const repaidTotal = getRingSums(r.ringKey, true).income;
+                  const monthlyPayment = getRingSums(r.ringKey, false).income;
 
                   const result = calcRepayment({
                     totalDebt,
@@ -2965,8 +2965,8 @@ const areaH = isMobile ? 820 : 860;
               const showTabs = mode === "both";
               const isDebt = meta.title.includes("ローン");
 
-             const expenseLabel = isDebt ? "返済" : "支出";
-             const incomeLabel = isDebt ? "借入" : "収入";
+             const expenseLabel = isDebt ? "借入" : "支出";
+             const incomeLabel = isDebt ? "返済" : "収入";
               const forcedType: TxType =
                 meta.mode === "income_only" ? "income" : meta.mode === "expense_only" ? "expense" : quickType;
 
