@@ -2644,7 +2644,32 @@ const areaH = isMobile ? 820 : 860;
       </details>
     </div>
 
-      <div id="miyamu-report" ref={layoutRef} style={{ maxWidth: 980, margin: "0 auto" }}>
+      <div
+      id="miyamu-report"
+      ref={layoutRef}
+      onTouchStart={(e) => {
+      dragStartXRef.current = e.touches[0].clientX;
+      dragStartOffsetRef.current = orbitOffset;}}
+
+     onTouchMove={(e) => {
+     if (dragStartXRef.current == null) return;
+     const dx =
+      e.touches[0].clientX -
+      dragStartXRef.current;
+     setOrbitOffset(
+     dragStartOffsetRef.current + dx * 0.01
+    );
+  }}
+   onTouchEnd={() => {
+    dragStartXRef.current = null;
+  }}
+
+    style={{
+  maxWidth: 980,
+  margin: "0 auto",
+  touchAction: "pan-y",
+}}
+>
 
          <div
           style={{
