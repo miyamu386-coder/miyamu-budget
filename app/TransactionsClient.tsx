@@ -976,6 +976,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const [asOf, setAsOf] = useState<Date | null>(null);
   const [mounted, setMounted] = useState(false);
   const [selectedRing, setSelectedRing] = useState<string | null>(null);
+  const [orbitOffset, setOrbitOffset] = useState(0);
+  const dragStartXRef = useRef<number | null>(null);
+  const dragStartOffsetRef = useRef(0);
   const startEdit = (t: Transaction) => {
   setEditing(t);
   setFormOpen(true);
@@ -2004,7 +2007,7 @@ const extraPositions = useMemo(() => {
 
     // 選択中リングを手前下に持ってくる
     const frontAngle = Math.PI / 2;
-    const angle = frontAngle + (i - selectedIndex) * step;
+    const angle =frontAngle +(i - selectedIndex) * step +orbitOffset;
 
     const depth = Math.sin(angle);
     const x = Math.cos(angle) * orbitRadiusX;
