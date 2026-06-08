@@ -2679,6 +2679,7 @@ const areaH = isMobile ? 820 : 860;
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
+            touchAction: "none",
           }}
         >
 {!watchMofuSpeech.show && (
