@@ -300,7 +300,8 @@ const activeFilter = selected
   transform: `scale(${activeScale})`,
   transformOrigin: "center",
   filter: activeFilter,
-  transition: "transform 0.18s ease, filter 0.18s ease",
+  transition:
+  "transform 0.45s cubic-bezier(.2,.9,.2,1), opacity 0.35s ease",
 
   zIndex: selected ? 20 : 1,
 }}
