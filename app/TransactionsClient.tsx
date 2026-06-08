@@ -2025,7 +2025,7 @@ const extraPositions = useMemo(() => {
       zIndex: Math.round(20 + depth * 20),
     };
   });
-}, [extraRings, isMobile, selectedRing]);
+}, [extraRings, isMobile, selectedRing, orbitOffset]);
 const areaH = isMobile ? 820 : 860;
 
 
