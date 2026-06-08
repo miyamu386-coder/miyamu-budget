@@ -2665,7 +2665,7 @@ const areaH = isMobile ? 820 : 860;
       e.touches[0].clientX -
       dragStartXRef.current;
      setOrbitOffset(
-     dragStartOffsetRef.current + dx * 0.01
+     dragStartOffsetRef.current - dx * 0.01
     );
   }}
    onTouchEnd={() => {
