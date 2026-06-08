@@ -459,7 +459,13 @@ function ExtraRingButton({
   sums: { income: number; expense: number; balance: number };
   target: number;
   isMobile: boolean;
-  pos: { x: number; y: number; size: number };
+  pos: {
+  x: number;
+  y: number;
+  size: number;
+  opacity?: number;
+  zIndex?: number;
+};
   strokeSmall: number;
   outwardSmall: number;
   onTapAdd: (id: string, defaultType: TxType) => void;
@@ -515,7 +521,8 @@ function ExtraRingButton({
         boxShadow: isGlowing
           ? "0 0 0 8px rgba(251,191,36,0.18), 0 0 30px rgba(251,191,36,0.65), 0 10px 25px rgba(0,0,0,0.10)"
           : "0 10px 25px rgba(0,0,0,0.05)",
-        zIndex: selected ? 30 : isGlowing ? 8 : 2,
+        opacity: pos.opacity ?? 1,
+        zIndex: selected ? 50 : pos.zIndex ?? 2,
         touchAction: "manipulation",
         animation: isGlowing ? "miyamuRingGlow 1s ease-in-out infinite alternate" : undefined,
       }}
@@ -1978,27 +1985,45 @@ useEffect(() => {
   }, [extraRings]);
 
   // =========================
-  // ✅ 追加リングの配置
-  // =========================
-  const extraPositions = useMemo(() => {
-  const extraSize = isMobile ? 115 : 160;
-  const radiusX = isMobile ? 115 : 210;
-  const radiusY = isMobile ? 225 : 300;
-  const angles = [-90, -140, -40, 180, 0, -220, 40];
+// ✅ 追加リングの配置：オービットリング
+// =========================
+const extraPositions = useMemo(() => {
+  const count = extraRings.length;
+  const extraSize = isMobile ? 112 : 150;
+
+  const orbitRadiusX = isMobile ? 125 : 240;
+  const orbitRadiusY = isMobile ? 210 : 285;
+
+  const selectedIndex = selectedRing
+    ? extraRings.findIndex((r) => r.id === selectedRing)
+    : 0;
 
   return extraRings.map((r, i) => {
-    const angle = angles[i % angles.length];
-    const lap = Math.floor(i / angles.length); // 何周目か
-    const rad = (angle * Math.PI) / 180;
+    const step = (Math.PI * 2) / Math.max(count, 1);
 
-    // 周回ごとに少し外側へずらす
-    const x = Math.cos(rad) * (radiusX + lap * (isMobile ? 38 : 55));
-    const y = Math.sin(rad) * (radiusY + lap * (isMobile ? 48 : 65));
+    // 選択中リングを手前下に持ってくる
+    const frontAngle = Math.PI / 2;
+    const angle = frontAngle + (i - selectedIndex) * step;
 
-    return { id: r.id, x, y, size: extraSize };
+    const depth = Math.sin(angle);
+    const x = Math.cos(angle) * orbitRadiusX;
+    const y = Math.sin(angle) * orbitRadiusY;
+
+    const scale = 1 + depth * 0.12;
+    const opacity = 0.72 + depth * 0.28;
+
+    return {
+      id: r.id,
+      x,
+      y,
+      size: extraSize * scale,
+      opacity,
+      zIndex: Math.round(20 + depth * 20),
+    };
   });
-}, [extraRings, isMobile]);
+}, [extraRings, isMobile, selectedRing]);
 const areaH = isMobile ? 820 : 860;
+
 
   // =========================
   // ✅ 固定リングの長押し
