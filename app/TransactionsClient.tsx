@@ -2659,6 +2659,7 @@ const areaH = isMobile ? 820 : 860;
       dragStartOffsetRef.current = orbitOffset;}}
 
      onTouchMove={(e) => {
+     e.preventDefault();    
      if (dragStartXRef.current == null) return;
      const dx =
       e.touches[0].clientX -
