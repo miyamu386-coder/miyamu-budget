@@ -3018,9 +3018,15 @@ const areaH = isMobile ? 820 : 860;
               const mode = meta.mode;
               const showTabs = mode === "both";
               const isDebt = meta.title.includes("ローン");
-
-             const expenseLabel = isDebt ? "借入" : "支出";
-             const incomeLabel = isDebt ? "返済" : "収入";
+              const isInvest = meta.title.includes("証券");
+             const expenseLabel =
+             isDebt ? "借入"
+             : isInvest ? "売却"
+             : "支出";
+             const incomeLabel =
+             isDebt ? "返済"
+             : isInvest ? "積立"
+             : "収入";
               const forcedType: TxType =
                 meta.mode === "income_only" ? "income" : meta.mode === "expense_only" ? "expense" : quickType;
 
