@@ -2872,7 +2872,7 @@ const areaH = isMobile ? 820 : 860;
               <ExtraRingButton
                 key={r.id}
                 id={r.id}
-                title={r.title + (r.carryOver ? "（累計）" : "")}
+                title={r.title}
                 color={r.color}
                 mode={r.mode}
                 charMode={r.charMode}
