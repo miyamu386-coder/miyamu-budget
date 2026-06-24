@@ -3077,30 +3077,41 @@ const areaH = isMobile ? 820 : 860;
           background: "#fff",
         }}
       >
-        <div style={{ fontWeight: 900 }}>
-          {(t.occurredAt ?? "").slice(5, 10).replace("-", "/")}{" "}
-          {t.type === "income" ? "+" : "-"}
-          {yen(t.amount)}円
-        </div>
-        <button
-  type="button"
-  onClick={() => {
-    startEdit(t);
-    closeQuickAdd();
-  }}
+        <div
   style={{
-    marginTop: 8,
-    padding: "8px 10px",
-    borderRadius: 10,
-    border: "1px solid #ddd",
-    background: "#fff",
-    fontWeight: 900,
-    cursor: "pointer",
-    fontSize: 12,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+    gap: 10,
   }}
 >
-  編集
-</button>
+  <div style={{ fontWeight: 900 }}>
+    {(t.occurredAt ?? "").slice(5, 10).replace("-", "/")}{" "}
+    {t.type === "income" ? "+" : "-"}
+    {yen(t.amount)}円
+  </div>
+
+  <button
+    type="button"
+    onClick={() => {
+      startEdit(t);
+      closeQuickAdd();
+    }}
+    style={{
+      padding: "6px 10px",
+      borderRadius: 10,
+      border: "1px solid #ddd",
+      background: "#fff",
+      fontWeight: 900,
+      cursor: "pointer",
+      fontSize: 12,
+      whiteSpace: "nowrap",
+    }}
+  >
+    編集
+  </button>
+</div>
 
         {t.detailCategory && (
           <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
