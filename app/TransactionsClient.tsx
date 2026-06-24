@@ -3082,6 +3082,25 @@ const areaH = isMobile ? 820 : 860;
           {t.type === "income" ? "+" : "-"}
           {yen(t.amount)}円
         </div>
+        <button
+  type="button"
+  onClick={() => {
+    startEdit(t);
+    closeQuickAdd();
+  }}
+  style={{
+    marginTop: 8,
+    padding: "8px 10px",
+    borderRadius: 10,
+    border: "1px solid #ddd",
+    background: "#fff",
+    fontWeight: 900,
+    cursor: "pointer",
+    fontSize: 12,
+  }}
+>
+  編集
+</button>
 
         {t.detailCategory && (
           <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
