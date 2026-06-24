@@ -3169,9 +3169,8 @@ style={{
   <button
     type="button"
     onClick={() => {
-      // 次の工程でここに「一覧画面を開く処理」を入れる
-      console.log("入力一覧:", meta.title);
-    }}
+  setQuickView("history");
+}}
     style={{
       padding: "10px 12px",
       borderRadius: 12,
