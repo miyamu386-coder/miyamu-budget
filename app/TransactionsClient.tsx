@@ -1539,6 +1539,7 @@ useEffect(() => {
   type QuickAddTarget = { kind: "life" } | { kind: "save" } | { kind: "extra"; id: string } | null;
 
   const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [quickView, setQuickView] = useState<"form" | "history">("form");
   const [quickTarget, setQuickTarget] = useState<QuickAddTarget>(null);
   const [quickType, setQuickType] = useState<TxType>("expense");
   const [quickAmountStr, setQuickAmountStr] = useState("");
@@ -1553,6 +1554,7 @@ useEffect(() => {
     setQuickDetail("");
     setQuickDate(todayYMD());
     setIsSavingQuick(false);
+    setQuickView("form");
     setQuickAddOpen(true);
   };
 
