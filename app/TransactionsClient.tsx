@@ -2640,7 +2640,6 @@ const areaH = isMobile ? 820 : 860;
           />
         </div>
 
-        <div style={{ marginTop: 10, fontSize: 11, opacity: 0.65 }}>※リング目標は「各リングを長押し」で編集（モーダルで開きます）</div>
       </details>
     </div>
 
@@ -2977,7 +2976,6 @@ const areaH = isMobile ? 820 : 860;
               </button>
             </div>
 
-            <div style={{ marginTop: 8, fontSize: 11, opacity: 0.65 }}>※この画面は「長押し」で開きます</div>
           </div>
         </div>
       )}
@@ -3129,10 +3127,31 @@ const areaH = isMobile ? 820 : 860;
                       />
                     </label>
 
-                    <div style={{ fontSize: 11, opacity: 0.6 }}>
-                     保存すると「{forcedType === "income" ? incomeLabel : expenseLabel}」として追加されます。
-                      category は自動で {ringCategory(meta.ringKey)} になります
-                    </div>
+                   <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+  {extraRings.map((r) => (
+    <button
+      key={r.id}
+      type="button"
+      onClick={() => {
+        setQuickTarget({ kind: "extra", id: r.id });
+      }}
+      style={{
+        padding: "8px 10px",
+        borderRadius: 999,
+        border:
+          quickTarget?.kind === "extra" && quickTarget.id === r.id
+            ? "2px solid #111"
+            : "1px solid #ddd",
+        background: "#fff",
+        fontSize: 12,
+        fontWeight: 900,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {r.title}
+    </button>
+  ))}
+</div>
                   </div>
 
                 <div
@@ -3303,9 +3322,6 @@ const areaH = isMobile ? 820 : 860;
               </button>
             </div>
 
-            <div style={{ marginTop: 10, fontSize: 11, opacity: 0.65 }}>
-              ※作成すると「中心の周り」に追加されます（最大 {MAX_EXTRA_RINGS} 個）
-            </div>
           </div>
         </div>
       )}
