@@ -3055,7 +3055,14 @@ const areaH = isMobile ? 820 : 860;
 
      <div style={{ display: "grid", gap: 8 }}>
   {transactions
-    .filter((t) => (t.category ?? "") === ringCategory(meta.ringKey))
+    .filter((t) => {
+  const ymd = (t.occurredAt ?? "").slice(0, 10);
+
+  return (
+    (t.category ?? "") === ringCategory(meta.ringKey) &&
+    ymdToMonthKey(ymd) === selectedYm
+  );
+})
     .slice()
     .sort((a, b) =>
       String(a.occurredAt ?? "").localeCompare(String(b.occurredAt ?? ""))
@@ -3084,7 +3091,14 @@ const areaH = isMobile ? 820 : 860;
       </div>
     ))}
 
-  {transactions.filter((t) => (t.category ?? "") === ringCategory(meta.ringKey)).length === 0 && (
+  {transactions.filter((t) => {
+  const ymd = (t.occurredAt ?? "").slice(0, 10);
+
+  return (
+    (t.category ?? "") === ringCategory(meta.ringKey) &&
+    ymdToMonthKey(ymd) === selectedYm
+  );
+}).length === 0 && (
     <div style={{ fontSize: 13, opacity: 0.65 }}>
       入力履歴がありません
     </div>
