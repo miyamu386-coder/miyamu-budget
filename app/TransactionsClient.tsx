@@ -3029,10 +3029,40 @@ const areaH = isMobile ? 820 : 860;
              : "収入";
               const forcedType: TxType =
                 meta.mode === "income_only" ? "income" : meta.mode === "expense_only" ? "expense" : quickType;
+              
+              if (quickView === "history") {
+  return (
+    <>
+      <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 10 }}>
+        入力一覧：{meta.title}
+      </div>
 
-              return (
-                <>
-                  <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 10 }}>入力：{meta.title}</div>
+      <button
+        type="button"
+        onClick={() => setQuickView("form")}
+        style={{
+          padding: "10px 12px",
+          borderRadius: 12,
+          border: "1px solid #ddd",
+          background: "#fff",
+          fontWeight: 900,
+          cursor: "pointer",
+          marginBottom: 12,
+        }}
+      >
+        ← 入力に戻る
+      </button>
+
+      <div>一覧画面</div>
+    </>
+  );
+}
+
+return (
+  <>
+        <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 10 }}>
+          入力：{meta.title}
+        </div>
 
                   {showTabs && (
                     <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
@@ -3206,6 +3236,7 @@ style={{
     キャンセル
   </button>
 </div>
+
                 </>
               );
             })()}
