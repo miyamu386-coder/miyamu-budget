@@ -3127,30 +3127,25 @@ const areaH = isMobile ? 820 : 860;
                       />
                     </label>
 
-                   <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-  {extraRings.map((r) => (
-    <button
-      key={r.id}
-      type="button"
-      onClick={() => {
-        setQuickTarget({ kind: "extra", id: r.id });
-      }}
-      style={{
-        padding: "8px 10px",
-        borderRadius: 999,
-        border:
-          quickTarget?.kind === "extra" && quickTarget.id === r.id
-            ? "2px solid #111"
-            : "1px solid #ddd",
-        background: "#fff",
-        fontSize: 12,
-        fontWeight: 900,
-        whiteSpace: "nowrap",
-      }}
-    >
-      {r.title}
-    </button>
-  ))}
+                    <div style={{ marginTop: 2 }}>
+  <button
+    type="button"
+    onClick={() => {
+      // 次の工程でここに「一覧画面を開く処理」を入れる
+      console.log("入力一覧:", meta.title);
+    }}
+    style={{
+      padding: "10px 12px",
+      borderRadius: 12,
+      border: "1px solid #ddd",
+      background: "#fff",
+      fontWeight: 900,
+      cursor: "pointer",
+      fontSize: 13,
+    }}
+  >
+    入力一覧
+  </button>
 </div>
                   </div>
 
