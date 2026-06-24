@@ -3127,7 +3127,13 @@ const areaH = isMobile ? 820 : 860;
                       />
                     </label>
 
-                    <div style={{ marginTop: 2 }}>
+                   <div
+style={{
+    marginTop: 16,
+    display: "flex",
+    justifyContent: "center",
+  }}
+>
   <button
     type="button"
     onClick={() => {
