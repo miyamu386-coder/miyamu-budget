@@ -3053,7 +3053,43 @@ const areaH = isMobile ? 820 : 860;
         ← 入力に戻る
       </button>
 
-      <div>一覧画面</div>
+     <div style={{ display: "grid", gap: 8 }}>
+  {transactions
+    .filter((t) => (t.category ?? "") === ringCategory(meta.ringKey))
+    .slice()
+    .sort((a, b) =>
+      String(a.occurredAt ?? "").localeCompare(String(b.occurredAt ?? ""))
+    )
+    .map((t) => (
+      <div
+        key={t.id}
+        style={{
+          padding: 12,
+          borderRadius: 12,
+          border: "1px solid #eee",
+          background: "#fff",
+        }}
+      >
+        <div style={{ fontWeight: 900 }}>
+          {(t.occurredAt ?? "").slice(5, 10).replace("-", "/")}{" "}
+          {t.type === "income" ? "+" : "-"}
+          {yen(t.amount)}円
+        </div>
+
+        {t.detailCategory && (
+          <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
+            {t.detailCategory}
+          </div>
+        )}
+      </div>
+    ))}
+
+  {transactions.filter((t) => (t.category ?? "") === ringCategory(meta.ringKey)).length === 0 && (
+    <div style={{ fontSize: 13, opacity: 0.65 }}>
+      入力履歴がありません
+    </div>
+  )}
+</div>
     </>
   );
 }
