@@ -1429,40 +1429,16 @@ const importBackup = async (file: File) => {
       return { ...r, sums: s };
     });
   }, [extraRings, sumByCategoryMonthly, sumByCategoryCarry]);
- const carryOverRingCategorySet = useMemo(() => {
-  return new Set(
-    extraRings
-      .filter((r) => !!r.carryOver && r.ringType === "asset")
-      .map((r) => ringCategory(r.ringKey))
-  );
-}, [extraRings]);
-  const totalAssetTransferAdjustment = useMemo(() => {
-    let adjust = 0;
-
-    for (const t of carryOverTransactions) {
-      const cat = (t.category ?? "").trim();
-      if (!carryOverRingCategorySet.has(cat)) continue;
-      if (!isTransferTransaction(t)) continue;
-
-      if (t.type === "income") adjust += t.amount;
-      else adjust -= t.amount;
-    }
-
-    return adjust;
-  }, [carryOverTransactions, carryOverRingCategorySet]);
-
-
+ 
   const totalAssetBalance = useMemo(() => {
   let total = 0;
-
   for (const r of extraComputed) {
     if (!r.carryOver) continue;
     if (r.ringType !== "asset") continue;
     total += r.sums.balance;
   }
-
-  return total - totalAssetTransferAdjustment;
-}, [extraComputed, totalAssetTransferAdjustment]);
+  return total;
+}, [extraComputed]);
 
 
   const progressToTarget = targetBalance > 0 ? clamp01(totalAssetBalance / targetBalance) : 0;
