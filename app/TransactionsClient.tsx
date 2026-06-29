@@ -2915,10 +2915,11 @@ const areaH = isMobile ? 820 : 860;
                 setSelectedRing(id);
 
                if (r.title.includes("証券")) {
+               setQuickTarget({ kind: "extra", id });
                setQuickView("holdings");
                setQuickAddOpen(true);
-                return;
-               }
+              return;
+              }
 
   openQuickAdd({ kind: "extra", id }, defaultType);
 }}
