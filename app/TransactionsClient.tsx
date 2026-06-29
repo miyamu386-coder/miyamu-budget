@@ -3064,146 +3064,149 @@ const areaH = isMobile ? 820 : 860;
                 meta.mode === "income_only" ? "income" : meta.mode === "expense_only" ? "expense" : quickType;
               
                 if (quickView === "holdings") {
+  const currentHoldings = holdings.filter((h) => h.ringKey === meta.ringKey);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-  <div style={{ fontWeight: 900, fontSize: 18 }}>
-    持ち株一覧
-  </div>
+      <div style={{ fontWeight: 900, fontSize: 22 }}>
+        持ち株一覧
+      </div>
 
-  <button
-    type="button"
-    onClick={() => setQuickView("form")}
-  >
-    ← 戻る
-  </button>
+      <button type="button" onClick={closeQuickAdd}>
+        ← 戻る
+      </button>
 
-  <input
-    placeholder="銘柄名"
-    value={holdingName}
-    onChange={(e) => setHoldingName(e.target.value)}
-  />
+      {currentHoldings.length === 0 && (
+        <div style={{ opacity: 0.6, fontSize: 14 }}>
+          まだ銘柄がありません
+        </div>
+      )}
 
-  <input
-    placeholder="株数"
-    value={holdingShares}
-    onChange={(e) => setHoldingShares(e.target.value)}
-  />
+      {currentHoldings.map((h) => (
+        <div
+          key={h.id}
+          style={{
+            padding: "12px 0",
+            borderBottom: "1px solid #eee",
+          }}
+        >
+          <div style={{ fontWeight: 900, fontSize: 18 }}>{h.name}</div>
 
-  <input
-    placeholder="評価額"
-    value={holdingValue}
-    onChange={(e) => setHoldingValue(e.target.value)}
-  />
-  <button
-  type="button"
-  onClick={() => {
-    const name = holdingName.trim();
-    const shares = Number(holdingShares);
-    const value = parseAmountLike(holdingValue);
+          <div style={{ marginTop: 4, fontSize: 16 }}>
+            {h.shares}株　¥{h.value.toLocaleString()}
+          </div>
 
-    if (!name) {
-      alert("銘柄名を入力してください");
-      return;
-    }
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
+            <button
+              type="button"
+              onClick={() => {
+                setHoldingEditId(h.id);
+                setHoldingName(h.name);
+                setHoldingShares(String(h.shares));
+                setHoldingValue(String(h.value));
+              }}
+            >
+              編集
+            </button>
 
-    if (!Number.isFinite(shares) || shares < 0) {
-      alert("株数を入力してください");
-      return;
-    }
+            <button
+              type="button"
+              onClick={() => {
+                setHoldings((prev) => prev.filter((x) => x.id !== h.id));
+              }}
+            >
+              削除
+            </button>
+          </div>
+        </div>
+      ))}
 
-    if (value < 0) {
-      alert("評価額を入力してください");
-      return;
-    }
+      <hr style={{ width: "100%", margin: "8px 0" }} />
 
-    setHoldings((prev) => {
-  if (holdingEditId) {
-    return prev.map((h) =>
-      h.id === holdingEditId
-        ? {
-            ...h,
-            name,
-            shares,
-            value,
+      <input
+        placeholder="銘柄名"
+        value={holdingName}
+        onChange={(e) => setHoldingName(e.target.value)}
+      />
+
+      <input
+        placeholder="株数"
+        value={holdingShares}
+        onChange={(e) => setHoldingShares(e.target.value)}
+      />
+
+      <input
+        placeholder="評価額"
+        value={holdingValue}
+        onChange={(e) => setHoldingValue(e.target.value)}
+      />
+
+      <button
+        type="button"
+        onClick={() => {
+          const name = holdingName.trim();
+          const shares = Number(holdingShares);
+          const value = parseAmountLike(holdingValue);
+
+          if (!name) {
+            alert("銘柄名を入力してください");
+            return;
           }
-        : h
-    );
-  }
 
-  return [
-    ...prev,
-    {
-      id: makeId(),
-      ringKey: meta.ringKey,
-      name,
-      shares,
-      value,
-    },
-  ];
-});
+          if (!Number.isFinite(shares) || shares < 0) {
+            alert("株数を入力してください");
+            return;
+          }
 
-    setHoldingName("");
-    setHoldingShares("");
-    setHoldingValue("");
-    setHoldingEditId(null);
-  }}
->
-  {holdingEditId ? "保存" : "銘柄を追加"}
-</button>
-{holdingEditId && (
-  <button
-    type="button"
-    onClick={() => {
-      setHoldingEditId(null);
-      setHoldingName("");
-      setHoldingShares("");
-      setHoldingValue("");
-    }}
-  >
-    キャンセル
-  </button>
-)}
-{holdings
-  .filter((h) => h.ringKey === meta.ringKey)
-  .map((h) => (
-  <div
-  key={h.id}
-  style={{
-    padding: 12,
-    borderRadius: 12,
-    border: "1px solid #eee",
-    background: "#fff",
-  }}
->
-  <div style={{ fontWeight: 900 }}>{h.name}</div>
-  <div>{h.shares}株</div>
-  <div>¥{h.value.toLocaleString()}</div>
+          if (value < 0) {
+            alert("評価額を入力してください");
+            return;
+          }
 
-  <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-    <button
-      type="button"
-      onClick={() => {
-        setHoldingEditId(h.id);
-        setHoldingName(h.name);
-        setHoldingShares(String(h.shares));
-        setHoldingValue(String(h.value));
-      }}
-    >
-      編集
-    </button>
+          setHoldings((prev) => {
+            if (holdingEditId) {
+              return prev.map((h) =>
+                h.id === holdingEditId
+                  ? { ...h, name, shares, value }
+                  : h
+              );
+            }
 
-    <button
-      type="button"
-      onClick={() => {
-        setHoldings((prev) => prev.filter((x) => x.id !== h.id));
-      }}
-    >
-      削除
-    </button>
-  </div>
-</div>
-))}
-</div>
+            return [
+              ...prev,
+              {
+                id: makeId(),
+                ringKey: meta.ringKey,
+                name,
+                shares,
+                value,
+              },
+            ];
+          });
+
+          setHoldingName("");
+          setHoldingShares("");
+          setHoldingValue("");
+          setHoldingEditId(null);
+        }}
+      >
+        {holdingEditId ? "保存" : "銘柄を追加"}
+      </button>
+
+      {holdingEditId && (
+        <button
+          type="button"
+          onClick={() => {
+            setHoldingEditId(null);
+            setHoldingName("");
+            setHoldingShares("");
+            setHoldingValue("");
+          }}
+        >
+          キャンセル
+        </button>
+      )}
+    </div>
   );
 }
               if (quickView === "history") {
