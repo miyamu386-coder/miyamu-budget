@@ -360,6 +360,7 @@ type Holding = {
   ringKey: string;
   name: string;
   shares: number;
+  unit?: "株" | "口";
   value: number;
 };
 
@@ -1565,6 +1566,7 @@ useEffect(() => {
   const [holdingEditId, setHoldingEditId] = useState<string | null>(null);
   const [holdingName, setHoldingName] = useState("");
   const [holdingShares, setHoldingShares] = useState("");
+  const [holdingUnit, setHoldingUnit] = useState<"株" | "口">("株");
   const [holdingValue, setHoldingValue] = useState("");
   const [isSavingQuick, setIsSavingQuick] = useState(false);
 
@@ -3096,7 +3098,7 @@ const areaH = isMobile ? 820 : 860;
           <div style={{ fontWeight: 900, fontSize: 18 }}>{h.name}</div>
 
           <div style={{ marginTop: 4, fontSize: 16 }}>
-            {h.shares}株　¥{h.value.toLocaleString()}
+            {h.shares}{h.unit ?? "株"}　¥{h.value.toLocaleString()}
           </div>
 
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
@@ -3106,6 +3108,7 @@ const areaH = isMobile ? 820 : 860;
                 setHoldingEditId(h.id);
                 setHoldingName(h.name);
                 setHoldingShares(String(h.shares));
+                setHoldingUnit(h.unit ?? "株");
                 setHoldingValue(String(h.value));
               }}
             >
@@ -3136,7 +3139,15 @@ const areaH = isMobile ? 820 : 860;
         placeholder="株数"
         value={holdingShares}
         onChange={(e) => setHoldingShares(e.target.value)}
-      />
+        />
+        <select
+  value={holdingUnit}
+  onChange={(e) => setHoldingUnit(e.target.value as "株" | "口")}
+>
+  <option value="株">株</option>
+  <option value="口">口</option>
+</select>
+      
 
       <input
         placeholder="評価額"
@@ -3170,7 +3181,7 @@ const areaH = isMobile ? 820 : 860;
             if (holdingEditId) {
               return prev.map((h) =>
                 h.id === holdingEditId
-                  ? { ...h, name, shares, value }
+                  ? { ...h, name, shares, unit: holdingUnit, value }
                   : h
               );
             }
@@ -3178,12 +3189,13 @@ const areaH = isMobile ? 820 : 860;
             return [
               ...prev,
               {
-                id: makeId(),
-                ringKey: meta.ringKey,
-                name,
-                shares,
-                value,
-              },
+  id: makeId(),
+  ringKey: meta.ringKey,
+  name,
+  shares,
+  unit: holdingUnit,
+  value,
+},
             ];
           });
 
