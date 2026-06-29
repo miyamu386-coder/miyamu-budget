@@ -355,6 +355,13 @@ type ExtraRing = {
   ringType?: "asset" | "debt";
   carryOver?: boolean;
 };
+type Holding = {
+  id: string;
+  ringKey: string;
+  name: string;
+  shares: number;
+  value: number;
+};
 
 function makeId() {
   return `ring_${Math.random().toString(36).slice(2, 9)}_${Date.now()}`;
@@ -1023,6 +1030,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   ringGoals: RingGoal[];
   selectedYm: string;
   extraRings: ExtraRing[];
+  holdings: Holding[];
 };
 
 const exportBackup = () => {
@@ -1035,6 +1043,7 @@ const exportBackup = () => {
       ringGoals,
       selectedYm,
       extraRings,
+      holdings: [],
     };
 
     const blob = new Blob([JSON.stringify(backup, null, 2)], {
@@ -1326,8 +1335,13 @@ const importBackup = async (file: File) => {
     const k = userKey || "anonymous";
     return `miyamu_maker_extra_rings_v6:${k}`;
   }, [userKey]);
+  const holdingsStorageKey = useMemo(() => {
+  const k = userKey || "anonymous";
+  return `miyamu_holdings_v1:${k}`;
+}, [userKey]);
 
   const [extraRings, setExtraRings] = useState<ExtraRing[]>([]);
+  const [holdings, setHoldings] = useState<Holding[]>([]);
 
   useEffect(() => {
     if (!userKey) return;
@@ -1362,6 +1376,22 @@ const importBackup = async (file: File) => {
       console.warn("extra rings load failed", e);
     }
   }, [userKey, extrasStorageKey]);
+  useEffect(() => {
+  if (!userKey) return;
+
+  try {
+    const raw = localStorage.getItem(holdingsStorageKey);
+    if (!raw) return;
+
+    const arr = JSON.parse(raw) as Holding[];
+
+    if (!Array.isArray(arr)) return;
+
+    setHoldings(arr);
+  } catch (e) {
+    console.warn("holdings load failed", e);
+  }
+}, [userKey, holdingsStorageKey]);
 
   useEffect(() => {
     if (!userKey) return;
@@ -1371,7 +1401,15 @@ const importBackup = async (file: File) => {
       console.warn("extra rings save failed", e);
     }
   }, [userKey, extrasStorageKey, extraRings]);
+  useEffect(() => {
+  if (!userKey) return;
 
+  try {
+    localStorage.setItem(holdingsStorageKey, JSON.stringify(holdings));
+  } catch (e) {
+    console.warn("holdings save failed", e);
+  }
+}, [userKey, holdingsStorageKey, holdings]);
   const canAddExtra = extraRings.length < MAX_EXTRA_RINGS;
 
   // =========================
@@ -1429,7 +1467,9 @@ const importBackup = async (file: File) => {
       return { ...r, sums: s };
     });
   }, [extraRings, sumByCategoryMonthly, sumByCategoryCarry]);
- 
+   const holdingsTotal = useMemo(() => {
+  return holdings.reduce((sum, h) => sum + h.value, 0);
+}, [holdings]);
   const totalAssetBalance = useMemo(() => {
   let total = 0;
   for (const r of extraComputed) {
@@ -1437,6 +1477,7 @@ const importBackup = async (file: File) => {
     if (r.ringType !== "asset") continue;
     total += r.sums.balance;
   }
+  total += holdingsTotal;
   return total;
 }, [extraComputed]);
 
@@ -1515,12 +1556,16 @@ useEffect(() => {
   type QuickAddTarget = { kind: "life" } | { kind: "save" } | { kind: "extra"; id: string } | null;
 
   const [quickAddOpen, setQuickAddOpen] = useState(false);
-  const [quickView, setQuickView] = useState<"form" | "history">("form");
+  const [quickView, setQuickView] = useState<"form" | "history" | "holdings">("form");
   const [quickTarget, setQuickTarget] = useState<QuickAddTarget>(null);
   const [quickType, setQuickType] = useState<TxType>("expense");
   const [quickAmountStr, setQuickAmountStr] = useState("");
   const [quickDate, setQuickDate] = useState(todayYMD());
   const [quickDetail, setQuickDetail] = useState("");
+  const [holdingEditId, setHoldingEditId] = useState<string | null>(null);
+  const [holdingName, setHoldingName] = useState("");
+  const [holdingShares, setHoldingShares] = useState("");
+  const [holdingValue, setHoldingValue] = useState("");
   const [isSavingQuick, setIsSavingQuick] = useState(false);
 
   const openQuickAdd = (target: QuickAddTarget, defaultType: TxType) => {
@@ -1530,6 +1575,10 @@ useEffect(() => {
     setQuickDetail("");
     setQuickDate(todayYMD());
     setIsSavingQuick(false);
+    setHoldingEditId(null);
+    setHoldingName("");
+    setHoldingShares("");
+    setHoldingValue("");
     setQuickView("form");
     setQuickAddOpen(true);
   };
@@ -2864,8 +2913,15 @@ const areaH = isMobile ? 820 : 860;
                 outwardSmall={outwardSmall}
                 onTapAdd={(id, defaultType) => {
                 setSelectedRing(id);
-                openQuickAdd({ kind: "extra", id }, defaultType);
-                }}
+
+               if (r.title === "証券") {
+               setQuickView("holdings");
+               setQuickAddOpen(true);
+                return;
+               }
+
+  openQuickAdd({ kind: "extra", id }, defaultType);
+}}
                 onLongPressEditRing={(id) => openExtraEdit(id)}
               />
             );
@@ -3006,6 +3062,149 @@ const areaH = isMobile ? 820 : 860;
               const forcedType: TxType =
                 meta.mode === "income_only" ? "income" : meta.mode === "expense_only" ? "expense" : quickType;
               
+                if (quickView === "holdings") {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+  <div style={{ fontWeight: 900, fontSize: 18 }}>
+    持ち株一覧
+  </div>
+
+  <button
+    type="button"
+    onClick={() => setQuickView("form")}
+  >
+    ← 戻る
+  </button>
+
+  <input
+    placeholder="銘柄名"
+    value={holdingName}
+    onChange={(e) => setHoldingName(e.target.value)}
+  />
+
+  <input
+    placeholder="株数"
+    value={holdingShares}
+    onChange={(e) => setHoldingShares(e.target.value)}
+  />
+
+  <input
+    placeholder="評価額"
+    value={holdingValue}
+    onChange={(e) => setHoldingValue(e.target.value)}
+  />
+  <button
+  type="button"
+  onClick={() => {
+    const name = holdingName.trim();
+    const shares = Number(holdingShares);
+    const value = parseAmountLike(holdingValue);
+
+    if (!name) {
+      alert("銘柄名を入力してください");
+      return;
+    }
+
+    if (!Number.isFinite(shares) || shares < 0) {
+      alert("株数を入力してください");
+      return;
+    }
+
+    if (value < 0) {
+      alert("評価額を入力してください");
+      return;
+    }
+
+    setHoldings((prev) => {
+  if (holdingEditId) {
+    return prev.map((h) =>
+      h.id === holdingEditId
+        ? {
+            ...h,
+            name,
+            shares,
+            value,
+          }
+        : h
+    );
+  }
+
+  return [
+    ...prev,
+    {
+      id: makeId(),
+      ringKey: meta.ringKey,
+      name,
+      shares,
+      value,
+    },
+  ];
+});
+
+    setHoldingName("");
+    setHoldingShares("");
+    setHoldingValue("");
+    setHoldingEditId(null);
+  }}
+>
+  {holdingEditId ? "保存" : "銘柄を追加"}
+</button>
+{holdingEditId && (
+  <button
+    type="button"
+    onClick={() => {
+      setHoldingEditId(null);
+      setHoldingName("");
+      setHoldingShares("");
+      setHoldingValue("");
+    }}
+  >
+    キャンセル
+  </button>
+)}
+{holdings
+  .filter((h) => h.ringKey === meta.ringKey)
+  .map((h) => (
+  <div
+  key={h.id}
+  style={{
+    padding: 12,
+    borderRadius: 12,
+    border: "1px solid #eee",
+    background: "#fff",
+  }}
+>
+  <div style={{ fontWeight: 900 }}>{h.name}</div>
+  <div>{h.shares}株</div>
+  <div>¥{h.value.toLocaleString()}</div>
+
+  <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+    <button
+      type="button"
+      onClick={() => {
+        setHoldingEditId(h.id);
+        setHoldingName(h.name);
+        setHoldingShares(String(h.shares));
+        setHoldingValue(String(h.value));
+      }}
+    >
+      編集
+    </button>
+
+    <button
+      type="button"
+      onClick={() => {
+        setHoldings((prev) => prev.filter((x) => x.id !== h.id));
+      }}
+    >
+      削除
+    </button>
+  </div>
+</div>
+))}
+</div>
+  );
+}
               if (quickView === "history") {
   return (
     <>
