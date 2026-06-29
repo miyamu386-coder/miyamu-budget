@@ -2914,7 +2914,7 @@ const areaH = isMobile ? 820 : 860;
                 onTapAdd={(id, defaultType) => {
                 setSelectedRing(id);
 
-               if (r.title === "証券") {
+               if (r.title.includes("証券")) {
                setQuickView("holdings");
                setQuickAddOpen(true);
                 return;
