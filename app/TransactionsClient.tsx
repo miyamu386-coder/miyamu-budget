@@ -3064,7 +3064,10 @@ const areaH = isMobile ? 820 : 860;
                 meta.mode === "income_only" ? "income" : meta.mode === "expense_only" ? "expense" : quickType;
               
                 if (quickView === "holdings") {
-  const currentHoldings = holdings.filter((h) => h.ringKey === meta.ringKey);
+  const currentHoldings = holdings
+  .filter((h) => h.ringKey === meta.ringKey)
+  .slice()
+  .sort((a, b) => b.value - a.value);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
