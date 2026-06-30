@@ -1492,7 +1492,7 @@ const importBackup = async (file: File) => {
     if (securitiesRingKeys.has(r.ringKey)) continue;
     total += r.sums.balance;
   }
-  total += holdingsTotal;
+  // total += holdingsTotal;
   return total;
 }, [extraComputed, securitiesRingKeys, holdingsTotal]);
 
