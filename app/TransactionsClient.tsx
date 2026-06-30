@@ -355,6 +355,8 @@ type ExtraRing = {
   ringType?: "asset" | "debt";
   carryOver?: boolean;
 };
+type HoldingKind = "国内株" | "米国ETF" | "投資信託"|"現金";
+
 type Holding = {
   id: string;
   ringKey: string;
@@ -362,6 +364,7 @@ type Holding = {
   shares: number;
   unit?: "株" | "口";
   value: number;
+  kind?: HoldingKind;
 };
 
 function makeId() {
@@ -1506,6 +1509,12 @@ const importBackup = async (file: File) => {
    const holdingsTotal = useMemo(() => {
   return holdings.reduce((sum, h) => sum + h.value, 0);
 }, [holdings]);
+  const holdingColors: Record<HoldingKind, string> = {
+  国内株: "#2563eb",
+  米国ETF: "#f59e0b",
+  投資信託: "#10b981",
+  現金: "#9ca3af",
+};
   const totalAssetBalance = useMemo(() => {
   let total = 0;
   for (const r of extraComputed) {
@@ -1600,6 +1609,7 @@ useEffect(() => {
   const [quickDetail, setQuickDetail] = useState("");
   const [holdingEditId, setHoldingEditId] = useState<string | null>(null);
   const [holdingName, setHoldingName] = useState("");
+  const [holdingKind, setHoldingKind] =useState<HoldingKind>("投資信託");
   const [holdingShares, setHoldingShares] = useState("");
   const [holdingUnit, setHoldingUnit] = useState<"株" | "口">("株");
   const [holdingValue, setHoldingValue] = useState("");
@@ -3122,6 +3132,7 @@ const areaH = isMobile ? 820 : 860;
         </div>
       )}
 
+      
       {currentHoldings.map((h) => (
         <div
           key={h.id}
@@ -3130,7 +3141,26 @@ const areaH = isMobile ? 820 : 860;
             borderBottom: "1px solid #eee",
           }}
         >
-          <div style={{ fontWeight: 900, fontSize: 18 }}>{h.name}</div>
+         <div
+  style={{
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    fontWeight: 900,
+    fontSize: 18,
+  }}
+>
+  <span
+    style={{
+      width: 12,
+      height: 12,
+      borderRadius: "50%",
+      background: holdingColors[h.kind ?? "投資信託"],
+      display: "inline-block",
+    }}
+  />
+  <span>{h.name}</span>
+</div>
 
           <div style={{ marginTop: 4, fontSize: 16 }}>
             {h.shares}{h.unit ?? "株"}　¥{h.value.toLocaleString()}
@@ -3169,6 +3199,15 @@ const areaH = isMobile ? 820 : 860;
         value={holdingName}
         onChange={(e) => setHoldingName(e.target.value)}
       />
+      <select
+  value={holdingKind}
+  onChange={(e) => setHoldingKind(e.target.value as HoldingKind)}
+>
+  <option value="国内株">国内株</option>
+  <option value="米国ETF">米国ETF</option>
+  <option value="投資信託">投資信託</option>
+  <option value="現金">現金</option>
+</select>
 
       <input
         placeholder="株数"
@@ -3230,6 +3269,7 @@ const areaH = isMobile ? 820 : 860;
   shares,
   unit: holdingUnit,
   value,
+  kind: holdingKind,
 },
             ];
           });
