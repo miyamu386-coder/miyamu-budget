@@ -1468,6 +1468,19 @@ const importBackup = async (file: File) => {
       return { ...r, sums: s };
     });
   }, [extraRings, sumByCategoryMonthly, sumByCategoryCarry]);
+
+  const securitiesRingKeys = useMemo(() => {
+  return new Set(
+    extraRings
+      .filter(
+        (r) =>
+          r.title.includes("証券") ||
+          r.title.includes("株") ||
+          r.title.includes("投資")
+      )
+      .map((r) => r.ringKey)
+  );
+}, [extraRings]);
    const holdingsTotal = useMemo(() => {
   return holdings.reduce((sum, h) => sum + h.value, 0);
 }, [holdings]);
@@ -1476,11 +1489,12 @@ const importBackup = async (file: File) => {
   for (const r of extraComputed) {
     if (!r.carryOver) continue;
     if (r.ringType !== "asset") continue;
+    if (securitiesRingKeys.has(r.ringKey)) continue;
     total += r.sums.balance;
   }
   total += holdingsTotal;
   return total;
-}, [extraComputed]);
+}, [extraComputed, securitiesRingKeys, holdingsTotal]);
 
 
   const progressToTarget = targetBalance > 0 ? clamp01(totalAssetBalance / targetBalance) : 0;
