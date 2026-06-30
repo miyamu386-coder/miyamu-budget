@@ -1463,11 +1463,33 @@ const importBackup = async (file: File) => {
   const targetBalance = getTarget(ringGoals, GOAL_ASSET_KEY);
 
   const extraComputed = useMemo(() => {
-    return extraRings.map((r) => {
-      const s = getRingSums(r.ringKey, !!r.carryOver);
-      return { ...r, sums: s };
-    });
-  }, [extraRings, sumByCategoryMonthly, sumByCategoryCarry]);
+  return extraRings.map((r) => {
+    const s = getRingSums(r.ringKey, !!r.carryOver);
+
+    const isSecuritiesRing =
+      r.title.includes("証券") ||
+      r.title.includes("株") ||
+      r.title.includes("投資");
+
+    const holdingsValue = holdings
+      .filter((h) => h.ringKey === r.ringKey)
+      .reduce((sum, h) => sum + h.value, 0);
+
+    if (isSecuritiesRing) {
+      return {
+        ...r,
+        sums: {
+          ...s,
+          income: holdingsValue,
+          expense: 0,
+          balance: holdingsValue,
+        },
+      };
+    }
+
+    return { ...r, sums: s };
+  });
+}, [extraRings, sumByCategoryMonthly, sumByCategoryCarry, holdings]);
 
   const securitiesRingKeys = useMemo(() => {
   return new Set(
