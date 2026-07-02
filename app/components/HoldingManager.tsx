@@ -187,7 +187,7 @@ export default function HoldingManager({
             if (holdingEditId) {
               return prev.map((h) =>
                 h.id === holdingEditId
-                  ? { ...h, name, shares, unit: holdingUnit, value }
+                  ? { ...h, name, shares, unit: holdingUnit, value, kind: holdingKind }
                   : h
               );
             }
@@ -196,7 +196,7 @@ export default function HoldingManager({
               ...prev,
               {
   id: makeId(),
-  ringKey:
+  ringKey,
   name,
   shares,
   unit: holdingUnit,
