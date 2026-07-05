@@ -1527,7 +1527,6 @@ const importBackup = async (file: File) => {
   return total;
 }, [extraComputed, securitiesRingKeys, holdingsTotal]);
 
-
   const progressToTarget = targetBalance > 0 ? clamp01(totalAssetBalance / targetBalance) : 0;
   const remainToTarget = Math.max(0, targetBalance - totalAssetBalance);
   const balanceAchieved = targetBalance > 0 ? totalAssetBalance >= targetBalance : false;
@@ -2103,7 +2102,6 @@ const extraPositions = useMemo(() => {
 }, [extraRings, isMobile, selectedRing, orbitOffset]);
 const areaH = isMobile ? 820 : 860;
 
-
   // =========================
   // ✅ 固定リングの長押し
   // =========================
@@ -2437,7 +2435,6 @@ const areaH = isMobile ? 820 : 860;
         <div style={{ fontWeight: 900, fontSize: 18 }}>
   {fmtYM(selectedYm)}
 </div>
-
 
         <button
           onClick={() => setSelectedYm((v) => addMonths(v, 1))}
@@ -2790,7 +2787,6 @@ const areaH = isMobile ? 820 : 860;
         animation: "watchMofuNutto 220ms ease-out both",
       }}
     />
-
 
     <div
       key={watchMofuSpeech.key}
