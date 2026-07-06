@@ -4,6 +4,7 @@ import { clearUserKeyCache } from "./userKey";
 function normalizeUserKeyInput(s: string) {
   return s.trim().slice(0, 64);
 }
+export const BACKUP_STORAGE_KEY = "miyamu_budget_user_key";
 
 export type BackupData = {
   version: 1;

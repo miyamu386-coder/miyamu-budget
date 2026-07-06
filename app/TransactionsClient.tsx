@@ -5,7 +5,7 @@ import confetti from "canvas-confetti";
 import TransactionForm from "./TransactionForm";
 import TransactionList from "./TransactionList";
 import type { Transaction } from "./types";
-import { getOrCreateUserKey, clearUserKeyCache, getUserKeyName, setUserKeyName } from "../lib/userKey";
+import { getOrCreateUserKey, clearUserKeyCache, getUserKeyName, setUserKeyName,maskKey, } from "../lib/userKey";
 import styles from "./TransactionsClient.module.css";
 import { toPng } from "html-to-image";
 import html2canvas from "html2canvas";
@@ -13,10 +13,12 @@ import HoldingManager from "./components/HoldingManager";
 import ExtraRingButton from "./components/ExtraRingButton";
 import PayoffModal from "./components/PayoffModal";
 import SaveCharaOverlay from "./components/SaveCharaOverlay";
-import {exportMiyamuBackup,importMiyamuBackup,type BackupData,} from "../lib/backup";
+import {BACKUP_STORAGE_KEY,exportMiyamuBackup,importMiyamuBackup,type BackupData,} from "../lib/backup";
+import { parseAmountLike } from "../lib/amount";
 // ✅ リング目標（localStorage）
 import RingGoalEditor from "./components/RingGoalEditor";
 import { loadRingGoals, getTarget, type RingGoal } from "../lib/ringGoals";
+import { calcRepayment } from "../lib/repayment";
 
 /**
  * ✅ 長押しハンドラ（Pointer Events）
@@ -134,56 +136,6 @@ function formatYMDDate(d: Date) {
   return `${y}/${m}/${dd}`;
 }
 
-function calcRepayment(params: {
-  totalDebt: number; // 借入総額（リング目標）
-  repaidTotal: number; // 返済済み累計（リングのexpense累計）
-  monthlyPayment: number; // 今月返済（または平均）
-  asOf?: Date; // 基準日
-}) {
-  const asOf = params.asOf ?? new Date();
-  const totalDebt = Math.max(0, params.totalDebt);
-  const repaidTotal = Math.max(0, params.repaidTotal);
-  const monthlyPayment = Math.max(0, params.monthlyPayment);
-
-  const remaining = Math.max(0, totalDebt - repaidTotal);
-  const progressPct = totalDebt > 0 ? clamp((repaidTotal / totalDebt) * 100, 0, 100) : 0;
-
-  if (totalDebt <= 0) {
-    return {
-      progressPct,
-      remaining,
-      months: null as number | null,
-      payoffDate: null as Date | null,
-      message: "目標（借入総額）が未設定です",
-    };
-  }
-
-  if (remaining === 0) {
-    return {
-      progressPct: 100,
-      remaining: 0,
-      months: 0,
-      payoffDate: asOf,
-      message: "完済済み",
-    };
-  }
-
-  if (monthlyPayment <= 0) {
-    return {
-      progressPct,
-      remaining,
-      months: null,
-      payoffDate: null,
-      message: "今月の返済額が0のため予測できません",
-    };
-  }
-
-  const months = Math.ceil(remaining / monthlyPayment);
-  const payoffDate = addMonthsDate(asOf, months);
-
-  return { progressPct, remaining, months, payoffDate, message: "OK" };
-}
-
 // ✅ 本番(Vercel)では userKey UI を出さない（ローカル開発だけ表示）
 const SHOW_USERKEY_UI = process.env.NODE_ENV !== "production";
 const STORAGE_KEY = "miyamu_budget_user_key";
@@ -191,36 +143,6 @@ const STORAGE_KEY = "miyamu_budget_user_key";
 /**
  * ✅ 「5万」「1.2万」「3千」「50,000」等を数値にする
  */
-function parseAmountLike(input: string): number {
-  if (!input) return 0;
-
-  // 全角数字→半角
-  const half = input.replace(/[０-９．]/g, (ch) => {
-    const code = ch.charCodeAt(0);
-    if (ch === "．") return ".";
-    return String(code - 0xfee0);
-  });
-
-  // よくある単位・余計な文字を軽く掃除
-  const s = half.trim().replace(/[,，\s]/g, "").replace(/円/g, "");
-
-  // 「万」「千」対応（例: 1.2万, 5万, 3千）
-  const manMatch = s.match(/^(-?\d+(?:\.\d+)?)万$/);
-  if (manMatch) return Math.round(Number(manMatch[1]) * 10000);
-
-  const senMatch = s.match(/^(-?\d+(?:\.\d+)?)千$/);
-  if (senMatch) return Math.round(Number(senMatch[1]) * 1000);
-
-  const n = Number(s);
-  if (!Number.isFinite(n)) return 0;
-  return Math.round(n);
-}
-
-function maskKey(k: string) {
-  if (!k) return "";
-  if (k.length <= 8) return k;
-  return `${k.slice(0, 4)}…${k.slice(-4)}`;
-}
 
 function normalizeUserKeyInput(s: string) {
   return s.trim().slice(0, 64);
@@ -518,7 +440,7 @@ const importBackup = async (file: File) => {
     file,
     userKey,
     nowYm,
-    storageKey: STORAGE_KEY,
+    storageKey: BACKUP_STORAGE_KEY,
     setUserKey,
     setSelectedYm,
     setExtraRings,

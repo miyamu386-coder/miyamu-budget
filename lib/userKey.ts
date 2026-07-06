@@ -69,3 +69,8 @@ export async function getOrCreateUserKey(): Promise<string> {
   cached = key;
   return cached;
 }
+export function maskKey(k: string) {
+  if (!k) return "";
+  if (k.length <= 8) return k;
+  return `${k.slice(0, 4)}…${k.slice(-4)}`;
+}
