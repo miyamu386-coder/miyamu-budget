@@ -74,3 +74,6 @@ export function maskKey(k: string) {
   if (k.length <= 8) return k;
   return `${k.slice(0, 4)}…${k.slice(-4)}`;
 }
+export function normalizeUserKeyInput(s: string) {
+  return s.trim().slice(0, 64);
+}

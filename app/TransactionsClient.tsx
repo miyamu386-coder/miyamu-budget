@@ -5,56 +5,29 @@ import confetti from "canvas-confetti";
 import TransactionForm from "./TransactionForm";
 import TransactionList from "./TransactionList";
 import type { Transaction } from "./types";
-import { getOrCreateUserKey, clearUserKeyCache, getUserKeyName, setUserKeyName,maskKey, } from "../lib/userKey";
+import {getOrCreateUserKey,clearUserKeyCache,getUserKeyName,setUserKeyName,maskKey,normalizeUserKeyInput,} from "../lib/userKey";
 import styles from "./TransactionsClient.module.css";
-import { toPng } from "html-to-image";
 import html2canvas from "html2canvas";
-import HoldingManager from "./components/HoldingManager";
 import ExtraRingButton from "./components/ExtraRingButton";
 import PayoffModal from "./components/PayoffModal";
 import SaveCharaOverlay from "./components/SaveCharaOverlay";
-import {BACKUP_STORAGE_KEY,exportMiyamuBackup,importMiyamuBackup,type BackupData,} from "../lib/backup";
+import Ring from "./components/Ring";
+import CreateRingModal from "./components/CreateRingModal";
+import EditRingModal from "./components/EditRingModal";
+import QuickAddModal from "./components/QuickAddModal";
+import UserIdModal from "./components/UserIdModal";
+import KeyEditingPanel from "./components/KeyEditingPanel";
+import { yen } from "../lib/format";
+import { clamp01, clamp } from "../lib/math";
+import {BACKUP_STORAGE_KEY,exportMiyamuBackup,importMiyamuBackup,} from "../lib/backup";
 import { parseAmountLike } from "../lib/amount";
-// ✅ リング目標（localStorage）
-import RingGoalEditor from "./components/RingGoalEditor";
+import GoalModal from "./components/GoalModal";
 import { loadRingGoals, getTarget, type RingGoal } from "../lib/ringGoals";
 import { calcRepayment } from "../lib/repayment";
+import {ymdToMonthKey,fmtYM,addMonths,endOfMonthYMD,todayYMD,} from "../lib/dateUtils";
+import { useLongPressHandlers } from "../lib/useLongPressHandlers";
 
-/**
- * ✅ 長押しハンドラ（Pointer Events）
- * - onClick側で shouldIgnoreClick() を見て短押し/長押しを分岐
- */
-function useLongPressHandlers(onLongPress: () => void, delay = 650) {
-  const timerRef = useRef<number | null>(null);
-  const longPressedRef = useRef(false);
 
-  const clear = () => {
-    if (timerRef.current !== null) {
-      window.clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  };
-
-  const onPointerDown = () => {
-    clear();
-    longPressedRef.current = false;
-    timerRef.current = window.setTimeout(() => {
-      longPressedRef.current = true;
-      onLongPress();
-    }, delay);
-  };
-
-  const onPointerUp = () => clear();
-
-  const onPointerCancel = () => {
-    clear();
-    longPressedRef.current = false;
-  };
-
-  const shouldIgnoreClick = () => longPressedRef.current;
-
-  return { onPointerDown, onPointerUp, onPointerCancel, shouldIgnoreClick };
-}
 
 type Props = {
   initialTransactions: Transaction[];
@@ -74,50 +47,6 @@ function calcSummary(transactions: Transaction[]): Summary {
     else expense += t.amount;
   }
   return { income, expense, balance: income - expense };
-}
-
-function ymdToMonthKey(ymd: string) {
-  return ymd.slice(0, 7);
-}
-
-function fmtYM(ym: string) {
-  const [y, m] = ym.split("-");
-  return `${y}年${Number(m)}月`;
-}
-
-function addMonths(ym: string, delta: number) {
-  const [y, m] = ym.split("-").map(Number);
-  const d = new Date(y, m - 1, 1);
-  d.setMonth(d.getMonth() + delta);
-  const yy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  return `${yy}-${mm}`;
-}
-
-function endOfMonthYMD(ym: string) {
-  const [y, m] = ym.split("-").map(Number);
-  const lastDay = new Date(y, m, 0).getDate();
-  return `${y}-${String(m).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
-}
-
-function yen(n: number) {
-  return (n || 0).toLocaleString("ja-JP");
-}
-
-function clamp01(x: number) {
-  return Math.max(0, Math.min(1, x));
-}
-
-function todayYMD() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${dd}`;
-}
-
-function clamp(n: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, n));
 }
 
 function addMonthsDate(base: Date, monthsToAdd: number) {
@@ -144,9 +73,6 @@ const STORAGE_KEY = "miyamu_budget_user_key";
  * ✅ 「5万」「1.2万」「3千」「50,000」等を数値にする
  */
 
-function normalizeUserKeyInput(s: string) {
-  return s.trim().slice(0, 64);
-}
   function isTransferTransaction(tx: Transaction) {
   const text = [
     tx.category ?? "",
@@ -169,103 +95,6 @@ function normalizeUserKeyInput(s: string) {
   ];
 
   return keywords.some((kw) => text.includes(kw.toLowerCase()));
-}
-  
-
-/**
- * ✅ 外周リング描画（SVG）
- */
-function Ring({
-  size,
-  stroke,
-  progress,
-  color,
-  selected,
-  trackColor = "#e5e7eb",
-  outward = 0,
-  offsetDeg = -90,
-}: {
-  size: number;
-  stroke: number;
-  progress: number;
-  color: string;
-  selected?: boolean;
-  trackColor?: string;
-  outward?: number;
-  offsetDeg?: number;
-}) {
-  // 選択時の強調
-const activeStroke = selected ? stroke + 4 : stroke;
-const activeScale = selected ? 1.03 : 1;
-const activeFilter = selected
-  ? "drop-shadow(0 6px 12px rgba(0,0,0,0.22))"
-  : "none";
-  const p = clamp01(progress);
-
-  const pad = Math.max(0, outward) + stroke;
-  const full = size + pad * 2;
-
-  const r = (size - stroke) / 2 + outward;
-  const c = 2 * Math.PI * r;
-  const dashOffset = c * (1 - p);
-
-  const cx = full / 2;
-  const cy = full / 2;
-
-  return (
-    <svg
-      width={full}
-      height={full}
-      style={{
-  position: "absolute",
-  top: -pad,
-  left: -pad,
-  pointerEvents: "none",
-  overflow: "visible",
-
-  transform: `scale(${activeScale})`,
-  transformOrigin: "center",
-  filter: activeFilter,
-  transition:
-  "transform 0.45s cubic-bezier(.2,.9,.2,1), opacity 0.35s ease",
-
-  zIndex: selected ? 20 : 1,
-}}
-      viewBox={`0 0 ${full} ${full}`}
-    >
-     <defs>
-  <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
-    <stop offset="0%" stopColor="#FFF7AE" />
-    <stop offset="35%" stopColor="#FFD700" />
-    <stop offset="60%" stopColor="#FFC300" />
-    <stop offset="100%" stopColor="#FFB300" />
-  </linearGradient>
-
-  <filter id="goldGlow">
-    <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-    <feMerge>
-      <feMergeNode in="coloredBlur"/>
-      <feMergeNode in="SourceGraphic"/>
-    </feMerge>
-  </filter>
-</defs>
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke={trackColor} strokeWidth={stroke} />
-      <circle
-        cx={cx}
-        cy={cy}
-        r={r}
-        fill="none"
-        stroke={p >= 0.999 ? "url(#gold)" : color}
-        filter={p >= 0.999 ? "url(#goldGlow)" : undefined}
-        strokeWidth={activeStroke}
-        strokeLinecap="round"
-        strokeDasharray={c}
-        strokeDashoffset={dashOffset}
-        transform={`rotate(${offsetDeg} ${cx} ${cy})`}
-        style={{ transition: "stroke-dashoffset 0.35s ease" }}
-      />
-    </svg>
-  );
 }
 
 type CharaMode = "auto" | "mofu" | "hina" | "none";
@@ -1774,236 +1603,30 @@ const areaH = isMobile ? 820 : 860;
         </button>
       </div>
 
-      {/* ✅ userKey表示モーダル（本番OK） */}
       {userIdOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.35)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-            zIndex: 10000,
-          }}
-          onClick={() => setUserIdOpen(false)}
-        >
-          <div
-            style={{
-              width: "min(560px, 96vw)",
-              background: "#fff",
-              borderRadius: 16,
-              padding: 16,
-              boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 10 }}>この端末のユーザーID（userKey）</div>
-
-            <div
-              style={{
-                border: "1px solid #eee",
-                borderRadius: 12,
-                padding: 12,
-                fontSize: 12,
-                wordBreak: "break-all",
-                background: "#fafafa",
-                fontWeight: 800,
-              }}
-            >
-              {userKey || "（取得中…）"}
-            </div>
-
-            {currentName && (
-              <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
-                ユーザーネーム：<b>{currentName}</b>
-              </div>
-            )}
-
-            <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
-              <button
-                type="button"
-                onClick={() => copyText(userKey)}
-                disabled={!userKey}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 12,
-                  border: "1px solid #111",
-                  background: "#111",
-                  color: "#fff",
-                  fontWeight: 900,
-                  cursor: userKey ? "pointer" : "not-allowed",
-                  opacity: userKey ? 1 : 0.6,
-                }}
-              >
-                {copied ? "コピーした！" : "コピー"}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setUserIdOpen(false)}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 12,
-                  border: "1px solid #ddd",
-                  background: "#fff",
-                  fontWeight: 900,
-                  cursor: "pointer",
-                }}
-              >
-                閉じる
-              </button>
-            </div>
-
-            <div style={{ marginTop: 10, fontSize: 11, opacity: 0.65 }}>
-              ※ Safari と ホーム画面でデータがズレる時は、このIDが同じか確認してね
-            </div>
-
-            <hr style={{ margin: "12px 0" }} />
-
-            <div style={{ fontSize: 11, opacity: 0.7, fontWeight: 900, marginBottom: 6 }}>
-              別のユーザーIDを貼り付けて、この端末のIDを揃える
-            </div>
-            <div style={{ fontSize: 11, opacity: 0.65, marginBottom: 8 }}>※ このユーザーIDは第三者に送らないでください</div>
-
-            <input
-              value={pasteKey}
-              onChange={(e) => setPasteKey(e.target.value)}
-              placeholder="32桁のユーザーID を貼り付け（例：3e15a0...）"
-              style={{
-                width: "100%",
-                padding: 10,
-                borderRadius: 10,
-                border: "1px solid #ccc",
-                fontSize: 12,
-              }}
-            />
-
-            {pasteKey.trim() && pasteKey.trim() !== userKey && (
-              <>
-                <div style={{ marginTop: 10, fontSize: 11, opacity: 0.7, fontWeight: 900 }}>このIDのユーザーネーム（任意）</div>
-                <input
-                  value={pasteName}
-                  onChange={(e) => setPasteName(e.target.value)}
-                  placeholder="例）任意の名前 / "
-                  style={{
-                    width: "100%",
-                    padding: 10,
-                    borderRadius: 10,
-                    border: "1px solid #ccc",
-                    fontSize: 12,
-                    marginTop: 6,
-                  }}
-                />
-              </>
-            )}
-
-            <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
-              <button
-                type="button"
-                onClick={applyPastedKey}
-                disabled={!pasteKey.trim()}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 12,
-                  border: "1px solid #111",
-                  background: "#111",
-                  color: "#fff",
-                  fontWeight: 900,
-                  cursor: pasteKey.trim() ? "pointer" : "not-allowed",
-                  opacity: pasteKey.trim() ? 1 : 0.6,
-                }}
-              >
-                このIDに切り替える
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setPasteKey("");
-                  setPasteName("");
-                }}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 12,
-                  border: "1px solid #ddd",
-                  background: "#fff",
-                  fontWeight: 900,
-                  cursor: "pointer",
-                }}
-              >
-                クリア
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+  <UserIdModal
+    userKey={userKey}
+    currentName={currentName}
+    copied={copied}
+    pasteKey={pasteKey}
+    setPasteKey={setPasteKey}
+    pasteName={pasteName}
+    setPasteName={setPasteName}
+    onCopy={copyText}
+    onApply={applyPastedKey}
+    onClose={() => setUserIdOpen(false)}
+  />
+)}
 
       {SHOW_USERKEY_UI && keyEditingOpen && (
-        <div style={{ border: "1px dashed #ddd", borderRadius: 12, padding: 12, marginBottom: 12 }}>
-          <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>userKeyを切り替える（デモ用）</div>
-          <input
-            value={userKeyInput}
-            onChange={(e) => setUserKeyInput(e.target.value)}
-            placeholder="8〜64文字（例：itchy-2026）"
-            style={{
-              width: "100%",
-              padding: 10,
-              borderRadius: 10,
-              border: "1px solid #ccc",
-              fontSize: 12,
-            }}
-          />
-          <div style={{ display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              onClick={applyUserKey}
-              style={{
-                padding: "8px 10px",
-                borderRadius: 10,
-                border: "1px solid #ccc",
-                background: "#fff",
-                cursor: "pointer",
-                fontSize: 12,
-              }}
-            >
-              このuserKeyに切替
-            </button>
-            <button
-              type="button"
-              onClick={regenerateUserKey}
-              style={{
-                padding: "8px 10px",
-                borderRadius: 10,
-                border: "1px solid #ccc",
-                background: "#fff",
-                cursor: "pointer",
-                fontSize: 12,
-              }}
-            >
-              再生成
-            </button>
-            <button
-              type="button"
-              onClick={() => setKeyEditingOpen(false)}
-              style={{
-                padding: "8px 10px",
-                borderRadius: 10,
-                border: "1px solid #ccc",
-                background: "#fff",
-                cursor: "pointer",
-                fontSize: 12,
-              }}
-            >
-              閉じる
-            </button>
-          </div>
-          <div style={{ marginTop: 8, fontSize: 11, opacity: 0.65 }}>※切替すると、その場で一覧を再取得します</div>
-        </div>
-      )}
+  <KeyEditingPanel
+    userKeyInput={userKeyInput}
+    setUserKeyInput={setUserKeyInput}
+    applyUserKey={applyUserKey}
+    regenerateUserKey={regenerateUserKey}
+    onClose={() => setKeyEditingOpen(false)}
+  />
+)}
    <div ref={formRef}>
       <details
         open={formOpen}
@@ -2316,671 +1939,70 @@ const areaH = isMobile ? 820 : 860;
           </button>
         </div>
       </div>
-
+{createOpen && (
+  <CreateRingModal
+    createTitle={createTitle}
+    setCreateTitle={setCreateTitle}
+    createMode={createMode}
+    setCreateMode={setCreateMode}
+    createCarryOver={createCarryOver}
+    setCreateCarryOver={setCreateCarryOver}
+    onSave={saveCreate}
+    onClose={() => setCreateOpen(false)}
+  />
+)}
       {goalModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.35)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-            zIndex: 9999,
-          }}
-          onClick={closeGoalEditor}
-        >
-          <div
-            style={{
-              width: "min(640px, 96vw)",
-              background: "#fff",
-              borderRadius: 16,
-              padding: 16,
-              boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 10 }}>
-              リング目標を編集
-              {goalFocusCategory ? `：${goalFocusCategory === GOAL_ASSET_KEY ? "総資産" : resolveCategoryLabel(goalFocusCategory)}` : ""}
-            </div>
-
-            <RingGoalEditor
-              ringCategories={[
-                GOAL_ASSET_KEY,
-                ringCategory(FIXED_LIFE_KEY),
-                ringCategory(FIXED_SAVE_KEY),
-                ...extraRings.map((r) => ringCategory(r.ringKey)),
-              ]}
-              resolveLabel={(cat) => {
-                if (cat === GOAL_ASSET_KEY) return "総資産 目標";
-                return resolveCategoryLabel(cat);
-              }}
-            />
-
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
-              <button
-                type="button"
-                onClick={closeGoalEditor}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: 12,
-                  border: "1px solid #ddd",
-                  background: "#fff",
-                  fontWeight: 900,
-                  cursor: "pointer",
-                }}
-              >
-                閉じる
-              </button>
-            </div>
-
-          </div>
-        </div>
-      )}
-
+  <GoalModal
+    goalFocusCategory={goalFocusCategory}
+    goalAssetKey={GOAL_ASSET_KEY}
+    ringCategories={[
+      GOAL_ASSET_KEY,
+      ringCategory(FIXED_LIFE_KEY),
+      ringCategory(FIXED_SAVE_KEY),
+      ...extraRings.map((r) => ringCategory(r.ringKey)),
+    ]}
+    resolveLabel={(cat) => {
+      if (cat === GOAL_ASSET_KEY) return "総資産 目標";
+      return resolveCategoryLabel(cat);
+    }}
+    onClose={closeGoalEditor}
+  />
+)}
       {quickAddOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.35)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-            zIndex: 9999,
-          }}
-          onClick={closeQuickAdd}
-        >
-          <div
-           style={{
-           width: "min(520px, 96vw)",
-           maxHeight: "88vh",
-           overflowY: "auto",
-           WebkitOverflowScrolling: "touch",
-           background: "#fff",
-           borderRadius: 16,
-           padding: 16,
-           boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
-         }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {(() => {
-              const meta = getQuickMeta();
-              if (!meta) return null;
-
-              const mode = meta.mode;
-              const showTabs = mode === "both";
-              const isDebt = meta.title.includes("ローン");
-              const isInvest = meta.title.includes("証券");
-             const expenseLabel =
-             isDebt ? "借入"
-             : isInvest ? "売却"
-             : "支出";
-             const incomeLabel =
-             isDebt ? "返済"
-             : isInvest ? "積立"
-             : "収入";
-              const forcedType: TxType =
-                meta.mode === "income_only" ? "income" : meta.mode === "expense_only" ? "expense" : quickType;
-              
-                if (quickView === "holdings") {
-  return (
-    <HoldingManager
-      ringKey={meta.ringKey}
-      holdings={holdings}
-      setHoldings={setHoldings}
-      closeQuickAdd={closeQuickAdd}
-      parseAmountLike={parseAmountLike}
-      makeId={makeId}
-    />
-  );
-}
-              if (quickView === "history") {
-  return (
-    <>
-      <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 10 }}>
-        入力一覧：{meta.title}
-      </div>
-
-      <button
-        type="button"
-        onClick={() => setQuickView("form")}
-        style={{
-          padding: "10px 12px",
-          borderRadius: 12,
-          border: "1px solid #ddd",
-          background: "#fff",
-          fontWeight: 900,
-          cursor: "pointer",
-          marginBottom: 12,
-        }}
-      >
-        ← 入力に戻る
-      </button>
-
-     <div style={{ display: "grid", gap: 8 }}>
-  {transactions
-    .filter((t) => {
-  const ymd = (t.occurredAt ?? "").slice(0, 10);
-
-  return (
-    (t.category ?? "") === ringCategory(meta.ringKey) &&
-    ymdToMonthKey(ymd) === selectedYm
-  );
-})
-    .slice()
-    .sort((a, b) =>
-      String(a.occurredAt ?? "").localeCompare(String(b.occurredAt ?? ""))
-    )
-    .map((t) => (
-      <div
-        key={t.id}
-        style={{
-          padding: 12,
-          borderRadius: 12,
-          border: "1px solid #eee",
-          background: "#fff",
-        }}
-      >
-        <div
-  style={{
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-    gap: 10,
-  }}
->
-  <div style={{ fontWeight: 900 }}>
-    {(t.occurredAt ?? "").slice(5, 10).replace("-", "/")}{" "}
-    {t.type === "income" ? "+" : "-"}
-    {yen(t.amount)}円
-  </div>
-
-  <button
-    type="button"
-    onClick={() => {
-      startEdit(t);
-      closeQuickAdd();
-    }}
-    style={{
-      padding: "6px 10px",
-      borderRadius: 10,
-      border: "1px solid #ddd",
-      background: "#fff",
-      fontWeight: 900,
-      cursor: "pointer",
-      fontSize: 12,
-      whiteSpace: "nowrap",
-    }}
-  >
-    編集
-  </button>
-</div>
-
-        {t.detailCategory && (
-          <div style={{ fontSize: 12, opacity: 0.7, marginTop: 4 }}>
-            {t.detailCategory}
-          </div>
-        )}
-      </div>
-    ))}
-
-  {transactions.filter((t) => {
-  const ymd = (t.occurredAt ?? "").slice(0, 10);
-
-  return (
-    (t.category ?? "") === ringCategory(meta.ringKey) &&
-    ymdToMonthKey(ymd) === selectedYm
-  );
-}).length === 0 && (
-    <div style={{ fontSize: 13, opacity: 0.65 }}>
-      入力履歴がありません
-    </div>
-  )}
-</div>
-    </>
-  );
-}
-
-return (
-  <>
-        <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 10 }}>
-          入力：{meta.title}
-        </div>
-
-                  {showTabs && (
-                    <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
-                      <button
-                        type="button"
-                        onClick={() => setQuickType("expense")}
-                        style={{
-                          padding: "10px 14px",
-                          borderRadius: 12,
-                          border: quickType === "expense" ? "2px solid #111" : "1px solid #ddd",
-                          background: "#fff",
-                          cursor: "pointer",
-                          fontWeight: 900,
-                          flex: 1,
-                        }}
-                      >
-                        {expenseLabel}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setQuickType("income")}
-                        style={{
-                          padding: "10px 14px",
-                          borderRadius: 12,
-                          border: quickType === "income" ? "2px solid #111" : "1px solid #ddd",
-                          background: "#fff",
-                          cursor: "pointer",
-                          fontWeight: 900,
-                          flex: 1,
-                        }}
-                      >
-                        {incomeLabel}
-                      </button>
-                    </div>
-                  )}
-
-                  {!showTabs && (
-                    <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 12 }}>
-                      {mode === "income_only" ? "このリングは「収入のみ」入力です" : "このリングは「支出のみ」入力です"}
-                    </div>
-                  )}
-
-                  <div style={{ display: "grid", gap: 10 }}>
-                    <label style={{ fontSize: 12, opacity: 0.75 }}>
-                      発生日
-                      <input
-                        value={quickDate}
-                        onChange={(e) => setQuickDate(e.target.value)}
-                        type="date"
-                        style={{
-                          width: "100%",
-                          padding: 12,
-                          borderRadius: 12,
-                          border: "1px solid #ddd",
-                          fontSize: 14,
-                          marginTop: 6,
-                        }}
-                      />
-                    </label>
-
-                    <label style={{ fontSize: 12, opacity: 0.75 }}>
-                      金額（円）
-                      <input
-                        value={quickAmountStr}
-                        onChange={(e) => setQuickAmountStr(e.target.value)}
-                        inputMode="text"
-                        style={{
-                          width: "100%",
-                          padding: 12,
-                          borderRadius: 12,
-                          border: "1px solid #ddd",
-                          fontSize: 16,
-                          marginTop: 6,
-                        }}
-                        placeholder="例) 50000 / 5万 / 1.2万"
-                      />
-                    </label>
-
-                    <label style={{ fontSize: 12, opacity: 0.75 }}>
-                      detailCategory（内訳）
-                      <input
-                        value={quickDetail}
-                        onChange={(e) => setQuickDetail(e.target.value)}
-                        inputMode="text"
-                        style={{
-                          width: "100%",
-                          padding: 12,
-                          borderRadius: 12,
-                          border: "1px solid #ddd",
-                          fontSize: 16,
-                          marginTop: 6,
-                        }}
-                        placeholder={forcedType === "income" ? "例）報酬 / 給与 / その他" : "例）コンビニ / 外食 / スーパー"}
-                      />
-                    </label>
-
-                   <div
-style={{
-    marginTop: 16,
-    display: "flex",
-    justifyContent: "center",
-  }}
->
-  <button
-    type="button"
-    onClick={() => {
-  setQuickView("history");
-}}
-    style={{
-      padding: "10px 12px",
-      borderRadius: 12,
-      border: "1px solid #ddd",
-      background: "#fff",
-      fontWeight: 900,
-      cursor: "pointer",
-      fontSize: 13,
-    }}
-  >
-    入力一覧
-  </button>
-</div>
-                  </div>
-
-                <div
-  style={{
-    display: "flex",
-    gap: 10,
-    marginTop: 12,
-    position: "sticky",
-    bottom: 0,
-    background: "#fff",
-    paddingTop: 10,
-  }}
->
-  <button
-    type="button"
-    onClick={saveQuickAdd}
-    disabled={isSavingQuick}
-    style={{
-      padding: "12px 14px",
-      borderRadius: 12,
-      border: "1px solid #111",
-      background: "#111",
-      color: "#fff",
-      fontWeight: 900,
-      width: 140,
-      cursor: isSavingQuick ? "not-allowed" : "pointer",
-      opacity: isSavingQuick ? 0.6 : 1,
-    }}
-  >
-    {isSavingQuick ? "保存中…" : "保存"}
-  </button>
-
-  <button
-    type="button"
-    onClick={closeQuickAdd}
-    disabled={isSavingQuick}
-    style={{
-      padding: "12px 14px",
-      borderRadius: 12,
-      border: "1px solid #ddd",
-      background: "#fff",
-      color: "#333",
-      fontWeight: 900,
-      width: 140,
-      cursor: isSavingQuick ? "not-allowed" : "pointer",
-      opacity: isSavingQuick ? 0.6 : 1,
-    }}
-  >
-    キャンセル
-  </button>
-</div>
-
-                </>
-              );
-            })()}
-          </div>
-        </div>
-      )}
-
-      {createOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.35)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-            zIndex: 9999,
-          }}
-          onClick={() => setCreateOpen(false)}
-        >
-          <div
-            style={{
-  width: "min(520px, 96vw)",
-  maxHeight: "88vh",
-  overflowY: "auto",
-  background: "#fff",
-  borderRadius: 16,
-  padding: 16,
-  boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
-}}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 10 }}>追加リングを作る</div>
-
-            <label style={{ fontSize: 12, opacity: 0.75 }}>
-              リング名
-              <input
-                value={createTitle}
-                onChange={(e) => setCreateTitle(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: 12,
-                  borderRadius: 12,
-                  border: "1px solid #ddd",
-                  fontSize: 16,
-                  marginTop: 6,
-                }}
-                placeholder="例）カードローン返済 / 第一銀行 / 投資"
-              />
-            </label>
-
-            <label style={{ fontSize: 12, opacity: 0.75, marginTop: 10, display: "block" }}>
-              入力モード
-              <select
-                value={createMode}
-                onChange={(e) => {
-                  const m = e.target.value as RingMode;
-                  setCreateMode(m);
-                  setCreateCarryOver(m === "income_only" || m === "expense_only");
-                }}
-                style={{
-                  width: "100%",
-                  padding: 12,
-                  borderRadius: 12,
-                  border: "1px solid #ddd",
-                  fontSize: 14,
-                  marginTop: 6,
-                  background: "#fff",
-                }}
-              >
-                <option value="both">収入/支出（両方）</option>
-                <option value="income_only">収入のみ</option>
-                <option value="expense_only">支出のみ</option>
-              </select>
-            </label>
-
-            <label style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10, fontSize: 12 }}>
-              <input type="checkbox" checked={createCarryOver} onChange={(e) => setCreateCarryOver(e.target.checked)} />
-              月またぎ（累計）で計算する
-            </label>
-
-            <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-              <button
-                type="button"
-                onClick={saveCreate}
-                style={{
-                  padding: "12px 14px",
-                  borderRadius: 12,
-                  border: "1px solid #111",
-                  background: "#111",
-                  color: "#fff",
-                  fontWeight: 900,
-                  width: 140,
-                  cursor: "pointer",
-                }}
-              >
-                作成
-              </button>
-              <button
-                type="button"
-                onClick={() => setCreateOpen(false)}
-                style={{
-                  padding: "12px 14px",
-                  borderRadius: 12,
-                  border: "1px solid #ddd",
-                  background: "#fff",
-                  color: "#333",
-                  fontWeight: 900,
-                  width: 140,
-                  cursor: "pointer",
-                }}
-              >
-                キャンセル
-              </button>
-            </div>
-
-          </div>
-        </div>
-      )}
-
+  <QuickAddModal
+    meta={getQuickMeta()}
+    quickView={quickView}
+    setQuickView={setQuickView}
+    quickType={quickType}
+    setQuickType={setQuickType}
+    quickDate={quickDate}
+    setQuickDate={setQuickDate}
+    quickAmountStr={quickAmountStr}
+    setQuickAmountStr={setQuickAmountStr}
+    quickDetail={quickDetail}
+    setQuickDetail={setQuickDetail}
+    isSavingQuick={isSavingQuick}
+    selectedYm={selectedYm}
+    transactions={transactions}
+    holdings={holdings}
+    setHoldings={setHoldings}
+    closeQuickAdd={closeQuickAdd}
+    saveQuickAdd={saveQuickAdd}
+    startEdit={startEdit}
+    parseAmountLike={parseAmountLike}
+    makeId={makeId}
+    ringCategory={ringCategory}
+  />
+)}
       {extraEditId && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.35)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-            zIndex: 9999,
-          }}
-          onClick={() => setExtraEditId(null)}
-        >
-          <div
-            style={{
-              width: "min(520px, 96vw)",
-              background: "#fff",
-              borderRadius: 16,
-              padding: 16,
-              boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 10 }}>リング編集</div>
-
-            <label style={{ fontSize: 12, opacity: 0.75 }}>
-              表示名
-              <input
-                value={extraDraft.title}
-                onChange={(e) => setExtraDraft((d) => ({ ...d, title: e.target.value }))}
-                style={{
-                  width: "100%",
-                  padding: 12,
-                  borderRadius: 12,
-                  border: "1px solid #ddd",
-                  fontSize: 16,
-                  marginTop: 6,
-                }}
-              />
-            </label>
-
-            <label style={{ fontSize: 12, opacity: 0.75, marginTop: 10, display: "block" }}>
-              入力モード
-              <select
-                value={extraDraft.mode}
-                onChange={(e) => setExtraDraft((d) => ({ ...d, mode: e.target.value as RingMode }))}
-                style={{
-                  width: "100%",
-                  padding: 12,
-                  borderRadius: 12,
-                  border: "1px solid #ddd",
-                  fontSize: 14,
-                  marginTop: 6,
-                  background: "#fff",
-                }}
-              >
-                <option value="both">収入/支出（両方）</option>
-                <option value="income_only">収入のみ</option>
-                <option value="expense_only">支出のみ</option>
-              </select>
-            </label>
-
-            <label style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10, fontSize: 12 }}>
-              <input
-                type="checkbox"
-                checked={extraDraft.carryOver}
-                onChange={(e) => setExtraDraft((d) => ({ ...d, carryOver: e.target.checked }))}
-              />
-              月またぎ（累計）で計算する
-            </label>
-
-            <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
-              <button
-                type="button"
-                onClick={saveExtraEdit}
-                style={{
-                  padding: "12px 14px",
-                  borderRadius: 12,
-                  border: "1px solid #111",
-                  background: "#111",
-                  color: "#fff",
-                  fontWeight: 900,
-                  width: 140,
-                  cursor: "pointer",
-                }}
-              >
-                保存
-              </button>
-              <button
-                type="button"
-                onClick={() => setExtraEditId(null)}
-                style={{
-                  padding: "12px 14px",
-                  borderRadius: 12,
-                  border: "1px solid #ddd",
-                  background: "#fff",
-                  color: "#333",
-                  fontWeight: 900,
-                  width: 140,
-                  cursor: "pointer",
-                }}
-              >
-                キャンセル
-              </button>
-
-              <div style={{ flex: 1 }} />
-
-              <button
-                type="button"
-                onClick={removeExtraRing}
-                style={{
-                  padding: "12px 14px",
-                  borderRadius: 12,
-                  border: "1px solid #f2b3b3",
-                  color: "#b42318",
-                  background: "#fff0f0",
-                  fontWeight: 900,
-                  width: 160,
-                  cursor: "pointer",
-                }}
-              >
-                このリングを削除
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+  <EditRingModal
+    extraDraft={extraDraft}
+    setExtraDraft={setExtraDraft}
+    onSave={saveExtraEdit}
+    onClose={() => setExtraEditId(null)}
+    onRemove={removeExtraRing}
+  />
+)}
 
       <hr style={{ margin: "24px 0" }} />
 
