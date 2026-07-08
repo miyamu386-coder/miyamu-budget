@@ -17,7 +17,7 @@ import EditRingModal from "./components/EditRingModal";
 import QuickAddModal from "./components/QuickAddModal";
 import UserIdModal from "./components/UserIdModal";
 import KeyEditingPanel from "./components/KeyEditingPanel";
-import {makeId,ringCategory,guessCarryOver,isRepayRingLike,type CharaMode,type RingMode,type ExtraRing,} from "../lib/ringUtils";
+import {makeId,ringCategory,guessCarryOver,isRepayRingLike,type RingMode,type ExtraRing,} from "../lib/ringUtils";
 import { yen } from "../lib/format";
 import { clamp01 } from "../lib/math";
 import {BACKUP_STORAGE_KEY,exportMiyamuBackup,importMiyamuBackup,} from "../lib/backup";
@@ -354,7 +354,7 @@ const importBackup = async (file: File) => {
   }, [userKey]);
 
   const [extraRings, setExtraRings] = useState<ExtraRing[]>([]);
-  const { holdings, setHoldings } = useHoldings(userKey);
+  const {holdings,setHoldings,getHoldingValue,} = useHoldings(userKey);
   const canAddExtra = extraRings.length < MAX_EXTRA_RINGS;
   useEffect(() => {
     if (!userKey) return;
@@ -457,9 +457,7 @@ const importBackup = async (file: File) => {
       r.title.includes("株") ||
       r.title.includes("投資");
 
-    const holdingsValue = holdings
-      .filter((h) => h.ringKey === r.ringKey)
-      .reduce((sum, h) => sum + h.value, 0);
+    const holdingsValue = getHoldingValue(r.ringKey);
 
     if (isSecuritiesRing) {
       return {
@@ -475,7 +473,7 @@ const importBackup = async (file: File) => {
 
     return { ...r, sums: s };
   });
-}, [extraRings, sumByCategoryMonthly, sumByCategoryCarry, holdings]);
+}, [extraRings, sumByCategoryMonthly, sumByCategoryCarry, getHoldingValue]);
 
   const totalAssetBalance = useMemo(() => {
   let total = 0;

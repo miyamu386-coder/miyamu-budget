@@ -51,10 +51,15 @@ export function useHoldings(userKey: string) {
   const holdingsTotal = useMemo(() => {
     return holdings.reduce((sum, h) => sum + h.value, 0);
   }, [holdings]);
-
+  const getHoldingValue = (ringKey: string) => {
+  return holdings
+    .filter((h) => h.ringKey === ringKey)
+    .reduce((sum, h) => sum + h.value, 0);
+};
   return {
-    holdings,
-    setHoldings,
-    holdingsTotal,
-  };
+  holdings,
+  setHoldings,
+  holdingsTotal,
+  getHoldingValue,
+};
 }
