@@ -26,7 +26,7 @@ import { loadRingGoals, getTarget, type RingGoal } from "../lib/ringGoals";
 import { calcRepayment } from "../lib/repayment";
 import {ymdToMonthKey,fmtYM,addMonths,endOfMonthYMD,todayYMD,} from "../lib/dateUtils";
 import { useLongPressHandlers } from "../lib/useLongPressHandlers";
-
+import { useHoldings, type HoldingKind } from "./components/useHoldings";
 
 
 type Props = {
@@ -109,17 +109,6 @@ type ExtraRing = {
   charMode?: CharaMode;
   ringType?: "asset" | "debt";
   carryOver?: boolean;
-};
-type HoldingKind = "国内株" | "米国ETF" | "投資信託"|"現金";
-
-type Holding = {
-  id: string;
-  ringKey: string;
-  name: string;
-  shares: number;
-  unit?: "株" | "口";
-  value: number;
-  kind?: HoldingKind;
 };
 
 function makeId() {
@@ -492,14 +481,10 @@ const importBackup = async (file: File) => {
     const k = userKey || "anonymous";
     return `miyamu_maker_extra_rings_v6:${k}`;
   }, [userKey]);
-  const holdingsStorageKey = useMemo(() => {
-  const k = userKey || "anonymous";
-  return `miyamu_holdings_v1:${k}`;
-}, [userKey]);
 
   const [extraRings, setExtraRings] = useState<ExtraRing[]>([]);
-  const [holdings, setHoldings] = useState<Holding[]>([]);
-
+  const { holdings, setHoldings, holdingsTotal } = useHoldings(userKey);
+  const canAddExtra = extraRings.length < MAX_EXTRA_RINGS;
   useEffect(() => {
     if (!userKey) return;
     try {
@@ -533,22 +518,6 @@ const importBackup = async (file: File) => {
       console.warn("extra rings load failed", e);
     }
   }, [userKey, extrasStorageKey]);
-  useEffect(() => {
-  if (!userKey) return;
-
-  try {
-    const raw = localStorage.getItem(holdingsStorageKey);
-    if (!raw) return;
-
-    const arr = JSON.parse(raw) as Holding[];
-
-    if (!Array.isArray(arr)) return;
-
-    setHoldings(arr);
-  } catch (e) {
-    console.warn("holdings load failed", e);
-  }
-}, [userKey, holdingsStorageKey]);
 
   useEffect(() => {
     if (!userKey) return;
@@ -558,16 +527,6 @@ const importBackup = async (file: File) => {
       console.warn("extra rings save failed", e);
     }
   }, [userKey, extrasStorageKey, extraRings]);
-  useEffect(() => {
-  if (!userKey) return;
-
-  try {
-    localStorage.setItem(holdingsStorageKey, JSON.stringify(holdings));
-  } catch (e) {
-    console.warn("holdings save failed", e);
-  }
-}, [userKey, holdingsStorageKey, holdings]);
-  const canAddExtra = extraRings.length < MAX_EXTRA_RINGS;
 
   // =========================
   // ✅ 「リング別集計」：月次 or 累計を使い分ける
@@ -659,9 +618,6 @@ const importBackup = async (file: File) => {
       .map((r) => r.ringKey)
   );
 }, [extraRings]);
-   const holdingsTotal = useMemo(() => {
-  return holdings.reduce((sum, h) => sum + h.value, 0);
-}, [holdings]);
   const holdingColors: Record<HoldingKind, string> = {
   国内株: "#2563eb",
   米国ETF: "#f59e0b",
