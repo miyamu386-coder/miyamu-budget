@@ -51,6 +51,7 @@ export async function importMiyamuBackup(params: {
   setExtraRings: (rings: any[]) => void;
   setRingGoals: (goals: RingGoal[]) => void;
   setTransactions: (transactions: Transaction[]) => void;
+  setHoldings: (holdings: any[]) => void;
   hardReload: () => void;
 }) {
   try {
@@ -70,7 +71,7 @@ export async function importMiyamuBackup(params: {
     const nextRingGoals = Array.isArray(data.ringGoals) ? (data.ringGoals as RingGoal[]) : [];
     const nextExtraRings = Array.isArray(data.extraRings)? data.extraRings: [];
     const nextTransactions = Array.isArray(data.transactions) ? (data.transactions as Transaction[]) : [];
-
+    const nextHoldings = Array.isArray(data.holdings) ? data.holdings : [];
     // userKey復元
     try {
       localStorage.setItem(params.storageKey, nextUserKey);
@@ -97,12 +98,19 @@ export async function importMiyamuBackup(params: {
         localStorage.setItem("ringGoals", JSON.stringify(nextRingGoals));
       } catch {}
     }
-
+    // holdings復元
+try {
+  localStorage.setItem(
+    `miyamu_holdings_v1:${nextUserKey}`,
+    JSON.stringify(nextHoldings)
+  );
+} catch {}
     // state反映
     params.setSelectedYm(nextSelectedYm);
     params.setExtraRings(nextExtraRings);
     params.setRingGoals(nextRingGoals);
     params.setTransactions(nextTransactions);
+    params.setHoldings(nextHoldings);
 
     alert("バックアップを復元しました。画面を再読み込みします。");
    params.hardReload();

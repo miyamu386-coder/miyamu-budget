@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-
 export type HoldingKind = "国内株" | "米国ETF" | "投資信託" | "現金";
 
 export type Holding = {
@@ -21,32 +20,39 @@ export function useHoldings(userKey: string) {
   }, [userKey]);
 
   const [holdings, setHoldings] = useState<Holding[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+  if (!userKey) return;
+
+  setLoaded(false);
+
+  try {
+    const raw = localStorage.getItem(holdingsStorageKey);
+    if (!raw) {
+      setHoldings([]);
+      return;
+    }
+
+    const arr = JSON.parse(raw) as Holding[];
+    setHoldings(Array.isArray(arr) ? arr : []);
+  } catch (e) {
+    console.warn("holdings load failed", e);
+    setHoldings([]);
+  } finally {
+    setLoaded(true);
+  }
+}, [userKey, holdingsStorageKey]);
 
   useEffect(() => {
-    if (!userKey) return;
+  if (!userKey) return;
+  if (!loaded) return;
 
-    try {
-      const raw = localStorage.getItem(holdingsStorageKey);
-      if (!raw) return;
-
-      const arr = JSON.parse(raw) as Holding[];
-      if (!Array.isArray(arr)) return;
-
-      setHoldings(arr);
-    } catch (e) {
-      console.warn("holdings load failed", e);
-    }
-  }, [userKey, holdingsStorageKey]);
-
-  useEffect(() => {
-    if (!userKey) return;
-
-    try {
-      localStorage.setItem(holdingsStorageKey, JSON.stringify(holdings));
-    } catch (e) {
-      console.warn("holdings save failed", e);
-    }
-  }, [userKey, holdingsStorageKey, holdings]);
+  try {
+    localStorage.setItem(holdingsStorageKey, JSON.stringify(holdings));
+  } catch (e) {
+    console.warn("holdings save failed", e);
+  }
+}, [userKey, holdingsStorageKey, holdings, loaded]);
 
   const holdingsTotal = useMemo(() => {
     return holdings.reduce((sum, h) => sum + h.value, 0);

@@ -136,6 +136,7 @@ const importBackup = async (file: File) => {
     setExtraRings,
     setRingGoals,
     setTransactions,
+    setHoldings,
     hardReload,
   });
 };
