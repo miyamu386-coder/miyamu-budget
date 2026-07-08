@@ -354,7 +354,7 @@ const importBackup = async (file: File) => {
   }, [userKey]);
 
   const [extraRings, setExtraRings] = useState<ExtraRing[]>([]);
-  const {holdings,setHoldings,getHoldingValue,} = useHoldings(userKey);
+  const { holdings, setHoldings, getHoldingValue } = useHoldings(userKey);
   const canAddExtra = extraRings.length < MAX_EXTRA_RINGS;
   useEffect(() => {
     if (!userKey) return;
@@ -482,7 +482,6 @@ const importBackup = async (file: File) => {
     if (r.ringType !== "asset") continue;
     total += r.sums.balance;
   }
-  // total += holdingsTotal;
   return total;
 }, [extraComputed]);
 

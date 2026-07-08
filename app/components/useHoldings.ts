@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 export type HoldingKind = "国内株" | "米国ETF" | "投資信託" | "現金";
 
@@ -51,11 +51,14 @@ export function useHoldings(userKey: string) {
   const holdingsTotal = useMemo(() => {
     return holdings.reduce((sum, h) => sum + h.value, 0);
   }, [holdings]);
-  const getHoldingValue = (ringKey: string) => {
-  return holdings
-    .filter((h) => h.ringKey === ringKey)
-    .reduce((sum, h) => sum + h.value, 0);
-};
+  const getHoldingValue = useCallback(
+  (ringKey: string) => {
+    return holdings
+      .filter((h) => h.ringKey === ringKey)
+      .reduce((sum, h) => sum + h.value, 0);
+  },
+  [holdings]
+);
   return {
   holdings,
   setHoldings,
