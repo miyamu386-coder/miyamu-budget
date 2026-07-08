@@ -17,8 +17,9 @@ import EditRingModal from "./components/EditRingModal";
 import QuickAddModal from "./components/QuickAddModal";
 import UserIdModal from "./components/UserIdModal";
 import KeyEditingPanel from "./components/KeyEditingPanel";
+import {makeId,ringCategory,guessCarryOver,isRepayRingLike,type CharaMode,type RingMode,type ExtraRing,} from "../lib/ringUtils";
 import { yen } from "../lib/format";
-import { clamp01, clamp } from "../lib/math";
+import { clamp01 } from "../lib/math";
 import {BACKUP_STORAGE_KEY,exportMiyamuBackup,importMiyamuBackup,} from "../lib/backup";
 import { parseAmountLike } from "../lib/amount";
 import GoalModal from "./components/GoalModal";
@@ -26,44 +27,12 @@ import { loadRingGoals, getTarget, type RingGoal } from "../lib/ringGoals";
 import { calcRepayment } from "../lib/repayment";
 import {ymdToMonthKey,fmtYM,addMonths,endOfMonthYMD,todayYMD,} from "../lib/dateUtils";
 import { useLongPressHandlers } from "../lib/useLongPressHandlers";
-import { useHoldings, type HoldingKind } from "./components/useHoldings";
-
+import { useHoldings } from "./components/useHoldings";
+import { calcSummary } from "../lib/transactions";
 
 type Props = {
   initialTransactions: Transaction[];
 };
-
-type Summary = {
-  income: number;
-  expense: number;
-  balance: number;
-};
-
-function calcSummary(transactions: Transaction[]): Summary {
-  let income = 0;
-  let expense = 0;
-  for (const t of transactions) {
-    if (t.type === "income") income += t.amount;
-    else expense += t.amount;
-  }
-  return { income, expense, balance: income - expense };
-}
-
-function addMonthsDate(base: Date, monthsToAdd: number) {
-  const d = new Date(base);
-  const day = d.getDate();
-  d.setMonth(d.getMonth() + monthsToAdd);
-  // 月末吸収（例: 1/31 + 1ヶ月 がズレる対策）
-  if (d.getDate() < day) d.setDate(0);
-  return d;
-}
-
-function formatYMDDate(d: Date) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${y}/${m}/${dd}`;
-}
 
 // ✅ 本番(Vercel)では userKey UI を出さない（ローカル開発だけ表示）
 const SHOW_USERKEY_UI = process.env.NODE_ENV !== "production";
@@ -73,109 +42,13 @@ const STORAGE_KEY = "miyamu_budget_user_key";
  * ✅ 「5万」「1.2万」「3千」「50,000」等を数値にする
  */
 
-  function isTransferTransaction(tx: Transaction) {
-  const text = [
-    tx.category ?? "",
-    tx.detailCategory ?? "",
-  ]
-    .join(" ")
-    .toLowerCase();
-
-  const keywords = [
-    "資金移動",
-    "送金",
-    "振替",
-    "振り替え",
-    "口座移動",
-    "口座間移動",
-    "銀行移動",
-    "移し替え",
-    "口座振替",
-    "transfer",
-  ];
-
-  return keywords.some((kw) => text.includes(kw.toLowerCase()));
-}
-
-type CharaMode = "auto" | "mofu" | "hina" | "none";
-type RingMode = "both" | "income_only" | "expense_only";
-
-type ExtraRing = {
-  id: string; // UI用
-  ringKey: string; // データ識別
-  title: string;
-  mode: RingMode;
-  color: string;
-  charMode?: CharaMode;
-  ringType?: "asset" | "debt";
-  carryOver?: boolean;
-};
-
-function makeId() {
-  return `ring_${Math.random().toString(36).slice(2, 9)}_${Date.now()}`;
-}
 
 // ✅ 安全設計：固定3 + 追加10 = 合計13
 const MAX_EXTRA_RINGS = 10;
 
-// ✅ ringKey → category に入れる
-function ringCategory(ringKey: string) {
-  return `ring:${ringKey}`;
-}
-
 const FIXED_LIFE_KEY = "life"; // ✅ 生活費（月次）
 const FIXED_SAVE_KEY = "save"; // ✅ 貯蓄（月次）
 const GOAL_ASSET_KEY = "ring:asset"; // ✅ 総資産 目標だけは「目標専用キー」
-
-function pickCharaAuto(title: string): Exclude<CharaMode, "auto"> {
-  const t = (title ?? "").toLowerCase();
-
-  const mofuWords = [
-    "銀行",
-    "口座",
-    "振込",
-    "引落",
-    "引き落とし",
-    "返済",
-    "ローン",
-    "クレカ",
-    "カード",
-    "支出",
-    "固定費",
-    "家賃",
-    "保険",
-    "税",
-    "年金",
-  ];
-  const hinaWords = ["投資", "nisa", "ニーサ", "株", "積立", "つみたて", "資産", "運用", "配当"];
-
-  if (mofuWords.some((w) => t.includes(w))) return "mofu";
-  if (hinaWords.some((w) => t.includes(w))) return "hina";
-  return "none";
-}
-
-function resolveChara(title: string, mode?: CharaMode): Exclude<CharaMode, "auto"> {
-  if (mode === "mofu" || mode === "hina" || mode === "none") return mode;
-  return pickCharaAuto(title);
-}
-
-function guessCarryOver(title: string, mode: RingMode) {
-  const t = title ?? "";
-  const repayWords = ["返済", "ローン", "借入", "カード", "クレカ", "リボ", "分割"];
-  if (repayWords.some((w) => t.includes(w))) return true;
-  if (mode === "income_only") return true;
-  if (mode === "expense_only") return true;
-  return false;
-}
-
-// ✅ 返済リング判定（返済系だけ%表示を出す）
-function isRepayRingLike(r: { title: string; mode: RingMode; carryOver?: boolean }) {
-  const t = (r.title ?? "").toLowerCase();
-  const words = ["返済", "ローン", "借入", "カードローン", "クレカ", "リボ", "分割"];
-  const byTitle = words.some((w) => t.includes(w));
-
-  return byTitle;
-}
 
 type TxType = "income" | "expense";
 
@@ -189,8 +62,6 @@ type RepayInfo = {
 };
 
 export default function TransactionsClient({ initialTransactions }: Props) {
-
-  const GOLD = "#FFD700";
 
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
   const [editing, setEditing] = useState<Transaction | null>(null);
@@ -483,7 +354,7 @@ const importBackup = async (file: File) => {
   }, [userKey]);
 
   const [extraRings, setExtraRings] = useState<ExtraRing[]>([]);
-  const { holdings, setHoldings, holdingsTotal } = useHoldings(userKey);
+  const { holdings, setHoldings } = useHoldings(userKey);
   const canAddExtra = extraRings.length < MAX_EXTRA_RINGS;
   useEffect(() => {
     if (!userKey) return;
@@ -606,24 +477,6 @@ const importBackup = async (file: File) => {
   });
 }, [extraRings, sumByCategoryMonthly, sumByCategoryCarry, holdings]);
 
-  const securitiesRingKeys = useMemo(() => {
-  return new Set(
-    extraRings
-      .filter(
-        (r) =>
-          r.title.includes("証券") ||
-          r.title.includes("株") ||
-          r.title.includes("投資")
-      )
-      .map((r) => r.ringKey)
-  );
-}, [extraRings]);
-  const holdingColors: Record<HoldingKind, string> = {
-  国内株: "#2563eb",
-  米国ETF: "#f59e0b",
-  投資信託: "#10b981",
-  現金: "#9ca3af",
-};
   const totalAssetBalance = useMemo(() => {
   let total = 0;
   for (const r of extraComputed) {
@@ -633,7 +486,7 @@ const importBackup = async (file: File) => {
   }
   // total += holdingsTotal;
   return total;
-}, [extraComputed, securitiesRingKeys, holdingsTotal]);
+}, [extraComputed]);
 
   const progressToTarget = targetBalance > 0 ? clamp01(totalAssetBalance / targetBalance) : 0;
   const remainToTarget = Math.max(0, targetBalance - totalAssetBalance);
@@ -715,12 +568,6 @@ useEffect(() => {
   const [quickAmountStr, setQuickAmountStr] = useState("");
   const [quickDate, setQuickDate] = useState(todayYMD());
   const [quickDetail, setQuickDetail] = useState("");
-  const [holdingEditId, setHoldingEditId] = useState<string | null>(null);
-  const [holdingName, setHoldingName] = useState("");
-  const [holdingKind, setHoldingKind] =useState<HoldingKind>("投資信託");
-  const [holdingShares, setHoldingShares] = useState("");
-  const [holdingUnit, setHoldingUnit] = useState<"株" | "口">("株");
-  const [holdingValue, setHoldingValue] = useState("");
   const [isSavingQuick, setIsSavingQuick] = useState(false);
 
   const openQuickAdd = (target: QuickAddTarget, defaultType: TxType) => {
@@ -730,10 +577,6 @@ useEffect(() => {
     setQuickDetail("");
     setQuickDate(todayYMD());
     setIsSavingQuick(false);
-    setHoldingEditId(null);
-    setHoldingName("");
-    setHoldingShares("");
-    setHoldingValue("");
     setQuickView("form");
     setQuickAddOpen(true);
   };
