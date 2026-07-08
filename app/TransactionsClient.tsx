@@ -29,6 +29,7 @@ import {ymdToMonthKey,fmtYM,addMonths,endOfMonthYMD,todayYMD,} from "../lib/date
 import { useLongPressHandlers } from "../lib/useLongPressHandlers";
 import { useHoldings } from "./components/useHoldings";
 import { calcSummary } from "../lib/transactions";
+import {buildCategorySums,getRingSumsFromMap,} from "../lib/ringCalculator";
 
 type Props = {
   initialTransactions: Transaction[];
@@ -120,7 +121,7 @@ const exportBackup = () => {
     ringGoals,
     selectedYm,
     extraRings,
-    holdings: [],
+    holdings,
   });
 };
 
@@ -403,38 +404,17 @@ const importBackup = async (file: File) => {
   // ✅ 「リング別集計」：月次 or 累計を使い分ける
   // =========================
   const sumByCategoryMonthly = useMemo(() => {
-    const map = new Map<string, { income: number; expense: number }>();
-    for (const t of monthTransactions) {
-      const cat = (t.category ?? "").trim();
-      if (!cat) continue;
-      const cur = map.get(cat) ?? { income: 0, expense: 0 };
-      if (t.type === "income") cur.income += t.amount;
-      else cur.expense += t.amount;
-      map.set(cat, cur);
-    }
-    return map;
-  }, [monthTransactions]);
+  return buildCategorySums(monthTransactions);
+}, [monthTransactions]);
 
   const sumByCategoryCarry = useMemo(() => {
-    const map = new Map<string, { income: number; expense: number }>();
-    for (const t of carryOverTransactions) {
-      const cat = (t.category ?? "").trim();
-      if (!cat) continue;
-      const cur = map.get(cat) ?? { income: 0, expense: 0 };
-      if (t.type === "income") cur.income += t.amount;
-      else cur.expense += t.amount;
-      map.set(cat, cur);
-    }
-    return map;
-  }, [carryOverTransactions]);
+  return buildCategorySums(carryOverTransactions);
+}, [carryOverTransactions]);
 
   const getRingSums = (ringKey: string, useCarry: boolean) => {
-    const cat = ringCategory(ringKey);
-    const map = useCarry ? sumByCategoryCarry : sumByCategoryMonthly;
-    const s = map.get(cat) ?? { income: 0, expense: 0 };
-    const balance = s.income - s.expense;
-    return { ...s, balance };
-  };
+  const map = useCarry ? sumByCategoryCarry : sumByCategoryMonthly;
+  return getRingSumsFromMap(map, ringKey);
+};
 
   // =========================
   // ✅ 目標（ringGoals.ts）から取得
