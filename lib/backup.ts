@@ -103,6 +103,23 @@ try {
     JSON.stringify(nextHoldings)
   );
 } catch {}
+const restoreResponse = await fetch("/api/transactions", {
+  method: "PUT",
+  headers: {
+    "Content-Type": "application/json",
+    "x-user-key": nextUserKey,
+  },
+  body: JSON.stringify({
+    transactions: nextTransactions,
+  }),
+});
+
+const restoreResult = await restoreResponse.json().catch(() => null);
+
+if (!restoreResponse.ok) {
+  console.error("transaction restore failed:", restoreResult);
+  throw new Error("明細の復元に失敗しました");
+}
     // state反映
     params.setSelectedYm(nextSelectedYm);
     params.setExtraRings(nextExtraRings);
