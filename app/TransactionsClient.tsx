@@ -66,6 +66,7 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const [mounted, setMounted] = useState(false);
   const [selectedRing, setSelectedRing] = useState<string | null>(null);
   const [orbitOffset, setOrbitOffset] = useState(0);
+  const [mainView, setMainView] = useState<"input" | "history">("input");
   const dragStartXRef = useRef<number | null>(null);
   const dragStartOffsetRef = useRef(0);
   const startEdit = (t: Transaction) => {
@@ -1077,6 +1078,88 @@ const areaH = isMobile ? 820 : 860;
   );
 };
   if (!mounted) return null;
+  if (mainView === "history") {
+  return (
+    <div
+      style={{
+        padding: 14,
+        maxWidth: 980,
+        margin: "0 auto",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          marginBottom: 16,
+          flexWrap: "wrap",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setMainView("input")}
+          style={{
+            padding: "10px 12px",
+            borderRadius: 12,
+            border: "1px solid #111",
+            background: "#111",
+            color: "#fff",
+            cursor: "pointer",
+            fontWeight: 900,
+            fontSize: 12,
+          }}
+        >
+          入力に戻る
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setSelectedYm((v) => addMonths(v, -1))}
+          style={{
+            padding: "10px 14px",
+            borderRadius: 12,
+            border: "1px solid #ccc",
+            background: "#fff",
+            cursor: "pointer",
+            fontWeight: 800,
+          }}
+        >
+          ◀
+        </button>
+
+        <div style={{ fontWeight: 900, fontSize: 18 }}>
+          {fmtYM(selectedYm)}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setSelectedYm((v) => addMonths(v, 1))}
+          style={{
+            padding: "10px 14px",
+            borderRadius: 12,
+            border: "1px solid #ccc",
+            background: "#fff",
+            cursor: "pointer",
+            fontWeight: 800,
+          }}
+        >
+          ▶
+        </button>
+      </div>
+
+      <TransactionList
+        transactions={monthTransactions}
+        onEdit={startEdit}
+        onDeleted={(id) => {
+          setTransactions((prev) => prev.filter((t) => t.id !== id));
+          if (editing?.id === id) setEditing(null);
+        }}
+        resolveCategoryLabel={resolveCategoryLabel}
+      />
+    </div>
+  );
+}
 
   return (
     <div style={{ padding: 14 }}>
@@ -1098,14 +1181,7 @@ const areaH = isMobile ? 820 : 860;
 
   <button
   type="button"
-  onClick={() => {
-    document
-      .getElementById("miyamu-transactions-report")
-      ?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-  }}
+  onClick={() => setMainView("history")}
   style={{
     padding: "10px 12px",
     borderRadius: 12,
