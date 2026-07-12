@@ -127,8 +127,7 @@ if (!restoreResponse.ok) {
     params.setTransactions(nextTransactions);
     params.setHoldings(nextHoldings);
 
-    alert("バックアップを復元しました。画面を再読み込みします。");
-   params.hardReload();
+    alert("バックアップを復元しました。");
   } catch (e) {
   console.error("復元エラー", e);
   alert(e instanceof Error ? e.message : String(e));
