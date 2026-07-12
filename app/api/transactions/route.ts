@@ -196,35 +196,46 @@ export async function PUT(req: NextRequest) {
       );
     }
 
-    const body = await req.json();
+    const body = (await req.json()) as {
+  transactions?: unknown;
+};
 
-    if (!Array.isArray(body.transactions)) {
-      return badRequest("transactions must be an array");
+if (!Array.isArray(body.transactions)) {
+  return badRequest("transactions must be an array");
+}
+
+type BackupTransaction = NonNullable<
+  ReturnType<typeof parseBackupTransaction>
+>;
+
+const transactions: BackupTransaction[] =
+  body.transactions.flatMap((value: unknown): BackupTransaction[] => {
+    const parsedTransaction = parseBackupTransaction(value);
+
+    if (parsedTransaction === null) {
+      return [];
     }
 
-    const transactions = body.transactions.flatMap((value: unknown) => {
-  const transaction = parseBackupTransaction(value);
-
-  if (transaction === null) {
-    return [];
-  }
-
-  return [transaction];
-});
-    await prisma.$transaction(async (database) => {
-  await database.transaction.deleteMany({
+    return [parsedTransaction];
+  });
+    if (transactions.length === 0) {
+  await prisma.transaction.deleteMany({
     where: { userKey },
   });
+} else {
+  await prisma.$transaction([
+    prisma.transaction.deleteMany({
+      where: { userKey },
+    }),
 
-  for (const transaction of transactions) {
-    await database.transaction.create({
-      data: {
+    prisma.transaction.createMany({
+      data: transactions.map((transaction) => ({
         ...transaction,
         userKey,
-      },
-    });
-  }
-});
+      })),
+    }),
+  ]);
+}
 
     return NextResponse.json({
       ok: true,
