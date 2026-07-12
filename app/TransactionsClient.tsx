@@ -1076,14 +1076,6 @@ const areaH = isMobile ? 820 : 860;
     "画像作成に失敗しました"
   );
 };
-const exportTransactionsImage = () => {
-  return exportElementImage(
-    "miyamu-transactions-report",
-    `miyamu-transactions-${selectedYm}.png`,
-    "明細一覧が見つかりません",
-    "明細一覧の画像作成に失敗しました"
-  );
-};
   if (!mounted) return null;
 
   return (
@@ -1105,19 +1097,27 @@ const exportTransactionsImage = () => {
   </button>
 
   <button
-    onClick={exportTransactionsImage}
-    style={{
-      padding: "10px 12px",
-      borderRadius: 12,
-      border: "1px solid #111",
-      background: "#fff",
-      cursor: "pointer",
-      fontWeight: 900,
-      fontSize: 12,
-    }}
-  >
-    明細一覧保存
-  </button>
+  type="button"
+  onClick={() => {
+    document
+      .getElementById("miyamu-transactions-report")
+      ?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+  }}
+  style={{
+    padding: "10px 12px",
+    borderRadius: 12,
+    border: "1px solid #111",
+    background: "#fff",
+    cursor: "pointer",
+    fontWeight: 900,
+    fontSize: 12,
+  }}
+>
+  明細一覧
+</button>
 </div>
       {payoffModal && (
         <PayoffModal
@@ -1326,6 +1326,7 @@ const exportTransactionsImage = () => {
      margin: "0 auto",
      }}
   >
+    
 
          <div
          onTouchStart={(e) => {
