@@ -2,9 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import confetti from "canvas-confetti";
-import TransactionList from "./TransactionList";
 import type { Transaction } from "./types";
-import {getOrCreateUserKey,clearUserKeyCache,getUserKeyName,setUserKeyName,maskKey,normalizeUserKeyInput,} from "../lib/userKey";
+import {getUserKeyName,maskKey,} from "../lib/userKey";
 import styles from "./TransactionsClient.module.css";
 import ExtraRingButton from "./components/ExtraRingButton";
 import PayoffModal from "./components/PayoffModal";
@@ -31,6 +30,7 @@ import {buildCategorySums,getRingSumsFromMap,} from "../lib/ringCalculator";
 import { useExtraRings } from "./components/useExtraRings";
 import { exportElementImage } from "../lib/exportImage";
 import TransactionHistoryView from "./components/TransactionHistoryView";
+import { useUserKeyManager } from "./components/useUserKeyManager";
 
 type Props = {
   initialTransactions: Transaction[];
@@ -38,7 +38,6 @@ type Props = {
 
 // ✅ 本番(Vercel)では userKey UI を出さない（ローカル開発だけ表示）
 const SHOW_USERKEY_UI = process.env.NODE_ENV !== "production";
-const STORAGE_KEY = "miyamu_budget_user_key";
 
 
 // ✅ 安全設計：固定3 + 追加10 = 合計13
@@ -70,6 +69,9 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const [mainView, setMainView] = useState<"input" | "history">("input");
   const dragStartXRef = useRef<number | null>(null);
   const dragStartOffsetRef = useRef(0);
+  const {userKey,setUserKey,userIdOpen,setUserIdOpen,copied,pasteKey,setPasteKey,pasteName,
+setPasteName,currentName,keyEditingOpen,setKeyEditingOpen,userKeyInput,setUserKeyInput,hardReload,
+copyText,applyPastedKey,applyUserKey,regenerateUserKey,} = useUserKeyManager();
   const startEdit = (t: Transaction) => {
   setEditing(t);
 };
@@ -80,25 +82,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   useEffect(() => {
   setMounted(true);
   }, []);
-
-  // ✅ userKey
-  const [userKey, setUserKey] = useState<string>("");
-
-  // ✅ ユーザーID表示（Safari/ホーム画面でも確認できる）
-  const [userIdOpen, setUserIdOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
-
-  // ✅ ユーザーID貼り付け切替＋命名
-  const [pasteKey, setPasteKey] = useState("");
-  const [pasteName, setPasteName] = useState("");
-  const [currentName, setCurrentName] = useState("");
-
-  const hardReload = () => {
-    const url = new URL(window.location.href);
-    url.searchParams.set("v", String(Date.now()));
-    window.location.replace(url.toString());
-  };
-
 const exportBackup = () => {
   exportMiyamuBackup({
     version: 1,
@@ -127,131 +110,6 @@ const importBackup = async (file: File) => {
     hardReload,
   });
 };
-
-  useEffect(() => {
-    if (!userIdOpen) return;
-    setPasteKey("");
-    setPasteName("");
-    setCurrentName(getUserKeyName(userKey));
-  }, [userIdOpen, userKey]);
-
-  const isValidUserKey = (s: string) => {
-    const v = s.trim();
-    if (/^[0-9a-f]{32}$/i.test(v)) return true;
-    if (v.length >= 8 && v.length <= 64) return true;
-    return false;
-  };
-
-  const applyPastedKey = () => {
-    const next = normalizeUserKeyInput(pasteKey);
-
-    if (!isValidUserKey(next)) {
-      alert("ユーザーIDの形式が違うみたい（32桁の英数字 or 8〜64文字）");
-      return;
-    }
-
-    const nm = pasteName.trim();
-    if (nm) setUserKeyName(next, nm);
-
-    try {
-      localStorage.setItem(STORAGE_KEY, next);
-    } catch {}
-
-    clearUserKeyCache();
-    setUserKey(next);
-    setUserIdOpen(false);
-  };
-
-  const copyText = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1200);
-    } catch {
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      ta.style.position = "fixed";
-      ta.style.left = "-9999px";
-      document.body.appendChild(ta);
-      ta.focus();
-      ta.select();
-      try {
-        document.execCommand("copy");
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1200);
-      } finally {
-        document.body.removeChild(ta);
-      }
-    }
-  };
-
-  useEffect(() => {
-    (async () => {
-      const k = await getOrCreateUserKey();
-      setUserKey(k);
-    })();
-  }, []);
-
-  useEffect(() => {
-    if (!userKey) return;
-
-    (async () => {
-      try {
-        const res = await fetch("/api/transactions", {
-          headers: { "x-user-key": userKey },
-          cache: "no-store",
-        });
-
-        const data = await res.json().catch(() => []);
-        if (!res.ok) {
-          console.error("GET /api/transactions failed:", data);
-          setTransactions([]);
-          return;
-        }
-        setTransactions(Array.isArray(data) ? data : []);
-      } catch (e) {
-        console.error(e);
-        setTransactions([]);
-      }
-    })();
-  }, [userKey]);
-
-  const [keyEditingOpen, setKeyEditingOpen] = useState(false);
-  const [userKeyInput, setUserKeyInput] = useState("");
-
-  useEffect(() => {
-    if (keyEditingOpen) setUserKeyInput(userKey);
-  }, [keyEditingOpen, userKey]);
-
-  const applyUserKey = () => {
-    const next = normalizeUserKeyInput(userKeyInput);
-
-    if (next.length < 8 || next.length > 64) {
-      alert("userKey は8〜64文字で入力してください（英数字推奨）");
-      return;
-    }
-
-    localStorage.setItem(STORAGE_KEY, next);
-    clearUserKeyCache();
-    setUserKey(next);
-    setKeyEditingOpen(false);
-  };
-
-  const regenerateUserKey = async () => {
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {}
-
-    try {
-      clearUserKeyCache();
-      const k = await getOrCreateUserKey();
-      setUserKey(k);
-      setKeyEditingOpen(false);
-    } catch (e) {
-      console.error("regenerateUserKey failed:", e);
-      alert("再生成に失敗しました。コンソールを確認してね。");
-    }
-  };
 
   const nowYm = ymdToMonthKey(todayYMD());
 
