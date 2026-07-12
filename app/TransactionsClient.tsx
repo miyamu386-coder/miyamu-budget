@@ -30,6 +30,7 @@ import { calcSummary } from "../lib/transactions";
 import {buildCategorySums,getRingSumsFromMap,} from "../lib/ringCalculator";
 import { useExtraRings } from "./components/useExtraRings";
 import { exportElementImage } from "../lib/exportImage";
+import TransactionHistoryView from "./components/TransactionHistoryView";
 
 type Props = {
   initialTransactions: Transaction[];
@@ -1080,84 +1081,17 @@ const areaH = isMobile ? 820 : 860;
   if (!mounted) return null;
   if (mainView === "history") {
   return (
-    <div
-      style={{
-        padding: 14,
-        maxWidth: 980,
-        margin: "0 auto",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          marginBottom: 16,
-          flexWrap: "wrap",
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => setMainView("input")}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 12,
-            border: "1px solid #111",
-            background: "#111",
-            color: "#fff",
-            cursor: "pointer",
-            fontWeight: 900,
-            fontSize: 12,
-          }}
-        >
-          入力に戻る
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setSelectedYm((v) => addMonths(v, -1))}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 12,
-            border: "1px solid #ccc",
-            background: "#fff",
-            cursor: "pointer",
-            fontWeight: 800,
-          }}
-        >
-          ◀
-        </button>
-
-        <div style={{ fontWeight: 900, fontSize: 18 }}>
-          {fmtYM(selectedYm)}
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setSelectedYm((v) => addMonths(v, 1))}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 12,
-            border: "1px solid #ccc",
-            background: "#fff",
-            cursor: "pointer",
-            fontWeight: 800,
-          }}
-        >
-          ▶
-        </button>
-      </div>
-
-      <TransactionList
-        transactions={monthTransactions}
-        onEdit={startEdit}
-        onDeleted={(id) => {
-          setTransactions((prev) => prev.filter((t) => t.id !== id));
-          if (editing?.id === id) setEditing(null);
-        }}
-        resolveCategoryLabel={resolveCategoryLabel}
-      />
-    </div>
+    <TransactionHistoryView
+      selectedYm={selectedYm}
+      setSelectedYm={setSelectedYm}
+      transactions={monthTransactions}
+      editing={editing}
+      setEditing={setEditing}
+      setTransactions={setTransactions}
+      resolveCategoryLabel={resolveCategoryLabel}
+      startEdit={startEdit}
+      onBack={() => setMainView("input")}
+    />
   );
 }
 
@@ -1729,7 +1663,7 @@ const areaH = isMobile ? 820 : 860;
   />
 )}
       {extraEditId && (
-  <EditRingModal
+       <EditRingModal
     extraDraft={extraDraft}
     setExtraDraft={setExtraDraft}
     onSave={saveExtraEdit}
@@ -1737,18 +1671,6 @@ const areaH = isMobile ? 820 : 860;
     onRemove={removeExtraRing}
   />
 )}
-      <hr style={{ margin: "24px 0" }} />
-      <div id="miyamu-transactions-report">
-  <TransactionList
-    transactions={monthTransactions}
-    onEdit={startEdit}
-    onDeleted={(id) => {
-      setTransactions((prev) => prev.filter((t) => t.id !== id));
-      if (editing?.id === id) setEditing(null);
-    }}
-    resolveCategoryLabel={resolveCategoryLabel}
-  />
-</div>
     </div>
   );
 }
