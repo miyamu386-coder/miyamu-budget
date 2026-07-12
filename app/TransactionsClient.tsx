@@ -17,7 +17,7 @@ import EditRingModal from "./components/EditRingModal";
 import QuickAddModal from "./components/QuickAddModal";
 import UserIdModal from "./components/UserIdModal";
 import KeyEditingPanel from "./components/KeyEditingPanel";
-import {makeId,ringCategory,guessCarryOver,isRepayRingLike,type RingMode,type ExtraRing,} from "../lib/ringUtils";
+import {makeId,ringCategory,isRepayRingLike,type RingMode,type ExtraRing,} from "../lib/ringUtils";
 import { yen } from "../lib/format";
 import { clamp01 } from "../lib/math";
 import {BACKUP_STORAGE_KEY,exportMiyamuBackup,importMiyamuBackup,} from "../lib/backup";
@@ -30,6 +30,7 @@ import { useLongPressHandlers } from "../lib/useLongPressHandlers";
 import { useHoldings } from "./components/useHoldings";
 import { calcSummary } from "../lib/transactions";
 import {buildCategorySums,getRingSumsFromMap,} from "../lib/ringCalculator";
+import { useExtraRings } from "./components/useExtraRings";
 
 type Props = {
   initialTransactions: Transaction[];
@@ -45,7 +46,6 @@ const STORAGE_KEY = "miyamu_budget_user_key";
 
 
 // ✅ 安全設計：固定3 + 追加10 = 合計13
-const MAX_EXTRA_RINGS = 10;
 
 const FIXED_LIFE_KEY = "life"; // ✅ 生活費（月次）
 const FIXED_SAVE_KEY = "save"; // ✅ 貯蓄（月次）
@@ -347,76 +347,40 @@ const importBackup = async (file: File) => {
     return Array.from(set);
   }, [transactions]);
 
-  // =========================
-  // ✅ 追加リング（永続化）
-  // =========================
-  const extrasStorageKey = useMemo(() => {
-    const k = userKey || "anonymous";
-    return `miyamu_maker_extra_rings_v6:${k}`;
-  }, [userKey]);
+// =========================
+// ✅ 追加リング（永続化）
+// =========================
+const {
+  extraRings,
+  setExtraRings,
+  maxExtraRings,
+  canAddExtra,
+} = useExtraRings(userKey);
 
-  const [extraRings, setExtraRings] = useState<ExtraRing[]>([]);
-  const { holdings, setHoldings, getHoldingValue } = useHoldings(userKey);
-  const canAddExtra = extraRings.length < MAX_EXTRA_RINGS;
-  useEffect(() => {
-    if (!userKey) return;
-    try {
-      const raw = localStorage.getItem(extrasStorageKey);
-      if (!raw) return;
-      const arr = JSON.parse(raw) as ExtraRing[];
-      if (!Array.isArray(arr)) return;
+const {
+  holdings,
+  setHoldings,
+  getHoldingValue,
+} = useHoldings(userKey);
 
-      const fixed = arr
-        .filter((x) => x && typeof x.id === "string")
-        .slice(0, MAX_EXTRA_RINGS)
-        .map((x) => {
-          const title = String(x.title ?? "追加リング");
-          const mode = (x.mode ?? "both") as RingMode;
-          const carryOver = typeof x.carryOver === "boolean" ? x.carryOver : guessCarryOver(title, mode);
-
-          return {
-            id: x.id,
-            ringKey: typeof x.ringKey === "string" ? x.ringKey : x.id,
-            title,
-            mode,
-            color: typeof x.color === "string" ? x.color : "#60a5fa",
-            ringType: isRepayRingLike({ title, mode, carryOver })? "debt": (x.ringType ?? "asset"),
-            carryOver,
-            charMode: x.charMode ?? "auto",
-          };
-        });
-
-      setExtraRings(fixed);
-    } catch (e) {
-      console.warn("extra rings load failed", e);
-    }
-  }, [userKey, extrasStorageKey]);
-
-  useEffect(() => {
-    if (!userKey) return;
-    try {
-      localStorage.setItem(extrasStorageKey, JSON.stringify(extraRings));
-    } catch (e) {
-      console.warn("extra rings save failed", e);
-    }
-  }, [userKey, extrasStorageKey, extraRings]);
-
-  // =========================
-  // ✅ 「リング別集計」：月次 or 累計を使い分ける
-  // =========================
-  const sumByCategoryMonthly = useMemo(() => {
+// =========================
+// ✅ 「リング別集計」
+// =========================
+const sumByCategoryMonthly = useMemo(() => {
   return buildCategorySums(monthTransactions);
 }, [monthTransactions]);
 
-  const sumByCategoryCarry = useMemo(() => {
+const sumByCategoryCarry = useMemo(() => {
   return buildCategorySums(carryOverTransactions);
 }, [carryOverTransactions]);
 
-  const getRingSums = (ringKey: string, useCarry: boolean) => {
-  const map = useCarry ? sumByCategoryCarry : sumByCategoryMonthly;
+const getRingSums = (ringKey: string, useCarry: boolean) => {
+  const map = useCarry
+    ? sumByCategoryCarry
+    : sumByCategoryMonthly;
+
   return getRingSumsFromMap(map, ringKey);
 };
-
   // =========================
   // ✅ 目標（ringGoals.ts）から取得
   // =========================
@@ -852,7 +816,7 @@ useEffect(() => {
 
   const openCreate = () => {
     if (!canAddExtra) {
-      alert(`追加リングは最大${MAX_EXTRA_RINGS}個までです`);
+      alert(`追加リングは最大${maxExtraRings}個までです`);
       return;
     }
     setCreateTitle("カードローン返済");
@@ -1712,7 +1676,7 @@ const areaH = isMobile ? 820 : 860;
               width: "min(360px, 96vw)",
             }}
           >
-            ＋ 追加リング（残り {Math.max(0, MAX_EXTRA_RINGS - extraRings.length)}）
+            ＋ 追加リング（残り {Math.max(0, maxExtraRings - extraRings.length)}）
           </button>
         </div>
       </div>
