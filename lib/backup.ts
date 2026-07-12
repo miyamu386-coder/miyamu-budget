@@ -130,7 +130,7 @@ if (!restoreResponse.ok) {
     alert("バックアップを復元しました。画面を再読み込みします。");
    params.hardReload();
   } catch (e) {
-    console.error(e);
-    alert("復元に失敗しました");
+  console.error("復元エラー", e);
+  alert(e instanceof Error ? e.message : String(e));
   }
-};
+}
