@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import confetti from "canvas-confetti";
-import TransactionForm from "./TransactionForm";
 import TransactionList from "./TransactionList";
 import type { Transaction } from "./types";
 import {getOrCreateUserKey,clearUserKeyCache,getUserKeyName,setUserKeyName,maskKey,normalizeUserKeyInput,} from "../lib/userKey";
@@ -66,7 +65,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
   const [editing, setEditing] = useState<Transaction | null>(null);
-  const [formOpen, setFormOpen] = useState(true);
   const formRef = useRef<HTMLDivElement | null>(null);
   const importFileRef = useRef<HTMLInputElement | null>(null);
   const [asOf, setAsOf] = useState<Date | null>(null);
@@ -77,7 +75,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const dragStartOffsetRef = useRef(0);
   const startEdit = (t: Transaction) => {
   setEditing(t);
-  setFormOpen(true);
 
   setTimeout(() => {
     formRef.current?.scrollIntoView({
@@ -336,17 +333,6 @@ const importBackup = async (file: File) => {
     } catch {}
   }, [monthStorageKey, monthTransactions]);
 
-  const categorySuggestions = useMemo(() => {
-    const set = new Set<string>();
-    for (const t of transactions) {
-      const c = (t.category ?? "").trim();
-      if (!c) continue;
-      if (c.startsWith("ring:")) continue;
-      set.add(c);
-    }
-    return Array.from(set);
-  }, [transactions]);
-
 // =========================
 // ✅ 追加リング（永続化）
 // =========================
@@ -447,10 +433,6 @@ useEffect(() => {
   return () => mq.removeEventListener?.("change", apply);
 }, []);
 
-useEffect(() => {
-  setFormOpen(!isMobile);
-}, [isMobile]);
-
   // =========================
   // ✅ コンテナ幅（配置計算に使う）
   // =========================
@@ -473,7 +455,6 @@ useEffect(() => {
   // ✅ サイズ
   // =========================
   const bigSize = isMobile ? 170 : 320;
-  const smallSize = isMobile ? 145 : 190;
 
   const strokeBig = isMobile ? 14 : 16;
   const strokeSmall = isMobile ? 12 : 14;
@@ -944,17 +925,6 @@ useEffect(() => {
     return categoryLabelMap.get(c) ?? c;
   };
 
-  const ringTitleResolver = useMemo(() => {
-    const pairs: Array<{ title: string; category: string }> = [];
-    pairs.push({ title: "生活費", category: ringCategory(FIXED_LIFE_KEY) });
-    pairs.push({ title: "貯蓄", category: ringCategory(FIXED_SAVE_KEY) });
-    pairs.push({ title: "貯蓄（累計）", category: ringCategory(FIXED_SAVE_KEY) });
-    for (const r of extraRings) {
-      pairs.push({ title: r.title, category: ringCategory(r.ringKey) });
-    }
-    return pairs;
-  }, [extraRings]);
-
   // =========================
 // ✅ 追加リングの配置：オービットリング
 // =========================
@@ -1368,39 +1338,6 @@ const areaH = isMobile ? 820 : 860;
     onClose={() => setKeyEditingOpen(false)}
   />
 )}
-   <div ref={formRef}>
-      <details
-        open={formOpen}
-        onToggle={(e) => setFormOpen((e.currentTarget as HTMLDetailsElement).open)}
-        style={{
-          border: "1px solid #eee",
-          borderRadius: 12,
-          padding: 12,
-          marginBottom: 16,
-          background: "#fff",
-        }}
-      >
-        <summary style={{ fontWeight: 900, cursor: "pointer" }}>手入力で追加（ここをタップで開く）</summary>
-
-        <div style={{ marginTop: 12 }}>
-          <TransactionForm
-            editing={editing}
-            categorySuggestions={categorySuggestions}
-            ringTitleResolver={ringTitleResolver}
-            onAdded={(t) => {
-              setTransactions((prev) => [t, ...prev]);
-              setEditing(null);
-            }}
-            onUpdated={(t) => {
-              setTransactions((prev) => prev.map((x) => (x.id === t.id ? t : x)));
-              setEditing(null);
-            }}
-            onCancelEdit={() => setEditing(null)}
-          />
-        </div>
-
-      </details>
-    </div>
 
       <div
       id="miyamu-report"
