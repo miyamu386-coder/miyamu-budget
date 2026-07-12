@@ -1,9 +1,7 @@
 import type { Transaction } from "../app/types";
 import type { RingGoal } from "./ringGoals";
-import { clearUserKeyCache } from "./userKey";
-function normalizeUserKeyInput(s: string) {
-  return s.trim().slice(0, 64);
-}
+import {clearUserKeyCache,normalizeUserKeyInput,} from "./userKey";
+  
 export const BACKUP_STORAGE_KEY = "miyamu_budget_user_key";
 
 export type BackupData = {
