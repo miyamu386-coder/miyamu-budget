@@ -6,7 +6,6 @@ import TransactionList from "./TransactionList";
 import type { Transaction } from "./types";
 import {getOrCreateUserKey,clearUserKeyCache,getUserKeyName,setUserKeyName,maskKey,normalizeUserKeyInput,} from "../lib/userKey";
 import styles from "./TransactionsClient.module.css";
-import html2canvas from "html2canvas";
 import ExtraRingButton from "./components/ExtraRingButton";
 import PayoffModal from "./components/PayoffModal";
 import SaveCharaOverlay from "./components/SaveCharaOverlay";
@@ -30,6 +29,7 @@ import { useHoldings } from "./components/useHoldings";
 import { calcSummary } from "../lib/transactions";
 import {buildCategorySums,getRingSumsFromMap,} from "../lib/ringCalculator";
 import { useExtraRings } from "./components/useExtraRings";
+import { exportElementImage } from "../lib/exportImage";
 
 type Props = {
   initialTransactions: Transaction[];
@@ -38,10 +38,6 @@ type Props = {
 // ✅ 本番(Vercel)では userKey UI を出さない（ローカル開発だけ表示）
 const SHOW_USERKEY_UI = process.env.NODE_ENV !== "production";
 const STORAGE_KEY = "miyamu_budget_user_key";
-
-/**
- * ✅ 「5万」「1.2万」「3千」「50,000」等を数値にする
- */
 
 
 // ✅ 安全設計：固定3 + 追加10 = 合計13
@@ -65,7 +61,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
 
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
   const [editing, setEditing] = useState<Transaction | null>(null);
-  const formRef = useRef<HTMLDivElement | null>(null);
   const importFileRef = useRef<HTMLInputElement | null>(null);
   const [asOf, setAsOf] = useState<Date | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -75,13 +70,6 @@ export default function TransactionsClient({ initialTransactions }: Props) {
   const dragStartOffsetRef = useRef(0);
   const startEdit = (t: Transaction) => {
   setEditing(t);
-
-  setTimeout(() => {
-    formRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  }, 50);
 };
 
   useEffect(() => {
@@ -433,24 +421,7 @@ useEffect(() => {
   return () => mq.removeEventListener?.("change", apply);
 }, []);
 
-  // =========================
-  // ✅ コンテナ幅（配置計算に使う）
-  // =========================
-  const layoutRef = useRef<HTMLDivElement | null>(null);
-  const [, setLayoutW] = useState(980);
-
-  useEffect(() => {
-    const el = layoutRef.current;
-    if (!el) return;
-
-    const ro = new ResizeObserver(() => {
-      const w = el.getBoundingClientRect().width;
-      setLayoutW(Math.max(320, Math.floor(w)));
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
+const layoutRef = useRef<HTMLDivElement | null>(null);
   // =========================
   // ✅ サイズ
   // =========================
@@ -1097,28 +1068,21 @@ const areaH = isMobile ? 820 : 860;
       }, 250);
     }
   };
-  const exportMonthlyImage = async () => {
-  try {
-    const el = document.getElementById("miyamu-report");
-
-    if (!el) {
-      alert("レポートが見つかりません");
-      return;
-    }
-
-    const canvas = await html2canvas(el, {
-      backgroundColor: "#ffffff",
-      scale: 2,
-    });
-
-    const link = document.createElement("a");
-    link.download = `miyamu-report-${selectedYm}.png`;
-    link.href = canvas.toDataURL("image/png");
-    link.click();
-  } catch (e) {
-    console.error(e);
-    alert("画像作成に失敗しました");
-  }
+  const exportMonthlyImage = () => {
+  return exportElementImage(
+    "miyamu-report",
+    `miyamu-report-${selectedYm}.png`,
+    "レポートが見つかりません",
+    "画像作成に失敗しました"
+  );
+};
+const exportTransactionsImage = () => {
+  return exportElementImage(
+    "miyamu-transactions-report",
+    `miyamu-transactions-${selectedYm}.png`,
+    "明細一覧が見つかりません",
+    "明細一覧の画像作成に失敗しました"
+  );
 };
   if (!mounted) return null;
 
@@ -1138,6 +1102,21 @@ const areaH = isMobile ? 820 : 860;
     }}
   >
     月レポート保存
+  </button>
+
+  <button
+    onClick={exportTransactionsImage}
+    style={{
+      padding: "10px 12px",
+      borderRadius: 12,
+      border: "1px solid #111",
+      background: "#fff",
+      cursor: "pointer",
+      fontWeight: 900,
+      fontSize: 12,
+    }}
+  >
+    明細一覧保存
   </button>
 </div>
       {payoffModal && (
@@ -1681,18 +1660,18 @@ const areaH = isMobile ? 820 : 860;
     onRemove={removeExtraRing}
   />
 )}
-
       <hr style={{ margin: "24px 0" }} />
-
-      <TransactionList
-        transactions={monthTransactions}
-        onEdit={startEdit}
-        onDeleted={(id) => {
-          setTransactions((prev) => prev.filter((t) => t.id !== id));
-          if (editing?.id === id) setEditing(null);
-        }}
-        resolveCategoryLabel={resolveCategoryLabel}
-      />
-    </div> 
+      <div id="miyamu-transactions-report">
+  <TransactionList
+    transactions={monthTransactions}
+    onEdit={startEdit}
+    onDeleted={(id) => {
+      setTransactions((prev) => prev.filter((t) => t.id !== id));
+      if (editing?.id === id) setEditing(null);
+    }}
+    resolveCategoryLabel={resolveCategoryLabel}
+  />
+</div>
+    </div>
   );
 }
