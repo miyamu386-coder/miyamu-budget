@@ -14,7 +14,7 @@ import EditRingModal from "./components/EditRingModal";
 import QuickAddModal from "./components/QuickAddModal";
 import UserIdModal from "./components/UserIdModal";
 import KeyEditingPanel from "./components/KeyEditingPanel";
-import {makeId,ringCategory,isRepayRingLike,type RingMode,type ExtraRing,} from "../lib/ringUtils";
+import {makeId,ringCategory,isRepayRingLike,} from "../lib/ringUtils";
 import { yen } from "../lib/format";
 import { clamp01 } from "../lib/math";
 import {BACKUP_STORAGE_KEY,exportMiyamuBackup,importMiyamuBackup,} from "../lib/backup";
@@ -22,7 +22,7 @@ import { parseAmountLike } from "../lib/amount";
 import GoalModal from "./components/GoalModal";
 import { loadRingGoals, getTarget, type RingGoal } from "../lib/ringGoals";
 import { calcRepayment } from "../lib/repayment";
-import {fmtYM,addMonths,todayYMD,} from "../lib/dateUtils";
+import {fmtYM,addMonths,} from "../lib/dateUtils";
 import { useLongPressHandlers } from "../lib/useLongPressHandlers";
 import { useHoldings } from "./components/useHoldings";
 import {buildCategorySums,getRingSumsFromMap,} from "../lib/ringCalculator";
@@ -33,9 +33,9 @@ import { useUserKeyManager } from "./components/useUserKeyManager";
 import { useMonthlyTransactions } from "./components/useMonthlyTransactions";
 import { openMonthlyPrintView } from "../lib/monthlyReport";
 import {decideSaveReaction,useSaveEffects,} from "./components/useSaveEffects";
-import { createTransactionApi } from "../lib/transactionApi";
 import { useRingEditor } from "./components/useRingEditor";
 import { useQuickAdd } from "./components/useQuickAdd";
+import { buildOrbitPositions } from "../lib/orbitLayout";
 
 type Props = {
   initialTransactions: Transaction[];
@@ -50,8 +50,6 @@ const SHOW_USERKEY_UI = process.env.NODE_ENV !== "production";
 const FIXED_LIFE_KEY = "life"; // ✅ 生活費（月次）
 const FIXED_SAVE_KEY = "save"; // ✅ 貯蓄（月次）
 const GOAL_ASSET_KEY = "ring:asset"; // ✅ 総資産 目標だけは「目標専用キー」
-
-type TxType = "income" | "expense";
 
 type RepayInfo = {
   enabled: boolean;
@@ -454,44 +452,22 @@ const {
     return categoryLabelMap.get(c) ?? c;
   };
 
-  // =========================
+// =========================
 // ✅ 追加リングの配置：オービットリング
 // =========================
 const extraPositions = useMemo(() => {
-  const count = extraRings.length;
-  const extraSize = isMobile ? 112 : 150;
-
-  const orbitRadiusX = isMobile ? 125 : 240;
-  const orbitRadiusY = isMobile ? 210 : 285;
-
-  const selectedIndex = selectedRing
-    ? extraRings.findIndex((r) => r.id === selectedRing)
-    : 0;
-
-  return extraRings.map((r, i) => {
-    const step = (Math.PI * 2) / Math.max(count, 1);
-
-    // 選択中リングを手前下に持ってくる
-    const frontAngle = Math.PI / 2;
-    const angle =frontAngle +(i - selectedIndex) * step +orbitOffset;
-
-    const depth = Math.sin(angle);
-    const x = Math.cos(angle) * orbitRadiusX;
-    const y = Math.sin(angle) * orbitRadiusY;
-
-    const scale = 1 + depth * 0.12;
-    const opacity = 0.72 + depth * 0.28;
-
-    return {
-      id: r.id,
-      x,
-      y,
-      size: extraSize * scale,
-      opacity,
-      zIndex: Math.round(20 + depth * 20),
-    };
+  return buildOrbitPositions({
+    extraRings,
+    isMobile,
+    selectedRing,
+    orbitOffset,
   });
-}, [extraRings, isMobile, selectedRing, orbitOffset]);
+}, [
+  extraRings,
+  isMobile,
+  selectedRing,
+  orbitOffset,
+]);
 const areaH = isMobile ? 820 : 860;
 
   // =========================
