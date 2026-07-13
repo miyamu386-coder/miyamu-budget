@@ -22,15 +22,15 @@ import { parseAmountLike } from "../lib/amount";
 import GoalModal from "./components/GoalModal";
 import { loadRingGoals, getTarget, type RingGoal } from "../lib/ringGoals";
 import { calcRepayment } from "../lib/repayment";
-import {ymdToMonthKey,fmtYM,addMonths,endOfMonthYMD,todayYMD,} from "../lib/dateUtils";
+import {fmtYM,addMonths,todayYMD,} from "../lib/dateUtils";
 import { useLongPressHandlers } from "../lib/useLongPressHandlers";
 import { useHoldings } from "./components/useHoldings";
-import { calcSummary } from "../lib/transactions";
 import {buildCategorySums,getRingSumsFromMap,} from "../lib/ringCalculator";
 import { useExtraRings } from "./components/useExtraRings";
 import { exportElementImage } from "../lib/exportImage";
 import TransactionHistoryView from "./components/TransactionHistoryView";
 import { useUserKeyManager } from "./components/useUserKeyManager";
+import { useMonthlyTransactions } from "./components/useMonthlyTransactions";
 
 type Props = {
   initialTransactions: Transaction[];
@@ -111,75 +111,17 @@ const importBackup = async (file: File) => {
   });
 };
 
-  const nowYm = ymdToMonthKey(todayYMD());
-
-  const selectedYmKey = useMemo(() => {
-    const k = userKey || "anonymous";
-    return `miyamu_selected_ym:${k}`;
-  }, [userKey]);
-
-  const [selectedYm, setSelectedYm] = useState<string>(() => {
-    if (typeof window === "undefined") return nowYm;
-    try {
-      const saved = localStorage.getItem(`miyamu_selected_ym:anonymous`);
-      return saved || nowYm;
-    } catch {
-      return nowYm;
-    }
-  });
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const saved = localStorage.getItem(selectedYmKey);
-      if (saved) setSelectedYm(saved);
-      else setSelectedYm(nowYm);
-    } catch {
-      setSelectedYm(nowYm);
-    }
-  }, [selectedYmKey, nowYm]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      localStorage.setItem(selectedYmKey, selectedYm);
-    } catch {}
-  }, [selectedYmKey, selectedYm]);
-
   // =========================
   // ✅ A案：月次（生活費） vs 累計（貯蓄/返済）
   // =========================
-  const selectedEnd = useMemo(() => endOfMonthYMD(selectedYm), [selectedYm]);
-
-  const monthTransactions = useMemo(() => {
-    return transactions.filter((t) => {
-      const ymd = (t.occurredAt ?? "").slice(0, 10);
-      if (!ymd) return false;
-      return ymdToMonthKey(ymd) === selectedYm;
-    });
-  }, [transactions, selectedYm]);
-
-  const carryOverTransactions = useMemo(() => {
-    return transactions.filter((t) => {
-      const ymd = (t.occurredAt ?? "").slice(0, 10);
-      if (!ymd) return false;
-      return ymd <= selectedEnd;
-    });
-  }, [transactions, selectedEnd]);
-
-  const monthSummary = useMemo(() => calcSummary(monthTransactions), [monthTransactions]);
-
-  const monthStorageKey = useMemo(() => {
-    const k = userKey || "anonymous";
-    return `miyamu_month:${k}:${selectedYm}`;
-  }, [userKey, selectedYm]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      localStorage.setItem(monthStorageKey, JSON.stringify(monthTransactions));
-    } catch {}
-  }, [monthStorageKey, monthTransactions]);
+  const {
+  nowYm,
+  selectedYm,
+  setSelectedYm,
+  monthTransactions,
+  carryOverTransactions,
+  monthSummary,
+} = useMonthlyTransactions(transactions, userKey);
 
 // =========================
 // ✅ 追加リング（永続化）
