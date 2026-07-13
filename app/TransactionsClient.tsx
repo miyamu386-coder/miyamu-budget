@@ -32,6 +32,7 @@ import TransactionHistoryView from "./components/TransactionHistoryView";
 import { useUserKeyManager } from "./components/useUserKeyManager";
 import { useMonthlyTransactions } from "./components/useMonthlyTransactions";
 import { openMonthlyPrintView } from "../lib/monthlyReport";
+import {decideSaveReaction,useSaveEffects,} from "./components/useSaveEffects";
 
 type Props = {
   initialTransactions: Transaction[];
@@ -314,167 +315,18 @@ const layoutRef = useRef<HTMLDivElement | null>(null);
     return data as Transaction;
   };
 
-  // =========================
-  // ✅ 保存演出（全身モフ/ひな ＋ 一言） + 見守りモフ吹き出し、完済エフェクト
-  // =========================
-  const [saveOverlay, setSaveOverlay] = useState<{ kind: "mofu" | "hina"; message: string; key: number } | null>(null);
-  const overlayTimerRef = useRef<number | null>(null);
-
-  const [payoffModal, setPayoffModal] = useState<{
-    title: string;
-    amount: number;
-    date: string;
-  } | null>(null);
-  const [pendingGlowRingId, setPendingGlowRingId] = useState<string | null>(null);
-
-  const [watchMofuSpeech, setWatchMofuSpeech] = useState<{ show: boolean; text: string; key: number }>({
-    show: false,
-    text: "",
-    key: 0,
-  });
-  const watchShowTimerRef = useRef<number | null>(null);
-  const watchHideTimerRef = useRef<number | null>(null);
-
-  // ✅ 光らせる対象は「リングid」
-  const [glowRingId, setGlowRingId] = useState<string | null>(null);
-  const glowTimerRef = useRef<number | null>(null);
-
-  const pickSaveMessage = (kind: "mofu" | "hina") => {
-    const mofu: string[] = ["OK。保存した。", "やるじゃん。", "記録は強い。", "積み上げろ。", "無理すんなよ。"];
-    const hina: string[] = ["できた！", "コツコツ大事！", "積み立て成功〜！", "明るい未来！", "いい感じ！"];
-    const list = kind === "mofu" ? mofu : hina;
-    return list[Math.floor(Math.random() * list.length)];
-  };
-
-  type WatchTone = "repay" | "invest" | "save" | "neutral";
-
-  const WATCH_QUOTES_KEY = "miyamu_watch_quotes_v1";
-  type WatchQuotes = Record<WatchTone, string[]>;
-
-  const defaultWatchQuotes: WatchQuotes = {
-    repay: ["偉い。返済は正義。", "ちゃんと減ってる。強い。", "その調子。完済は近いぞ。", "やるじゃん（煽り）", "逃げずに向き合ったな。"],
-    invest: ["焦るな。積み上げは裏切らない。", "長期目線でいこう。", "いいね。淡々といこう。", "相場に振り回されるなよ。", "見守ってる。"],
-    save: ["コツコツ、えらい。", "貯める力は武器だ。", "いい流れ。", "守りが固い。", "その調子。"],
-    neutral: ["見てるぞ。", "その調子。", "記録は裏切らない。", "OK。続けろ。", "無理はするな。"],
-  };
-
-  function loadWatchQuotes(): WatchQuotes {
-    if (typeof window === "undefined") return defaultWatchQuotes;
-    try {
-      const raw = localStorage.getItem(WATCH_QUOTES_KEY);
-      if (!raw) return defaultWatchQuotes;
-      const parsed = JSON.parse(raw);
-      return {
-        repay: Array.isArray(parsed?.repay) ? parsed.repay : defaultWatchQuotes.repay,
-        invest: Array.isArray(parsed?.invest) ? parsed.invest : defaultWatchQuotes.invest,
-        save: Array.isArray(parsed?.save) ? parsed.save : defaultWatchQuotes.save,
-        neutral: Array.isArray(parsed?.neutral) ? parsed.neutral : defaultWatchQuotes.neutral,
-      };
-    } catch {
-      return defaultWatchQuotes;
-    }
-  }
-
-  const [watchQuotes, setWatchQuotes] = useState<WatchQuotes>(defaultWatchQuotes);
-
-  useEffect(() => {
-    setWatchQuotes(loadWatchQuotes());
-  }, []);
-
-  const pickWatchMofu = (tone: WatchTone) => {
-    const list = watchQuotes[tone] ?? watchQuotes.neutral ?? defaultWatchQuotes.neutral;
-    return list[Math.floor(Math.random() * list.length)];
-  };
-
-  const decideSaveReaction = (meta: { title: string; ringKey: string }) => {
-    const t = (meta.title ?? "").toLowerCase();
-
-    const repayWords = ["返済", "ローン", "借入", "カードローン", "クレカ", "リボ", "分割"];
-    const investWords = ["投資", "nisa", "ニーサ", "株", "積立", "つみたて", "資産", "運用", "配当"];
-    const saveWords = ["貯蓄", "貯金", "積立", "積み立て", "資産形成"];
-
-    if (repayWords.some((w) => t.includes(w))) return { kind: "mofu" as const, tone: "repay" as const };
-    if (investWords.some((w) => t.includes(w))) return { kind: "hina" as const, tone: "invest" as const };
-    if (saveWords.some((w) => t.includes(w))) return { kind: "hina" as const, tone: "save" as const };
-
-    if (meta.ringKey === FIXED_LIFE_KEY) return { kind: "mofu" as const, tone: "neutral" as const };
-    if (meta.ringKey === FIXED_SAVE_KEY) return { kind: "hina" as const, tone: "save" as const };
-
-    return { kind: "mofu" as const, tone: "neutral" as const };
-  };
-
-  const triggerSaveOverlay = (kind: "mofu" | "hina", tone: WatchTone = "neutral") => {
-    if (overlayTimerRef.current !== null) {
-      window.clearTimeout(overlayTimerRef.current);
-      overlayTimerRef.current = null;
-    }
-    if (watchShowTimerRef.current !== null) {
-      window.clearTimeout(watchShowTimerRef.current);
-      watchShowTimerRef.current = null;
-    }
-    if (watchHideTimerRef.current !== null) {
-      window.clearTimeout(watchHideTimerRef.current);
-      watchHideTimerRef.current = null;
-    }
-
-    setWatchMofuSpeech({ show: false, text: "", key: Date.now() });
-
-    const message = pickSaveMessage(kind);
-    const key = Date.now();
-    setSaveOverlay({ kind, message, key });
-
-    overlayTimerRef.current = window.setTimeout(() => {
-      setSaveOverlay(null);
-      overlayTimerRef.current = null;
-
-      watchShowTimerRef.current = window.setTimeout(() => {
-        const text = pickWatchMofu(tone);
-        const k = Date.now();
-        setWatchMofuSpeech({ show: true, text, key: k });
-        watchShowTimerRef.current = null;
-
-        watchHideTimerRef.current = window.setTimeout(() => {
-          setWatchMofuSpeech((prev) => ({ ...prev, show: false }));
-          watchHideTimerRef.current = null;
-        }, 2000);
-      }, 250);
-    }, 2600);
-  };
-
-  const triggerRingGlow = (ringId: string) => {
-    setGlowRingId(ringId);
-
-    if (glowTimerRef.current !== null) {
-      window.clearTimeout(glowTimerRef.current);
-      glowTimerRef.current = null;
-    }
-
-    glowTimerRef.current = window.setTimeout(() => {
-      setGlowRingId(null);
-      glowTimerRef.current = null;
-    }, 2200);
-  };
-
-  useEffect(() => {
-    return () => {
-      if (overlayTimerRef.current !== null) {
-        window.clearTimeout(overlayTimerRef.current);
-        overlayTimerRef.current = null;
-      }
-      if (watchShowTimerRef.current !== null) {
-        window.clearTimeout(watchShowTimerRef.current);
-        watchShowTimerRef.current = null;
-      }
-      if (watchHideTimerRef.current !== null) {
-        window.clearTimeout(watchHideTimerRef.current);
-        watchHideTimerRef.current = null;
-      }
-      if (glowTimerRef.current !== null) {
-        window.clearTimeout(glowTimerRef.current);
-        glowTimerRef.current = null;
-      }
-    };
-  }, []);
+const {
+  saveOverlay,
+  setSaveOverlay,
+  payoffModal,
+  setPayoffModal,
+  pendingGlowRingId,
+  setPendingGlowRingId,
+  watchMofuSpeech,
+  glowRingId,
+  triggerSaveOverlay,
+  triggerRingGlow,
+} = useSaveEffects();
 
   const saveQuickAdd = async () => {
     if (isSavingQuick) return;
@@ -510,7 +362,11 @@ const layoutRef = useRef<HTMLDivElement | null>(null);
       closeQuickAdd();
 
       // ✅ 保存演出は常に出す
-      const reaction = decideSaveReaction(meta);
+     const reaction = decideSaveReaction({
+  ...meta,
+  fixedLifeKey: FIXED_LIFE_KEY,
+  fixedSaveKey: FIXED_SAVE_KEY,
+});
       triggerSaveOverlay(reaction.kind, reaction.tone);
 
             // ✅ 返済リングだけ：保存後に完済判定
