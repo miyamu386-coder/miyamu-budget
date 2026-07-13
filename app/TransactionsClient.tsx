@@ -33,6 +33,7 @@ import { useUserKeyManager } from "./components/useUserKeyManager";
 import { useMonthlyTransactions } from "./components/useMonthlyTransactions";
 import { openMonthlyPrintView } from "../lib/monthlyReport";
 import {decideSaveReaction,useSaveEffects,} from "./components/useSaveEffects";
+import { createTransactionApi } from "../lib/transactionApi";
 
 type Props = {
   initialTransactions: Transaction[];
@@ -294,27 +295,6 @@ const layoutRef = useRef<HTMLDivElement | null>(null);
     return { ringKey: r.ringKey, title: r.title, mode: r.mode };
   };
 
-  const createTransaction = async (payload: {
-    type: TxType;
-    amount: number;
-    occurredAt: string;
-    category: string;
-    detailCategory?: string;
-  }) => {
-    const res = await fetch("/api/transactions", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-user-key": userKey,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const data = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(JSON.stringify(data ?? { error: "POST failed" }));
-    return data as Transaction;
-  };
-
 const {
   saveOverlay,
   setSaveOverlay,
@@ -349,7 +329,7 @@ const {
     setIsSavingQuick(true);
 
     try {
-      const tx = await createTransaction({
+      const tx = await createTransactionApi(userKey, {
         type,
         amount,
         occurredAt: quickDate,
