@@ -1,4 +1,3 @@
-// lib/userKey.ts
 const STORAGE_KEY = "miyamu_budget_user_key";
 const NAME_KEY_PREFIX = "miyamu_budget_user_name:";
 
@@ -23,57 +22,96 @@ export function setUserKeyName(key: string, name: string) {
 }
 
 function gen32hex() {
-  // crypto.randomUUID が使えるならそれ優先
   try {
-    // @ts-ignore
-    if (typeof crypto !== "undefined" && crypto.randomUUID) {
-      // UUIDのハイフンを消して32桁相当に
-      return crypto.randomUUID().replace(/-/g, "").slice(0, 32);
+    if (
+      typeof crypto !== "undefined" &&
+      typeof crypto.randomUUID === "function"
+    ) {
+      return crypto
+        .randomUUID()
+        .replace(/-/g, "")
+        .slice(0, 32);
     }
   } catch {}
 
-  // fallback: Math.random で32桁hex
-  const hex = () => Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, "0");
+  const hex = () =>
+    Math.floor(Math.random() * 0xffffffff)
+      .toString(16)
+      .padStart(8, "0");
+
   return (hex() + hex() + hex() + hex()).slice(0, 32);
 }
 
-// ✅ 絶対に throw しない版
-export async function getOrCreateUserKey(): Promise<string> {
-  if (cached) return cached;
+async function syncUserKeyCookie(userKey: string) {
+  try {
+    const response = await fetch("/api/user-key", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ userKey }),
+    });
 
-  // SSR対策（ここは呼ばれない想定だけど保険）
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+
+      console.error(
+        "userKey cookie sync failed:",
+        response.status,
+        data
+      );
+    }
+  } catch (error) {
+    console.error("userKey cookie sync failed:", error);
+  }
+}
+
+// 絶対にthrowしない
+export async function getOrCreateUserKey(): Promise<string> {
+  if (cached) {
+    await syncUserKeyCookie(cached);
+    return cached;
+  }
+
   if (typeof window === "undefined") {
     cached = "server";
     return cached;
   }
 
-  // 1) 既存を読む
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
+
     if (saved && saved.trim()) {
       cached = saved.trim();
+
+      await syncUserKeyCookie(cached);
+
       return cached;
     }
   } catch {
-    // 読めなくても続行
+    // 読めなくても新規作成へ進む
   }
 
-  // 2) 新規作成
   const key = gen32hex();
 
-  // 3) 保存（失敗しても続行）
   try {
     localStorage.setItem(STORAGE_KEY, key);
   } catch {}
 
   cached = key;
+
+  await syncUserKeyCookie(key);
+
   return cached;
 }
-export function maskKey(k: string) {
-  if (!k) return "";
-  if (k.length <= 8) return k;
-  return `${k.slice(0, 4)}…${k.slice(-4)}`;
+
+export function maskKey(key: string) {
+  if (!key) return "";
+  if (key.length <= 8) return key;
+
+  return `${key.slice(0, 4)}…${key.slice(-4)}`;
 }
-export function normalizeUserKeyInput(s: string) {
-  return s.trim().slice(0, 64);
+
+export function normalizeUserKeyInput(value: string) {
+  return value.trim().slice(0, 64);
 }

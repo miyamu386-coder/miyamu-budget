@@ -45,25 +45,37 @@ export function useUserKeyManager() {
 
   useEffect(() => {
     if (!keyEditingOpen) return;
+
     setUserKeyInput(userKey);
   }, [keyEditingOpen, userKey]);
 
   const isValidUserKey = (value: string) => {
-    const normalized = value.trim();
-
-    if (/^[0-9a-f]{32}$/i.test(normalized)) {
-      return true;
-    }
-
-    return normalized.length >= 8 && normalized.length <= 64;
+    return /^[0-9a-f]{32}$/i.test(value.trim());
   };
 
-  const applyPastedKey = () => {
+  const saveAndApplyUserKey = async (next: string) => {
+    try {
+      localStorage.setItem(STORAGE_KEY, next);
+    } catch (error) {
+      console.error("userKey localStorage save failed:", error);
+    }
+
+    clearUserKeyCache();
+
+    /*
+     * localStorageからキーを読み直し、
+     * /api/user-keyへのPOSTでCookieにも同期する
+     */
+    const syncedKey = await getOrCreateUserKey();
+    setUserKey(syncedKey);
+  };
+
+  const applyPastedKey = async () => {
     const next = normalizeUserKeyInput(pasteKey);
 
     if (!isValidUserKey(next)) {
       window.alert(
-        "ユーザーIDの形式が違うみたい（32桁の英数字 or 8〜64文字）"
+        "ユーザーIDは32桁の英数字（0〜9・a〜f）で入力してください"
       );
       return;
     }
@@ -75,14 +87,12 @@ export function useUserKeyManager() {
     }
 
     try {
-      localStorage.setItem(STORAGE_KEY, next);
+      await saveAndApplyUserKey(next);
+      setUserIdOpen(false);
     } catch (error) {
-      console.error("userKey localStorage save failed:", error);
+      console.error("applyPastedKey failed:", error);
+      window.alert("ユーザーIDの切り替えに失敗しました");
     }
-
-    clearUserKeyCache();
-    setUserKey(next);
-    setUserIdOpen(false);
   };
 
   const copyText = async (text: string) => {
@@ -119,31 +129,30 @@ export function useUserKeyManager() {
     }
   };
 
-  const applyUserKey = () => {
+  const applyUserKey = async () => {
     const next = normalizeUserKeyInput(userKeyInput);
 
-    if (next.length < 8 || next.length > 64) {
+    if (!isValidUserKey(next)) {
       window.alert(
-        "userKey は8〜64文字で入力してください（英数字推奨）"
+        "userKeyは32桁の英数字（0〜9・a〜f）で入力してください"
       );
       return;
     }
 
     try {
-      localStorage.setItem(STORAGE_KEY, next);
+      await saveAndApplyUserKey(next);
+      setKeyEditingOpen(false);
     } catch (error) {
-      console.error("userKey localStorage save failed:", error);
+      console.error("applyUserKey failed:", error);
+      window.alert("userKeyの切り替えに失敗しました");
     }
-
-    clearUserKeyCache();
-    setUserKey(next);
-    setKeyEditingOpen(false);
   };
-const hardReload = () => {
-  const url = new URL(window.location.href);
-  url.searchParams.set("v", String(Date.now()));
-  window.location.replace(url.toString());
-};
+
+  const hardReload = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("v", String(Date.now()));
+    window.location.replace(url.toString());
+  };
 
   const regenerateUserKey = async () => {
     try {
@@ -168,7 +177,7 @@ const hardReload = () => {
     }
   };
 
-    return {
+  return {
     userKey,
     setUserKey,
 

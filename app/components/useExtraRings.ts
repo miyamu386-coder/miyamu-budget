@@ -10,23 +10,27 @@ const MAX_EXTRA_RINGS = 10;
 
 export function useExtraRings(userKey: string) {
   const extrasStorageKey = useMemo(() => {
-    const key = userKey || "anonymous";
-    return `miyamu_maker_extra_rings_v6:${key}`;
+    return `miyamu_maker_extra_rings_v6:${userKey}`;
   }, [userKey]);
 
   const [extraRings, setExtraRings] = useState<ExtraRing[]>([]);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     if (!userKey) return;
 
+    setLoaded(false);
+
     try {
       const raw = localStorage.getItem(extrasStorageKey);
+
       if (!raw) {
         setExtraRings([]);
         return;
       }
 
       const parsed = JSON.parse(raw) as ExtraRing[];
+
       if (!Array.isArray(parsed)) {
         setExtraRings([]);
         return;
@@ -72,11 +76,14 @@ export function useExtraRings(userKey: string) {
     } catch (error) {
       console.warn("extra rings load failed", error);
       setExtraRings([]);
+    } finally {
+      setLoaded(true);
     }
   }, [userKey, extrasStorageKey]);
 
   useEffect(() => {
     if (!userKey) return;
+    if (!loaded) return;
 
     try {
       localStorage.setItem(
@@ -86,7 +93,7 @@ export function useExtraRings(userKey: string) {
     } catch (error) {
       console.warn("extra rings save failed", error);
     }
-  }, [userKey, extrasStorageKey, extraRings]);
+  }, [userKey, extrasStorageKey, extraRings, loaded]);
 
   return {
     extraRings,

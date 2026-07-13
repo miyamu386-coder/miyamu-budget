@@ -15,58 +15,61 @@ export function useMonthlyTransactions(
 ) {
   const nowYm = ymdToMonthKey(todayYMD());
 
+  // =========================
+  // 選択中の年月
+  // =========================
   const selectedYmKey = useMemo(() => {
-    const key = userKey || "anonymous";
-    return `miyamu_selected_ym:${key}`;
+    return `miyamu_selected_ym:${userKey}`;
   }, [userKey]);
 
-  const [selectedYm, setSelectedYm] = useState(() => {
-    if (typeof window === "undefined") {
-      return nowYm;
-    }
+  const [selectedYm, setSelectedYm] = useState(nowYm);
+  const [selectedYmLoaded, setSelectedYmLoaded] =
+    useState(false);
 
-    try {
-      const saved = localStorage.getItem(
-        "miyamu_selected_ym:anonymous"
-      );
-
-      return saved || nowYm;
-    } catch {
-      return nowYm;
-    }
-  });
-
+  // userKey確定後に、保存済みの年月を読み込む
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (!userKey) return;
+
+    setSelectedYmLoaded(false);
 
     try {
       const saved = localStorage.getItem(selectedYmKey);
-
-      if (saved) {
-        setSelectedYm(saved);
-      } else {
-        setSelectedYm(nowYm);
-      }
-    } catch {
+      setSelectedYm(saved || nowYm);
+    } catch (error) {
+      console.error("selectedYm load failed:", error);
       setSelectedYm(nowYm);
+    } finally {
+      setSelectedYmLoaded(true);
     }
-  }, [selectedYmKey, nowYm]);
+  }, [userKey, selectedYmKey, nowYm]);
 
+  // 読み込み完了後に、選択中の年月を保存する
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (!userKey) return;
+    if (!selectedYmLoaded) return;
 
     try {
       localStorage.setItem(selectedYmKey, selectedYm);
     } catch (error) {
       console.error("selectedYm save failed:", error);
     }
-  }, [selectedYmKey, selectedYm]);
+  }, [
+    userKey,
+    selectedYmKey,
+    selectedYm,
+    selectedYmLoaded,
+  ]);
 
-  const selectedEnd = useMemo(
-    () => endOfMonthYMD(selectedYm),
-    [selectedYm]
-  );
+  // =========================
+  // 選択月の末日
+  // =========================
+  const selectedEnd = useMemo(() => {
+    return endOfMonthYMD(selectedYm);
+  }, [selectedYm]);
 
+  // =========================
+  // 選択月だけの取引
+  // =========================
   const monthTransactions = useMemo(() => {
     return transactions.filter((transaction) => {
       const ymd = (transaction.occurredAt ?? "").slice(0, 10);
@@ -77,6 +80,9 @@ export function useMonthlyTransactions(
     });
   }, [transactions, selectedYm]);
 
+  // =========================
+  // 選択月末までの累計取引
+  // =========================
   const carryOverTransactions = useMemo(() => {
     return transactions.filter((transaction) => {
       const ymd = (transaction.occurredAt ?? "").slice(0, 10);
@@ -87,18 +93,23 @@ export function useMonthlyTransactions(
     });
   }, [transactions, selectedEnd]);
 
-  const monthSummary = useMemo(
-    () => calcSummary(monthTransactions),
-    [monthTransactions]
-  );
+  // =========================
+  // 選択月の収支
+  // =========================
+  const monthSummary = useMemo(() => {
+    return calcSummary(monthTransactions);
+  }, [monthTransactions]);
 
+  // =========================
+  // 月別取引のローカル保存
+  // =========================
   const monthStorageKey = useMemo(() => {
-    const key = userKey || "anonymous";
-    return `miyamu_month:${key}:${selectedYm}`;
+    return `miyamu_month:${userKey}:${selectedYm}`;
   }, [userKey, selectedYm]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (!userKey) return;
+    if (!selectedYmLoaded) return;
 
     try {
       localStorage.setItem(
@@ -106,9 +117,17 @@ export function useMonthlyTransactions(
         JSON.stringify(monthTransactions)
       );
     } catch (error) {
-      console.error("month transactions save failed:", error);
+      console.error(
+        "month transactions save failed:",
+        error
+      );
     }
-  }, [monthStorageKey, monthTransactions]);
+  }, [
+    userKey,
+    selectedYmLoaded,
+    monthStorageKey,
+    monthTransactions,
+  ]);
 
   return {
     nowYm,
