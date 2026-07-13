@@ -1,28 +1,20 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import confetti from "canvas-confetti";
 import type { Transaction } from "./types";
-import {getUserKeyName,maskKey,} from "../lib/userKey";
-import styles from "./TransactionsClient.module.css";
-import ExtraRingButton from "./components/ExtraRingButton";
 import PayoffModal from "./components/PayoffModal";
 import SaveCharaOverlay from "./components/SaveCharaOverlay";
-import Ring from "./components/Ring";
 import CreateRingModal from "./components/CreateRingModal";
 import EditRingModal from "./components/EditRingModal";
 import QuickAddModal from "./components/QuickAddModal";
 import UserIdModal from "./components/UserIdModal";
 import KeyEditingPanel from "./components/KeyEditingPanel";
-import {makeId,ringCategory,isRepayRingLike,} from "../lib/ringUtils";
+import {makeId,ringCategory,} from "../lib/ringUtils";
 import { yen } from "../lib/format";
 import { clamp01 } from "../lib/math";
 import {BACKUP_STORAGE_KEY,exportMiyamuBackup,importMiyamuBackup,} from "../lib/backup";
 import { parseAmountLike } from "../lib/amount";
 import GoalModal from "./components/GoalModal";
-import { getTarget } from "../lib/ringGoals";
-import { calcRepayment } from "../lib/repayment";
-import {fmtYM,addMonths,} from "../lib/dateUtils";
 import { useLongPressHandlers } from "../lib/useLongPressHandlers";
 import { useHoldings } from "./components/useHoldings";
 import { useExtraRings } from "./components/useExtraRings";
@@ -31,7 +23,7 @@ import TransactionHistoryView from "./components/TransactionHistoryView";
 import { useUserKeyManager } from "./components/useUserKeyManager";
 import { useMonthlyTransactions } from "./components/useMonthlyTransactions";
 import { openMonthlyPrintView } from "../lib/monthlyReport";
-import {decideSaveReaction,useSaveEffects,} from "./components/useSaveEffects";
+import {useSaveEffects,} from "./components/useSaveEffects";
 import { useRingEditor } from "./components/useRingEditor";
 import { useQuickAdd } from "./components/useQuickAdd";
 import { buildOrbitPositions } from "../lib/orbitLayout";
@@ -39,7 +31,10 @@ import { useRingSummary } from "./components/useRingSummary";
 import { useRingGoals } from "./components/useRingGoals";
 import WatchMofuDisplay from "./components/WatchMofuDisplay";
 import CenterAssetRing from "./components/CenterAssetRing";
-
+import ExtraRingLayer from "./components/ExtraRingLayer";
+import AddRingButton from "./components/AddRingButton";
+import HeaderBar from "./components/HeaderBar";
+import { useQuickAddSave } from "./components/useQuickAddSave";
 type Props = {
   initialTransactions: Transaction[];
 };
@@ -54,14 +49,6 @@ const FIXED_LIFE_KEY = "life"; // ✅ 生活費（月次）
 const FIXED_SAVE_KEY = "save"; // ✅ 貯蓄（月次）
 const GOAL_ASSET_KEY = "ring:asset"; // ✅ 総資産 目標だけは「目標専用キー」
 
-type RepayInfo = {
-  enabled: boolean;
-  progressPct: number;
-  remaining: number;
-  months: number | null;
-  payoffDate: Date | null;
-  message?: string;
-};
 
 export default function TransactionsClient({ initialTransactions }: Props) {
 
@@ -270,97 +257,18 @@ const {
   triggerRingGlow,
 } = useSaveEffects();
 
-  const saveQuickAdd = async () => {
-  try {
-    const { meta, type, amount } =
-      await saveQuickTransaction();
-
-    const reaction = decideSaveReaction({
-      ...meta,
-      fixedLifeKey: FIXED_LIFE_KEY,
-      fixedSaveKey: FIXED_SAVE_KEY,
-    });
-
-    triggerSaveOverlay(
-      reaction.kind,
-      reaction.tone
-    );
-
-    const targetRing = extraRings.find(
-      (ring) => ring.ringKey === meta.ringKey
-    );
-
-    if (
-      targetRing &&
-      isRepayRingLike(targetRing) &&
-      type === "income"
-    ) {
-      const totalDebt = getTarget(
-        ringGoals,
-        ringCategory(targetRing.ringKey)
-      );
-
-      const currentCarry = getRingSums(
-        targetRing.ringKey,
-        true
-      ).income;
-
-      const nextRepaidTotal =
-        currentCarry + amount;
-
-      const remainingAfterSave = Math.max(
-        0,
-        totalDebt - nextRepaidTotal
-      );
-
-      if (
-        totalDebt > 0 &&
-        remainingAfterSave === 0
-      ) {
-        setPendingGlowRingId(targetRing.id);
-
-        window.setTimeout(() => {
-          confetti({
-            particleCount: 80,
-            spread: 70,
-            origin: { x: 0.25, y: 0.9 },
-          });
-
-          confetti({
-            particleCount: 80,
-            spread: 70,
-            origin: { x: 0.75, y: 0.9 },
-          });
-        }, 2850);
-
-        window.setTimeout(() => {
-          confetti({
-            particleCount: 120,
-            spread: 100,
-            origin: { x: 0.5, y: 0.8 },
-          });
-        }, 3050);
-
-        window.setTimeout(() => {
-          setPayoffModal({
-            title: targetRing.title,
-            amount: nextRepaidTotal,
-            date: quickDate,
-          });
-        }, 3200);
-      }
-    }
-  } catch (error) {
-    console.error(error);
-
-    const message =
-      error instanceof Error
-        ? error.message
-        : "保存に失敗しました";
-
-    window.alert(message);
-  }
-};
+  const { saveQuickAdd } = useQuickAddSave({
+  saveQuickTransaction,
+  extraRings,
+  ringGoals,
+  quickDate,
+  fixedLifeKey: FIXED_LIFE_KEY,
+  fixedSaveKey: FIXED_SAVE_KEY,
+  getRingSums,
+  triggerSaveOverlay,
+  setPendingGlowRingId,
+  setPayoffModal,
+});
 
 const {
   createOpen,
@@ -490,39 +398,7 @@ const exportMonthlyImage = () => {
 
   return (
     <div style={{ padding: 14 }}>
-      <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
-  <button
-    onClick={exportMonthlyImage}
-    style={{
-      padding: "10px 12px",
-      borderRadius: 12,
-      border: "1px solid #111",
-      background: "#fff",
-      cursor: "pointer",
-      fontWeight: 900,
-      fontSize: 12,
-    }}
-  >
-    月レポート保存
-  </button>
-
-  <button
-  type="button"
-  onClick={() => setMainView("history")}
-  style={{
-    padding: "10px 12px",
-    borderRadius: 12,
-    border: "1px solid #111",
-    background: "#fff",
-    cursor: "pointer",
-    fontWeight: 900,
-    fontSize: 12,
-  }}
->
-  明細一覧
-</button>
-</div>
-      {payoffModal && (
+{payoffModal && (
         <PayoffModal
   title={payoffModal.title}
   amount={payoffModal.amount}
@@ -551,150 +427,20 @@ const exportMonthlyImage = () => {
         />
       )}
 
-      {/* 月切替 */}
-      <div
-  style={{
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 12,
-    flexWrap: "wrap",
-  }}
->
-        {SHOW_USERKEY_UI && (
-          <>
-            <div style={{ fontSize: 12, opacity: 0.75 }}>
-              userKey: {maskKey(userKey)} {getUserKeyName(userKey) ? `（${getUserKeyName(userKey)}）` : ""}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setKeyEditingOpen((v) => !v)}
-              style={{
-                padding: "6px 10px",
-                borderRadius: 10,
-                border: "1px solid #ccc",
-                background: "#fff",
-                cursor: "pointer",
-                fontSize: 12,
-              }}
-            >
-              切替
-            </button>
-
-            <button
-              type="button"
-              onClick={hardReload}
-              style={{
-                padding: "8px 10px",
-                borderRadius: 10,
-                border: "1px solid #ddd",
-                background: "#fff",
-                cursor: "pointer",
-                fontWeight: 900,
-                fontSize: 12,
-              }}
-            >
-              最新版読み直し
-            </button>
-          </>
-        )}
-
-        <button
-        type="button"
-        onClick={exportBackup}
-        style={{
-        padding: "10px 12px",
-        borderRadius: 12,
-        border: "1px solid #111",
-        background: "#fff",
-        color: "#111",
-        cursor: "pointer",
-        fontWeight: 900,
-        fontSize: 12,
-      }}
->
-  バックアップ
-</button>
-
-<button
-  type="button"
-  onClick={() => importFileRef.current?.click()}
-  style={{
-    padding: "10px 12px",
-    borderRadius: 12,
-    border: "1px solid #111",
-    background: "#fff",
-    color: "#111",
-    cursor: "pointer",
-    fontWeight: 900,
-    fontSize: 12,
-  }}
->
-  復元
-</button>
-
-<input
-  ref={importFileRef}
-  type="file"
-  accept="application/json"
-  style={{ display: "none" }}
-  onChange={async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    await importBackup(file);
-    e.currentTarget.value = "";
-  }}
+      <HeaderBar
+  exportMonthlyImage={exportMonthlyImage}
+  openPrintView={openPrintView}
+  exportBackup={exportBackup}
+  importFileRef={importFileRef}
+  importBackup={importBackup}
+  selectedYm={selectedYm}
+  setSelectedYm={setSelectedYm}
+  setMainView={setMainView}
+  showUserKeyUi={SHOW_USERKEY_UI}
+  userKey={userKey}
+  setKeyEditingOpen={setKeyEditingOpen}
+  hardReload={hardReload}
 />
-
-        <button
-          onClick={openPrintView}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 12,
-            border: "1px solid #111",
-            background: "#111",
-            color: "#fff",
-            cursor: "pointer",
-            fontWeight: 900,
-            fontSize: 12,
-          }}
-        >
-          印刷 / PDF
-        </button>
-
-        <button
-          onClick={() => setSelectedYm((v) => addMonths(v, -1))}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 12,
-            border: "1px solid #ccc",
-            background: "#fff",
-            cursor: "pointer",
-            fontWeight: 800,
-          }}
-        >
-          ◀
-        </button>
-
-        <div style={{ fontWeight: 900, fontSize: 18 }}>
-  {fmtYM(selectedYm)}
-</div>
-
-        <button
-          onClick={() => setSelectedYm((v) => addMonths(v, 1))}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 12,
-            border: "1px solid #ccc",
-            background: "#fff",
-            cursor: "pointer",
-            fontWeight: 800,
-          }}
-        >
-          ▶
-        </button>
-      </div>
 
       {userIdOpen && (
   <UserIdModal
@@ -775,96 +521,30 @@ const exportMonthlyImage = () => {
   longPressProps={lpGoalAssetProps}
   shouldIgnoreClick={shouldIgnoreAsset}
 />
-
-          {/* ✅ 追加リング群 */}
-          {extraPositions.map((p) => {
-            const r = extraRings.find((x) => x.id === p.id);
-            const rc = extraComputed.find((x) => x.id === p.id);
-            if (!r || !rc) return null;
-
-            const catKey = ringCategory(r.ringKey);
-            const target = getTarget(ringGoals, catKey);
-            const showRepay = isRepayRingLike(r);
-
-            const repayInfo: RepayInfo | undefined = showRepay
-              ? (() => {
-                  const totalDebt = getTarget(ringGoals, ringCategory(r.ringKey));
-                  const repaidTotal = getRingSums(r.ringKey, true).income;
-                  const monthlyPayment = getRingSums(r.ringKey, false).income;
-
-                  const result = calcRepayment({
-                    totalDebt,
-                    repaidTotal,
-                    monthlyPayment,
-                    asOf: asOf ?? new Date(0),
-                  });
-
-                  return {
-                    enabled: totalDebt > 0,
-                    progressPct: result.progressPct,
-                    remaining: result.remaining,
-                    months: result.months,
-                    payoffDate: result.payoffDate,
-                    message: result.message,
-                  };
-                })()
-              : undefined;
-
-            return (
-              <ExtraRingButton
-                key={r.id}
-                id={r.id}
-                title={r.title}
-                color={r.color}
-                mode={r.mode}
-                charMode={r.charMode}
-                sums={rc.sums}
-                target={target}
-                repayInfo={repayInfo}
-                isGlowing={glowRingId === r.id}
-                selected={selectedRing === r.id}
-                isMobile={isMobile}
-                pos={p}
-                strokeSmall={strokeSmall}
-                outwardSmall={outwardSmall}
-                onTapAdd={(id, defaultType) => {
-  setSelectedRing(id);
-
-  if (r.title.includes("証券")) {
-    openHoldingsView(id);
-    return;
-  }
-
-  openQuickAdd(
-    { kind: "extra", id },
-    defaultType
-  );
-}}
-                onLongPressEditRing={(id) => openExtraEdit(id)}
-              />
-            );
-          })}
+ <ExtraRingLayer
+  extraPositions={extraPositions}
+  extraRings={extraRings}
+  extraComputed={extraComputed}
+  ringGoals={ringGoals}
+  glowRingId={glowRingId}
+  selectedRing={selectedRing}
+  isMobile={isMobile}
+  strokeSmall={strokeSmall}
+  outwardSmall={outwardSmall}
+  asOf={asOf}
+  getRingSums={getRingSums}
+  openHoldingsView={openHoldingsView}
+  openQuickAdd={openQuickAdd}
+  openExtraEdit={openExtraEdit}
+  setSelectedRing={setSelectedRing}
+/>
         </div>
-
-        <div style={{ display: "flex", justifyContent: "center", marginTop: 10 }}>
-          <button
-            type="button"
-            onClick={openCreate}
-            disabled={!canAddExtra}
-            style={{
-              padding: "12px 14px",
-              borderRadius: 12,
-              border: "1px solid #ccc",
-              background: canAddExtra ? "#fff" : "#f3f4f6",
-              cursor: canAddExtra ? "pointer" : "not-allowed",
-              fontWeight: 900,
-              fontSize: 14,
-              width: "min(360px, 96vw)",
-            }}
-          >
-            ＋ 追加リング（残り {Math.max(0, maxExtraRings - extraRings.length)}）
-          </button>
-        </div>
+        <AddRingButton
+  canAddExtra={canAddExtra}
+  maxExtraRings={maxExtraRings}
+  extraRingCount={extraRings.length}
+  onOpenCreate={openCreate}
+/>
       </div>
 {createOpen && (
   <CreateRingModal
