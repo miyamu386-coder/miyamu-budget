@@ -35,6 +35,7 @@ import { openMonthlyPrintView } from "../lib/monthlyReport";
 import {decideSaveReaction,useSaveEffects,} from "./components/useSaveEffects";
 import { createTransactionApi } from "../lib/transactionApi";
 import { useRingEditor } from "./components/useRingEditor";
+import { useQuickAdd } from "./components/useQuickAdd";
 
 type Props = {
   initialTransactions: Transaction[];
@@ -256,45 +257,32 @@ const layoutRef = useRef<HTMLDivElement | null>(null);
     setRingGoals(loadRingGoals());
   };
 
-  // =========================
-  // ✅ タップ入力（クイック入力モーダル）
-  // =========================
-  type QuickAddTarget = { kind: "life" } | { kind: "save" } | { kind: "extra"; id: string } | null;
-
-  const [quickAddOpen, setQuickAddOpen] = useState(false);
-  const [quickView, setQuickView] = useState<"form" | "history" | "holdings">("form");
-  const [quickTarget, setQuickTarget] = useState<QuickAddTarget>(null);
-  const [quickType, setQuickType] = useState<TxType>("expense");
-  const [quickAmountStr, setQuickAmountStr] = useState("");
-  const [quickDate, setQuickDate] = useState(todayYMD());
-  const [quickDetail, setQuickDetail] = useState("");
-  const [isSavingQuick, setIsSavingQuick] = useState(false);
-
-  const openQuickAdd = (target: QuickAddTarget, defaultType: TxType) => {
-    setQuickTarget(target);
-    setQuickType(defaultType);
-    setQuickAmountStr("");
-    setQuickDetail("");
-    setQuickDate(todayYMD());
-    setIsSavingQuick(false);
-    setQuickView("form");
-    setQuickAddOpen(true);
-  };
-
-  const closeQuickAdd = () => {
-    setQuickAddOpen(false);
-    setQuickTarget(null);
-    setIsSavingQuick(false);
-  };
-
-  const getQuickMeta = (): { ringKey: string; title: string; mode: RingMode } | null => {
-    if (!quickTarget) return null;
-    if (quickTarget.kind === "life") return { ringKey: FIXED_LIFE_KEY, title: "生活費", mode: "expense_only" };
-    if (quickTarget.kind === "save") return { ringKey: FIXED_SAVE_KEY, title: "貯蓄（今月）", mode: "income_only" };
-    const r = extraRings.find((x) => x.id === quickTarget.id);
-    if (!r) return null;
-    return { ringKey: r.ringKey, title: r.title, mode: r.mode };
-  };
+const {
+  quickAddOpen,
+  quickView,
+  setQuickView,
+  quickType,
+  setQuickType,
+  quickAmountStr,
+  setQuickAmountStr,
+  quickDate,
+  setQuickDate,
+  quickDetail,
+  setQuickDetail,
+  isSavingQuick,
+  openQuickAdd,
+  openHoldingsView,
+  closeQuickAdd,
+  getQuickMeta,
+  saveQuickTransaction,
+} = useQuickAdd({
+  userKey,
+  extraRings,
+  fixedLifeKey: FIXED_LIFE_KEY,
+  fixedSaveKey: FIXED_SAVE_KEY,
+  setTransactions,
+  setSelectedRing,
+});
 
 const {
   saveOverlay,
@@ -310,93 +298,96 @@ const {
 } = useSaveEffects();
 
   const saveQuickAdd = async () => {
-    if (isSavingQuick) return;
+  try {
+    const { meta, type, amount } =
+      await saveQuickTransaction();
 
-    const meta = getQuickMeta();
-    if (!meta) {
-      alert("リング情報が見つかりませんでした");
-      return;
-    }
+    const reaction = decideSaveReaction({
+      ...meta,
+      fixedLifeKey: FIXED_LIFE_KEY,
+      fixedSaveKey: FIXED_SAVE_KEY,
+    });
 
-    const amount = parseAmountLike(quickAmountStr);
-    if (amount <= 0) {
-      alert("金額を入力してください（例: 50000 / 5万 / 1.2万）");
-      return;
-    }
+    triggerSaveOverlay(
+      reaction.kind,
+      reaction.tone
+    );
 
-    const type: TxType =
-      meta.mode === "income_only" ? "income" : meta.mode === "expense_only" ? "expense" : quickType;
+    const targetRing = extraRings.find(
+      (ring) => ring.ringKey === meta.ringKey
+    );
 
-    setIsSavingQuick(true);
+    if (
+      targetRing &&
+      isRepayRingLike(targetRing) &&
+      type === "income"
+    ) {
+      const totalDebt = getTarget(
+        ringGoals,
+        ringCategory(targetRing.ringKey)
+      );
 
-    try {
-      const tx = await createTransactionApi(userKey, {
-        type,
-        amount,
-        occurredAt: quickDate,
-        category: ringCategory(meta.ringKey),
-        detailCategory: quickDetail.trim() ? quickDetail.trim().slice(0, 24) : undefined,
-      });
+      const currentCarry = getRingSums(
+        targetRing.ringKey,
+        true
+      ).income;
 
-      setTransactions((prev) => [tx, ...prev]);
-      setSelectedRing(null);
-      closeQuickAdd();
+      const nextRepaidTotal =
+        currentCarry + amount;
 
-      // ✅ 保存演出は常に出す
-     const reaction = decideSaveReaction({
-  ...meta,
-  fixedLifeKey: FIXED_LIFE_KEY,
-  fixedSaveKey: FIXED_SAVE_KEY,
-});
-      triggerSaveOverlay(reaction.kind, reaction.tone);
+      const remainingAfterSave = Math.max(
+        0,
+        totalDebt - nextRepaidTotal
+      );
 
-            // ✅ 返済リングだけ：保存後に完済判定
-      const targetRing = extraRings.find((r) => r.ringKey === meta.ringKey);
+      if (
+        totalDebt > 0 &&
+        remainingAfterSave === 0
+      ) {
+        setPendingGlowRingId(targetRing.id);
 
-      if (targetRing && isRepayRingLike(targetRing) && type === "income") {
-        const totalDebt = getTarget(ringGoals, ringCategory(targetRing.ringKey));
-        const currentCarry = getRingSums(targetRing.ringKey, true).income;
-        const nextRepaidTotal = currentCarry + amount;
-        const remainingAfterSave = Math.max(0, totalDebt - nextRepaidTotal);
-
-        if (totalDebt > 0 && remainingAfterSave === 0) {
-          setPendingGlowRingId(targetRing.id);
-          window.setTimeout(() => {
+        window.setTimeout(() => {
           confetti({
-          particleCount: 80,
-          spread: 70,
-          origin: { x: 0.25, y: 0.9 },
+            particleCount: 80,
+            spread: 70,
+            origin: { x: 0.25, y: 0.9 },
           });
 
-         confetti({
-         particleCount: 80,
-         spread: 70,
-         origin: { x: 0.75, y: 0.9 },
-       });
-    }, 2850);
-         window.setTimeout(() => {
-         confetti({
-         particleCount: 120,
-         spread: 100,
-         origin: { x: 0.5, y: 0.8 },
+          confetti({
+            particleCount: 80,
+            spread: 70,
+            origin: { x: 0.75, y: 0.9 },
           });
-    }, 3050);
+        }, 2850);
 
-          window.setTimeout(() => {
-            setPayoffModal({
-              title: targetRing.title,
-              amount: nextRepaidTotal,
-              date: quickDate,
-            });
-          }, 3200);
-        }
+        window.setTimeout(() => {
+          confetti({
+            particleCount: 120,
+            spread: 100,
+            origin: { x: 0.5, y: 0.8 },
+          });
+        }, 3050);
+
+        window.setTimeout(() => {
+          setPayoffModal({
+            title: targetRing.title,
+            amount: nextRepaidTotal,
+            date: quickDate,
+          });
+        }, 3200);
       }
-    } catch (e) {
-      console.error(e);
-      alert("保存に失敗しました（ネットワーク or API）。Vercel Logsも確認してね。");
-      setIsSavingQuick(false);
     }
-  };
+  } catch (error) {
+    console.error(error);
+
+    const message =
+      error instanceof Error
+        ? error.message
+        : "保存に失敗しました";
+
+    window.alert(message);
+  }
+};
 
 const {
   createOpen,
@@ -1021,16 +1012,17 @@ const exportMonthlyImage = () => {
                 strokeSmall={strokeSmall}
                 outwardSmall={outwardSmall}
                 onTapAdd={(id, defaultType) => {
-                setSelectedRing(id);
+  setSelectedRing(id);
 
-               if (r.title.includes("証券")) {
-               setQuickTarget({ kind: "extra", id });
-               setQuickView("holdings");
-               setQuickAddOpen(true);
-              return;
-              }
+  if (r.title.includes("証券")) {
+    openHoldingsView(id);
+    return;
+  }
 
-  openQuickAdd({ kind: "extra", id }, defaultType);
+  openQuickAdd(
+    { kind: "extra", id },
+    defaultType
+  );
 }}
                 onLongPressEditRing={(id) => openExtraEdit(id)}
               />
