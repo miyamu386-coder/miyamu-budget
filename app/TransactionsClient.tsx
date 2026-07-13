@@ -34,6 +34,7 @@ import { useMonthlyTransactions } from "./components/useMonthlyTransactions";
 import { openMonthlyPrintView } from "../lib/monthlyReport";
 import {decideSaveReaction,useSaveEffects,} from "./components/useSaveEffects";
 import { createTransactionApi } from "../lib/transactionApi";
+import { useRingEditor } from "./components/useRingEditor";
 
 type Props = {
   initialTransactions: Transaction[];
@@ -397,104 +398,31 @@ const {
     }
   };
 
-  // =========================
-  // ✅ 追加リング作成モーダル
-  // =========================
-  const [createOpen, setCreateOpen] = useState(false);
-  const [createTitle, setCreateTitle] = useState("カードローン返済");
-  const [createMode, setCreateMode] = useState<RingMode>("both");
-  const [createCarryOver, setCreateCarryOver] = useState(true);
+const {
+  createOpen,
+  setCreateOpen,
+  createTitle,
+  setCreateTitle,
+  createMode,
+  setCreateMode,
+  createCarryOver,
+  setCreateCarryOver,
+  openCreate,
+  saveCreate,
 
-  const openCreate = () => {
-    if (!canAddExtra) {
-      alert(`追加リングは最大${maxExtraRings}個までです`);
-      return;
-    }
-    setCreateTitle("カードローン返済");
-    setCreateMode("both");
-    setCreateCarryOver(true);
-    setCreateOpen(true);
-  };
-
-  const saveCreate = () => {
-    if (!canAddExtra) return;
-
-    const title = String(createTitle).trim().slice(0, 24) || "追加リング";
-    const id = makeId();
-    const ringKey = makeId();
-    const carryOver = !!createCarryOver;
-
-    const next: ExtraRing = {
-      id,
-      ringKey,
-      title,
-      mode: createMode,
-      color: "#60a5fa",
-      ringType: isRepayRingLike({ title, mode: createMode, carryOver }) ? "debt" : "asset",
-      carryOver,
-      charMode: "auto",
-    };
-
-    setExtraRings((prev) => [...prev, next]);
-    setCreateOpen(false);
-  };
-
-  // =========================
-  // ✅ 追加リング編集（長押し）
-  // =========================
-  const [extraEditId, setExtraEditId] = useState<string | null>(null);
-  const [extraDraft, setExtraDraft] = useState<{
-  title: string;
-  mode: RingMode;
-  carryOver: boolean;
-  ringType: "asset" | "debt";
-}>({
-  title: "",
-  mode: "both",
-  carryOver: false,
-  ringType: "asset",
+  extraEditId,
+  setExtraEditId,
+  extraDraft,
+  setExtraDraft,
+  openExtraEdit,
+  saveExtraEdit,
+  removeExtraRing,
+} = useRingEditor({
+  extraRings,
+  setExtraRings,
+  canAddExtra,
+  maxExtraRings,
 });
-
-  const openExtraEdit = (id: string) => {
-    const r = extraRings.find((x) => x.id === id);
-    if (!r) return;
-    setExtraDraft({
-  title: r.title,
-  mode: r.mode,
-  carryOver: !!r.carryOver,
-  ringType: r.ringType ?? "asset",
-});
-    setExtraEditId(id);
-  };
-
-  const saveExtraEdit = () => {
-    if (!extraEditId) return;
-    const title = String(extraDraft.title).trim().slice(0, 24) || "追加リング";
-    const mode = extraDraft.mode;
-    const carryOver = !!extraDraft.carryOver;
-
-    setExtraRings((prev) =>
-      prev.map((x) =>
-        x.id === extraEditId
-          ? {
-              ...x,
-              title,
-              mode,
-              carryOver,
-              ringType: isRepayRingLike({ title, mode, carryOver }) ? "debt" : "asset",
-            }
-          : x
-      )
-    );
-    setExtraEditId(null);
-  };
-
-  const removeExtraRing = () => {
-    if (!extraEditId) return;
-    const id = extraEditId;
-    setExtraRings((prev) => prev.filter((x) => x.id !== id));
-    setExtraEditId(null);
-  };
 
   // =========================
   // ✅ 中央カード（総資産）
