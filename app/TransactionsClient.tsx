@@ -31,6 +31,7 @@ import { exportElementImage } from "../lib/exportImage";
 import TransactionHistoryView from "./components/TransactionHistoryView";
 import { useUserKeyManager } from "./components/useUserKeyManager";
 import { useMonthlyTransactions } from "./components/useMonthlyTransactions";
+import { openMonthlyPrintView } from "../lib/monthlyReport";
 
 type Props = {
   initialTransactions: Transaction[];
@@ -744,133 +745,19 @@ const areaH = isMobile ? 820 : 860;
   const lpGoalAsset = useLongPressHandlers(() => openGoalEditor(GOAL_ASSET_KEY), 650);
   const { shouldIgnoreClick: shouldIgnoreAsset, ...lpGoalAssetProps } = lpGoalAsset;
 
-  // =========================
-  // ✅ 印刷 / PDF（新規タブ方式）
-  // =========================
-  const openPrintView = () => {
-    const ua = navigator.userAgent;
-    const isIOS = /iP(hone|od|ad)/.test(ua);
-    const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS/.test(ua);
-    const isIOSSafari = isIOS && isSafari;
+// =========================
+// ✅ 印刷 / PDF
+// =========================
+const openPrintView = () => {
+  openMonthlyPrintView({
+    selectedYm,
+    monthTransactions,
+    monthSummary,
+    resolveCategoryLabel,
+  });
+};
 
-    const esc = (s: string) =>
-      (s ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
-
-    const title = `月次レポート（${fmtYM(selectedYm)}）`;
-
-    const rows = monthTransactions
-      .slice()
-      .sort((a, b) => String(a.occurredAt).localeCompare(String(b.occurredAt)))
-      .map((t) => {
-        const ymd = (t.occurredAt ?? "").slice(0, 10);
-        const type = t.type === "income" ? "収入" : "支出";
-        const amount = yen(t.amount);
-        const cat = esc(resolveCategoryLabel(t.category ?? ""));
-        const detail = esc(t.detailCategory ?? "");
-        return `<tr>
-          <td>${esc(ymd)}</td>
-          <td>${type}</td>
-          <td style="text-align:right;">${esc(amount)}</td>
-          <td>${cat}</td>
-          <td>${detail}</td>
-        </tr>`;
-      })
-      .join("");
-
-    const expenseOnly = monthTransactions.filter((t) => t.type === "expense");
-    const breakdown = new Map<string, number>();
-    for (const t of expenseOnly) {
-      const key = (t.detailCategory ?? "").trim() || "（未分類）";
-      breakdown.set(key, (breakdown.get(key) ?? 0) + t.amount);
-    }
-    const breakdownRows = Array.from(breakdown.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([k, v]) => `<tr><td>${esc(k)}</td><td style="text-align:right;">${esc(yen(v))}</td></tr>`)
-      .join("");
-
-    const html = `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${esc(title)}</title>
-  <style>
-    body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans JP",sans-serif; padding: 18px; }
-    h1 { font-size: 18px; margin: 0 0 10px; }
-    .meta { color:#555; font-size: 12px; margin-bottom: 14px; }
-    .box { border:1px solid #ddd; border-radius: 10px; padding: 12px; margin-bottom: 14px; }
-    table { width:100%; border-collapse: collapse; }
-    th, td { border-bottom: 1px solid #eee; padding: 8px; font-size: 12px; vertical-align: top; }
-    th { text-align:left; background:#fafafa; }
-    .right { text-align:right; }
-    @media print {
-      body { padding: 0; }
-      .no-print { display:none; }
-    }
-  </style>
-</head>
-<body>
-  <div class="no-print" style="display:flex; gap:10px; margin-bottom: 12px;">
-    <button onclick="window.print()" style="padding:10px 12px; border-radius:10px; border:1px solid #111; background:#111; color:#fff; font-weight:700;">印刷 / PDF</button>
-    <button onclick="window.close()" style="padding:10px 12px; border-radius:10px; border:1px solid #ccc; background:#fff; font-weight:700;">閉じる</button>
-  </div>
-
-  <h1>${esc(title)}</h1>
-  <div class="meta">収入 ${esc(yen(monthSummary.income))} / 支出 ${esc(yen(monthSummary.expense))} / 収支 ${esc(
-      yen(monthSummary.balance)
-    )}</div>
-
-  <div class="box">
-    <div style="font-weight:900; margin-bottom:8px;">支出内訳（detailCategory）</div>
-    <table>
-      <thead><tr><th>内訳</th><th class="right">金額</th></tr></thead>
-      <tbody>${breakdownRows || "<tr><td colspan='2'>（支出がありません）</td></tr>"}</tbody>
-    </table>
-  </div>
-
-  <div class="box">
-    <div style="font-weight:900; margin-bottom:8px;">明細（収入・支出ログ）</div>
-    <table>
-      <thead>
-        <tr>
-          <th>日付</th>
-          <th>種別</th>
-          <th class="right">金額</th>
-          <th>リング</th>
-          <th>detailCategory</th>
-        </tr>
-      </thead>
-      <tbody>${rows || "<tr><td colspan='5'>（データがありません）</td></tr>"}</tbody>
-    </table>
-  </div>
-</body>
-</html>`;
-
-    const w = window.open("", "_blank");
-    if (!w) {
-      alert("ポップアップがブロックされました。iPhoneは Safari の設定（ポップアップ）を確認してね。");
-      return;
-    }
-
-    w.document.open();
-    w.document.write(html);
-    w.document.close();
-    w.focus();
-
-    if (!isIOSSafari) {
-      setTimeout(() => {
-        try {
-          w.print();
-        } catch {}
-      }, 250);
-    }
-  };
-  const exportMonthlyImage = () => {
+const exportMonthlyImage = () => {
   return exportElementImage(
     "miyamu-report",
     `miyamu-report-${selectedYm}.png`,
