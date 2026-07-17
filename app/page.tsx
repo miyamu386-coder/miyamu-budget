@@ -50,19 +50,9 @@ export default async function Home() {
 
   return (
     <main style={{ padding: 24 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-        }}
-      >
-        <h1>みやむMaker</h1>
-      </div>
-
-      <TransactionsClient
-        initialTransactions={transactions}
-      />
-    </main>
-  );
+    <TransactionsClient
+      initialTransactions={transactions}
+    />
+  </main>
+);
 }
