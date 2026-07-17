@@ -2,7 +2,6 @@
 
 import { useRef, useState } from "react";
 import type { Transaction } from "./types";
-import QuickAddModal from "./components/QuickAddModal";
 import {makeId,ringCategory,} from "../lib/ringUtils";
 import { parseAmountLike } from "../lib/amount";
 import { useLongPressHandlers } from "../lib/useLongPressHandlers";
@@ -21,6 +20,7 @@ import CenterAssetRing from "./components/CenterAssetRing";
 import ExtraRingLayer from "./components/ExtraRingLayer";
 import AddRingButton from "./components/AddRingButton";
 import HeaderBar from "./components/HeaderBar";
+import ActionBar from "./components/ActionBar";
 import { useQuickAddSave } from "./components/useQuickAddSave";
 import { useBackupManager } from "./components/useBackupManager";
 import { useCenterAssetCard } from "./components/useCenterAssetCard";
@@ -367,20 +367,19 @@ makeId={makeId}
 ringCategory={ringCategory}
 
 />
+<h1
+  style={{
+    margin: "0 0 12px",
+    fontSize: 32,
+    fontWeight: 900,
+  }}
+>
+  みやむMaker
+</h1>
 
       <HeaderBar
-  exportMonthlyImage={exportMonthlyImage}
-  openPrintView={openPrintView}
-  exportBackup={exportBackup}
-  importFileRef={importFileRef}
-  importBackup={importBackup}
   selectedYm={selectedYm}
   setSelectedYm={setSelectedYm}
-  setMainView={setMainView}
-  showUserKeyUi={SHOW_USERKEY_UI}
-  userKey={userKey}
-  setKeyEditingOpen={setKeyEditingOpen}
-  hardReload={hardReload}
 />
 
       <div
@@ -444,6 +443,14 @@ ringCategory={ringCategory}
   maxExtraRings={maxExtraRings}
   extraRingCount={extraRings.length}
   onOpenCreate={openCreate}
+/>
+<ActionBar
+  exportMonthlyImage={exportMonthlyImage}
+  openPrintView={openPrintView}
+  exportBackup={exportBackup}
+  importFileRef={importFileRef}
+  importBackup={importBackup}
+  setMainView={setMainView}
 />
       </div>
     </div>
