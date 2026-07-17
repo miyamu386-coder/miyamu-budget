@@ -374,7 +374,7 @@ ringCategory={ringCategory}
     fontWeight: 900,
   }}
 >
-  みやむMaker
+  みやむMaker TEST
 </h1>
 
       <HeaderBar
