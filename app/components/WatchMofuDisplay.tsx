@@ -60,7 +60,7 @@ export default function WatchMofuDisplay({
       position: "absolute",
       left: 0,
       top: isMobile ? "120px" : "80px",
-      width: isMobile ? 90 : 140,
+      width: isMobile ? 72 : 110,
       height: "auto",
       pointerEvents: "none",
       zIndex: 18,
