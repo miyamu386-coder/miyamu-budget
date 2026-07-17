@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 type WatchMofuSpeech = {
   show: boolean;
   key: number;
@@ -15,24 +17,60 @@ export default function WatchMofuDisplay({
   isMobile,
   speech,
 }: Props) {
+  const [isWalking, setIsWalking] = useState(false);
+
+  useEffect(() => {
+    if (speech.show) {
+      setIsWalking(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setIsWalking(true);
+    }, 5000);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [speech.show]);
   return (
     <>
-      {!speech.show && (
-        <img
-          src="/mofu-watch.png"
-          alt="watch mofu"
-          style={{
-            position: "absolute",
-            left: "50%",
-            top: isMobile ? "-10px" : "-40px",
-            transform: "translateX(-50%)",
-            width: isMobile ? 280 : 520,
-            opacity: 0.5,
-            pointerEvents: "none",
-            zIndex: 1,
-          }}
-        />
-      )}
+      {!speech.show && !isWalking && (
+  <img
+    src="/mofu-watch.png"
+    alt="watch mofu"
+    style={{
+      position: "absolute",
+      left: "50%",
+      top: isMobile ? "-10px" : "-40px",
+      transform: "translateX(-50%)",
+      width: isMobile ? 280 : 520,
+      opacity: 0.5,
+      pointerEvents: "none",
+      zIndex: 1,
+    }}
+  />
+)}
+
+{!speech.show && isWalking && (
+  <img
+    src="/mofu-detective-chibi.png"
+    alt="detective mofu walking"
+    style={{
+      position: "absolute",
+      left: 0,
+      top: isMobile ? "120px" : "80px",
+      width: isMobile ? 90 : 140,
+      height: "auto",
+      pointerEvents: "none",
+      zIndex: 18,
+      animation:
+        "detectiveMofuWalkAcross 8s linear infinite, detectiveMofuStep 360ms ease-in-out infinite alternate",
+      filter:
+        "drop-shadow(0 10px 14px rgba(0,0,0,0.16))",
+    }}
+  />
+)}
 
       {speech.show && (
         <>
@@ -137,6 +175,25 @@ export default function WatchMofuDisplay({
               scale(1);
           }
         }
+          @keyframes detectiveMofuWalkAcross {
+  from {
+    left: -120px;
+  }
+
+  to {
+    left: calc(100% + 20px);
+  }
+}
+
+@keyframes detectiveMofuStep {
+  from {
+    transform: translateY(0) rotate(-1.5deg);
+  }
+
+  to {
+    transform: translateY(-6px) rotate(1.5deg);
+  }
+}
       `}</style>
     </>
   );
