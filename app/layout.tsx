@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "r",
+  title: "みやむMaker",
   description: "家計簿・予算管理",
   manifest: "/manifest.webmanifest",
 
@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "みやむMaker",
+    title: "r",
   },
 };
 
