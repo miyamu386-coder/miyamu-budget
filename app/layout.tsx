@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "みやむMaker",
+  title: "r",
   description: "家計簿・予算管理",
   manifest: "/manifest.webmanifest",
 
