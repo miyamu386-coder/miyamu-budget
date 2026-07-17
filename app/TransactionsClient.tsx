@@ -1,5 +1,6 @@
 "use client";
 
+import { M_PLUS_Rounded_1c } from "next/font/google";
 import { useRef, useState } from "react";
 import type { Transaction } from "./types";
 import {makeId,ringCategory,} from "../lib/ringUtils";
@@ -38,6 +39,11 @@ type Props = {
 
 // ✅ 本番(Vercel)では userKey UI を出さない（ローカル開発だけ表示）
 const SHOW_USERKEY_UI = process.env.NODE_ENV !== "production";
+const makerTitleFont = M_PLUS_Rounded_1c({
+  weight: "800",
+  subsets: ["latin"],
+  display: "swap",
+});
 
 
 // ✅ 安全設計：固定3 + 追加10 = 合計13
@@ -368,10 +374,13 @@ ringCategory={ringCategory}
 
 />
 <h1
+  className={makerTitleFont.className}
   style={{
     margin: "0 0 12px",
-    fontSize: 32,
-    fontWeight: 900,
+    fontSize: 36,
+    fontWeight: 800,
+    letterSpacing: "-0.02em",
+    textAlign: "center",
   }}
 >
   みやむMaker
