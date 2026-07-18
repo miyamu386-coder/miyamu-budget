@@ -1,90 +1,173 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { loadRingGoals, upsertTarget, type RingGoal, getTarget } from "../../lib/ringGoals";
+import {
+  loadRingGoals,
+  upsertTarget,
+  type RingGoal,
+  getTarget,
+} from "../../lib/ringGoals";
 
 type Props = {
-  ringCategories: string[]; // ["ring:debt","ring:save","ring:xxx"...]
+  ringCategories: string[];
   resolveLabel?: (category: string) => string;
-
-  // ✅ 追加：保存後に親へ通知（同一タブで即反映させる）
   onSaved?: () => void;
 };
 
-export default function RingGoalEditor({ ringCategories, resolveLabel, onSaved }: Props) {
+export default function RingGoalEditor({
+  ringCategories,
+  resolveLabel,
+  onSaved,
+}: Props) {
   const [goals, setGoals] = useState<RingGoal[]>([]);
   const [draft, setDraft] = useState<Record<string, number>>({});
 
   useEffect(() => {
     const g = loadRingGoals();
     setGoals(g);
+
     const initial: Record<string, number> = {};
-    for (const c of ringCategories) initial[c] = getTarget(g, c);
+
+    for (const c of ringCategories) {
+      initial[c] = getTarget(g, c);
+    }
+
     setDraft(initial);
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ringCategories.join("|")]);
 
-  const cats = useMemo(() => {
-    const uniq = Array.from(new Set(ringCategories));
-    uniq.sort();
-    return uniq;
-  }, [ringCategories]);
+ const cats = useMemo(() => {
+  const uniq = Array.from(new Set(ringCategories));
+  uniq.sort();
+
+  return uniq;
+}, [ringCategories]);
 
   if (cats.length === 0) return null;
 
   return (
-    <div style={{ border: "1px solid #eee", borderRadius: 12, padding: 14, marginBottom: 16 }}>
-      <div style={{ fontWeight: 900, marginBottom: 8 }}>リング目標（円）</div>
+    <div
+      style={{
+        width: "100%",
+        boxSizing: "border-box",
+        border: "1px solid #eee",
+        borderRadius: 12,
+        padding: 14,
+        marginBottom: 16,
+        overflow: "hidden",
+      }}
+    >
+      <div style={{ fontWeight: 900, marginBottom: 12 }}>
+        リング目標（円）
+      </div>
 
-      <div style={{ display: "grid", gap: 10 }}>
+      <div style={{ display: "grid", gap: 14 }}>
         {cats.map((cat) => {
           const label = resolveLabel ? resolveLabel(cat) : cat;
+
+console.log({
+  cat,
+  label,
+});
+          if (
+  label === "生活費" ||
+  label === "貯蓄（今月）" ||
+  label === "貯蓄枠"
+) {
+  return null;
+}
+
           return (
             <div
               key={cat}
               style={{
                 display: "grid",
-                gridTemplateColumns: "1fr 160px 90px",
-                gap: 10,
-                alignItems: "center",
+                gap: 8,
+                paddingBottom: 14,
+                borderBottom: "1px solid #eee",
               }}
             >
-              <div style={{ fontWeight: 700, opacity: 0.9 }}>{label}</div>
-
-              <input
-                type="number"
-                inputMode="numeric"
-                value={draft[cat] ?? 0}
-                onChange={(e) => setDraft((p) => ({ ...p, [cat]: Number(e.target.value) }))}
-                placeholder="例：300000"
-                style={{ padding: 10, borderRadius: 10, border: "1px solid #ccc" }}
-              />
-
-              <button
-                type="button"
-                onClick={() => {
-                  const nextGoals = upsertTarget(goals, cat, draft[cat] ?? 0);
-                  setGoals(nextGoals);
-
-                  // ✅ 追加：親に「保存したよ」を通知して、即反映させる
-                  onSaved?.();
-                }}
+              <div
                 style={{
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #ddd",
-                  background: "#fff",
-                  cursor: "pointer",
+                  fontWeight: 700,
+                  opacity: 0.9,
+                  overflowWrap: "anywhere",
                 }}
               >
-                保存
-              </button>
+                {label}
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 1fr) auto",
+                  gap: 8,
+                  alignItems: "stretch",
+                }}
+              >
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={draft[cat] ?? 0}
+                  onChange={(e) =>
+                    setDraft((previous) => ({
+                      ...previous,
+                      [cat]: Number(e.target.value),
+                    }))
+                  }
+                  placeholder="例：300000"
+                  style={{
+                    width: "100%",
+                    minWidth: 0,
+                    boxSizing: "border-box",
+                    padding: 10,
+                    borderRadius: 10,
+                    border: "1px solid #ccc",
+                    fontSize: 16,
+                  }}
+                />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextGoals = upsertTarget(
+                      goals,
+                      cat,
+                      draft[cat] ?? 0,
+                    );
+
+                    setGoals(nextGoals);
+                    onSaved?.();
+                  }}
+                  style={{
+                    minWidth: 72,
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #ddd",
+                    background: "#fff",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  保存
+                </button>
+              </div>
             </div>
           );
         })}
       </div>
 
-      <div style={{ marginTop: 10, fontSize: 12, opacity: 0.65 }}>※目標は端末内に保存（userKeyごとに分離）</div>
+      <div
+        style={{
+          marginTop: 10,
+          fontSize: 12,
+          opacity: 0.65,
+        }}
+      >
+        ※目標は端末内に保存（userKeyごとに分離）
+      </div>
     </div>
   );
 }
