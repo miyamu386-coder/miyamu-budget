@@ -20,19 +20,43 @@ export default function WatchMofuDisplay({
   const [isWalking, setIsWalking] = useState(false);
 
   useEffect(() => {
+  let timer: number | undefined;
+
+  const startWalkingTimer = () => {
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+    }
+
     if (speech.show) {
       setIsWalking(false);
       return;
     }
 
-    const timer = window.setTimeout(() => {
+    timer = window.setTimeout(() => {
       setIsWalking(true);
     }, 5000);
+  };
 
-    return () => {
+  const handlePointerDown = () => {
+    setIsWalking(false);
+    startWalkingTimer();
+  };
+
+  startWalkingTimer();
+
+  window.addEventListener("pointerdown", handlePointerDown);
+
+  return () => {
+    if (timer !== undefined) {
       window.clearTimeout(timer);
-    };
-  }, [speech.show]);
+    }
+
+    window.removeEventListener(
+      "pointerdown",
+      handlePointerDown,
+    );
+  };
+}, [speech.show]);
   return (
     <>
       {!speech.show && !isWalking && (
