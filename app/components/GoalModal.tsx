@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect } from "react";
 import RingGoalEditor from "./RingGoalEditor";
 
 type Props = {
@@ -15,6 +18,16 @@ export default function GoalModal({
   resolveLabel,
   onClose,
 }: Props) {
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
   return (
     <div
       role="dialog"
@@ -28,37 +41,74 @@ export default function GoalModal({
         justifyContent: "center",
         padding: 16,
         zIndex: 9999,
+        overflow: "hidden",
+        overscrollBehavior: "contain",
       }}
       onClick={onClose}
     >
       <div
         style={{
           width: "min(640px, 96vw)",
+          maxHeight: "calc(100dvh - 32px)",
           background: "#fff",
           borderRadius: 16,
-          padding: 16,
           boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 10 }}>
+        <div
+          style={{
+            flexShrink: 0,
+            padding: "16px 16px 10px",
+            fontWeight: 900,
+            fontSize: 18,
+          }}
+        >
           リング目標を編集
           {goalFocusCategory
-            ? `：${goalFocusCategory === goalAssetKey ? "総資産" : resolveLabel(goalFocusCategory)}`
+            ? `：${
+                goalFocusCategory === goalAssetKey
+                  ? "総資産"
+                  : resolveLabel(goalFocusCategory)
+              }`
             : ""}
         </div>
 
-        <RingGoalEditor
-          ringCategories={ringCategories}
-          resolveLabel={resolveLabel}
-        />
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: "auto",
+            overscrollBehavior: "contain",
+            padding: "0 16px 16px",
+            WebkitOverflowScrolling: "touch",
+          }}
+          onTouchMove={(e) => e.stopPropagation()}
+        >
+          <RingGoalEditor
+            ringCategories={ringCategories}
+            resolveLabel={resolveLabel}
+          />
+        </div>
 
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+        <div
+          style={{
+            flexShrink: 0,
+            display: "flex",
+            justifyContent: "flex-end",
+            padding: 12,
+            borderTop: "1px solid #eee",
+            background: "#fff",
+          }}
+        >
           <button
             type="button"
             onClick={onClose}
             style={{
-              padding: "10px 14px",
+              padding: "10px 18px",
               borderRadius: 12,
               border: "1px solid #ddd",
               background: "#fff",
@@ -66,7 +116,7 @@ export default function GoalModal({
               cursor: "pointer",
             }}
           >
-            閉じる
+            戻る
           </button>
         </div>
       </div>
