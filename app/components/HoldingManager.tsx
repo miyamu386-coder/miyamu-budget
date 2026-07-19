@@ -1,16 +1,7 @@
 import { useState } from "react";
+import type { Holding, HoldingKind } from "../types";
+import { holdingDictionary } from "../../lib/holdings";
 
-type HoldingKind = "国内株" | "米国ETF" | "投資信託" | "現金";
-
-type Holding = {
-  id: string;
-  ringKey: string;
-  name: string;
-  shares: number;
-  unit?: "株" | "口";
-  value: number;
-  kind?: HoldingKind;
-};
 
 type Props = {
   ringKey: string;
@@ -101,13 +92,14 @@ export default function HoldingManager({
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
             <button
               type="button"
-              onClick={() => {
-                setHoldingEditId(h.id);
-                setHoldingName(h.name);
-                setHoldingShares(String(h.shares));
-                setHoldingUnit(h.unit ?? "株");
-                setHoldingValue(String(h.value));
-              }}
+             onClick={() => {
+  setHoldingEditId(h.id);
+  setHoldingName(h.name);
+  setHoldingShares(String(h.shares));
+  setHoldingUnit(h.unit ?? "株");
+  setHoldingKind(h.kind ?? "投資信託");
+  setHoldingValue(String(h.value));
+}}
             >
               編集
             </button>
@@ -129,7 +121,26 @@ export default function HoldingManager({
       <input
         placeholder="銘柄名"
         value={holdingName}
-        onChange={(e) => setHoldingName(e.target.value)}
+        onChange={(e) => {
+  const nextName = e.target.value;
+  setHoldingName(nextName);
+
+  const normalizedName = nextName
+    .trim()
+    .toLowerCase();
+
+  const matchedEntry =
+  holdingDictionary.find((entry) =>
+      normalizedName.includes(
+        entry.keyword.toLowerCase(),
+      ),
+    );
+
+  if (matchedEntry) {
+    setHoldingKind(matchedEntry.kind);
+    setHoldingUnit(matchedEntry.unit);
+  }
+}}
       />
       <select
   value={holdingKind}
