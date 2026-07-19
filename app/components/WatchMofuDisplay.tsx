@@ -18,83 +18,102 @@ export default function WatchMofuDisplay({
   speech,
 }: Props) {
   const [isWalking, setIsWalking] = useState(false);
-
+  const [walkDirection, setWalkDirection] =
+  useState<"left" | "right">("right");
   useEffect(() => {
-  let timer: number | undefined;
+    let timer: number | undefined;
 
-  const startWalkingTimer = () => {
-    if (timer !== undefined) {
-      window.clearTimeout(timer);
-    }
+    const startWalkingTimer = () => {
+      if (timer !== undefined) {
+        window.clearTimeout(timer);
+      }
 
-    if (speech.show) {
+      if (speech.show) {
+        setIsWalking(false);
+        return;
+      }
+
+      timer = window.setTimeout(() => {
+        setIsWalking(true);
+      }, 5000);
+    };
+
+    const handlePointerDown = () => {
       setIsWalking(false);
-      return;
-    }
+      startWalkingTimer();
+    };
 
-    timer = window.setTimeout(() => {
-      setIsWalking(true);
-    }, 5000);
-  };
-
-  const handlePointerDown = () => {
-    setIsWalking(false);
     startWalkingTimer();
-  };
 
-  startWalkingTimer();
-
-  window.addEventListener("pointerdown", handlePointerDown);
-
-  return () => {
-    if (timer !== undefined) {
-      window.clearTimeout(timer);
-    }
-
-    window.removeEventListener(
+    window.addEventListener(
       "pointerdown",
       handlePointerDown,
     );
-  };
-}, [speech.show]);
+
+    return () => {
+      if (timer !== undefined) {
+        window.clearTimeout(timer);
+      }
+
+      window.removeEventListener(
+        "pointerdown",
+        handlePointerDown,
+      );
+    };
+  }, [speech.show]);
+
   return (
     <>
       {!speech.show && !isWalking && (
-  <img
-    src="/mofu-watch.png"
-    alt="watch mofu"
-    style={{
-      position: "absolute",
-      left: "50%",
-      top: isMobile ? "-10px" : "-40px",
-      transform: "translateX(-50%)",
-      width: isMobile ? 280 : 520,
-      opacity: 0.5,
-      pointerEvents: "none",
-      zIndex: 1,
-    }}
-  />
-)}
+        <img
+          src="/mofu-watch.png"
+          alt="watch mofu"
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: isMobile ? "-10px" : "-40px",
+            transform: "translateX(-50%)",
+            width: isMobile ? 280 : 520,
+            opacity: 0.5,
+            pointerEvents: "none",
+            zIndex: 1,
+          }}
+        />
+      )}
 
-{!speech.show && isWalking && (
-  <img
-    src="/mofu-detective-chibi.png"
-    alt="detective mofu walking"
-    style={{
-      position: "absolute",
-      left: 0,
-      top: isMobile ? "120px" : "80px",
-      width: isMobile ? 72 : 110,
-      height: "auto",
-      pointerEvents: "none",
-      zIndex: 18,
-      animation:
-        "detectiveMofuWalkAcross 8s linear infinite, detectiveMofuStep 360ms ease-in-out infinite alternate",
-      filter:
-        "drop-shadow(0 10px 14px rgba(0,0,0,0.16))",
-    }}
-  />
-)}
+      {!speech.show && isWalking && (
+        <img
+          src="/mofu-detective-side.png"
+          alt="detective mofu walking"
+          onAnimationIteration={(event) => {
+  if (
+    event.animationName !== "detectiveMofuWalkRight" &&
+    event.animationName !== "detectiveMofuWalkLeft"
+  ) {
+    return;
+  }
+
+  setWalkDirection((prev) =>
+    prev === "right" ? "left" : "right",
+  );
+}}
+          style={{
+            position: "absolute",
+            left: 0,
+            top: isMobile ? "120px" : "80px",
+            width: isMobile ? 72 : 110,
+            height: "auto",
+            pointerEvents: "none",
+            zIndex: 18,
+            animation:
+            walkDirection === "right"
+           ? "detectiveMofuWalkRight 12s linear infinite, detectiveMofuStepRight 420ms ease-in-out infinite alternate"
+           : "detectiveMofuWalkLeft 12s linear infinite, detectiveMofuStepLeft 420ms ease-in-out infinite alternate",
+            filter:
+              "drop-shadow(0 10px 14px rgba(0,0,0,0.16))",
+          }}
+        />
+      )}
 
       {speech.show && (
         <>
@@ -199,7 +218,8 @@ export default function WatchMofuDisplay({
               scale(1);
           }
         }
-          @keyframes detectiveMofuWalkAcross {
+
+        @keyframes detectiveMofuWalkRight {
   from {
     left: -120px;
   }
@@ -209,13 +229,41 @@ export default function WatchMofuDisplay({
   }
 }
 
-@keyframes detectiveMofuStep {
+@keyframes detectiveMofuWalkLeft {
   from {
-    transform: translateY(0) rotate(-1.5deg);
+    left: calc(100% + 20px);
   }
 
   to {
-    transform: translateY(-6px) rotate(1.5deg);
+    left: -120px;
+  }
+}
+
+@keyframes detectiveMofuStepRight {
+  from {
+    transform: scaleX(-1)
+      translateY(0)
+      rotate(-1.5deg);
+  }
+
+  to {
+    transform: scaleX(-1)
+      translateY(-6px)
+      rotate(1.5deg);
+  }
+}
+
+@keyframes detectiveMofuStepLeft {
+  from {
+    transform: scaleX(1)
+      translateY(0)
+      rotate(-1.5deg);
+  }
+
+  to {
+    transform: scaleX(1)
+      translateY(-6px)
+      rotate(1.5deg);
   }
 }
       `}</style>
