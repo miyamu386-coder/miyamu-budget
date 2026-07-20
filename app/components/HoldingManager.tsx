@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { Holding, HoldingKind } from "../types";
 import { holdingDictionary } from "../../lib/holdings";
-
+import type { HoldingMarket } from "../types";
 
 type Props = {
   ringKey: string;
@@ -23,16 +23,17 @@ export default function HoldingManager({
   const [holdingEditId, setHoldingEditId] = useState<string | null>(null);
   const [holdingName, setHoldingName] = useState("");
   const [holdingKind, setHoldingKind] = useState<HoldingKind>("投資信託");
+  const [holdingMarket, setHoldingMarket] =
+  useState<HoldingMarket>("FUND");
   const [holdingShares, setHoldingShares] = useState("");
   const [holdingUnit, setHoldingUnit] = useState<"株" | "口">("株");
   const [holdingValue, setHoldingValue] = useState("");
 
-  const holdingColors: Record<HoldingKind, string> = {
-    国内株: "#2563eb",
-    米国ETF: "#f59e0b",
-    投資信託: "#10b981",
-    現金: "#9ca3af",
-  };
+  const holdingColors: Record<HoldingMarket, string> = {
+  JP: "#2563eb",
+  US: "#f59e0b",
+  FUND: "#10b981",
+};
 
   const currentHoldings = holdings
     .filter((h) => h.ringKey === ringKey)
@@ -78,7 +79,7 @@ export default function HoldingManager({
       width: 12,
       height: 12,
       borderRadius: "50%",
-      background: holdingColors[h.kind ?? "投資信託"],
+      background: holdingColors[h.market ?? "FUND"],
       display: "inline-block",
     }}
   />
@@ -98,6 +99,7 @@ export default function HoldingManager({
   setHoldingShares(String(h.shares));
   setHoldingUnit(h.unit ?? "株");
   setHoldingKind(h.kind ?? "投資信託");
+  setHoldingMarket(h.market ?? "FUND");
   setHoldingValue(String(h.value));
 }}
             >
@@ -137,14 +139,32 @@ export default function HoldingManager({
     );
 
   if (matchedEntry) {
-    setHoldingKind(matchedEntry.kind);
-    setHoldingUnit(matchedEntry.unit);
-  }
+  setHoldingKind(matchedEntry.kind);
+  setHoldingUnit(matchedEntry.unit);
+  setHoldingMarket(matchedEntry.market);
+}
 }}
       />
       <select
   value={holdingKind}
-  onChange={(e) => setHoldingKind(e.target.value as HoldingKind)}
+  onChange={(e) => {
+    const nextKind = e.target.value as HoldingKind;
+    setHoldingKind(nextKind);
+
+    switch (nextKind) {
+      case "国内株":
+        setHoldingMarket("JP");
+        break;
+
+      case "米国ETF":
+        setHoldingMarket("US");
+        break;
+
+      default:
+        setHoldingMarket("FUND");
+        break;
+    }
+  }}
 >
   <option value="国内株">国内株</option>
   <option value="米国ETF">米国ETF</option>
@@ -198,7 +218,15 @@ export default function HoldingManager({
             if (holdingEditId) {
               return prev.map((h) =>
                 h.id === holdingEditId
-                  ? { ...h, name, shares, unit: holdingUnit, value, kind: holdingKind }
+                  ? {
+    ...h,
+    name,
+    shares,
+    unit: holdingUnit,
+    value,
+    kind: holdingKind,
+    market: holdingMarket,
+  }
                   : h
               );
             }
@@ -206,6 +234,7 @@ export default function HoldingManager({
             return [
               ...prev,
               {
+ 
   id: makeId(),
   ringKey,
   name,
@@ -213,6 +242,7 @@ export default function HoldingManager({
   unit: holdingUnit,
   value,
   kind: holdingKind,
+  market: holdingMarket,
 },
             ];
           });
@@ -220,6 +250,9 @@ export default function HoldingManager({
           setHoldingName("");
           setHoldingShares("");
           setHoldingValue("");
+          setHoldingKind("投資信託");
+          setHoldingMarket("FUND");
+          setHoldingUnit("株");
           setHoldingEditId(null);
         }}
       >
@@ -231,9 +264,12 @@ export default function HoldingManager({
           type="button"
           onClick={() => {
             setHoldingEditId(null);
-            setHoldingName("");
-            setHoldingShares("");
-            setHoldingValue("");
+setHoldingName("");
+setHoldingShares("");
+setHoldingValue("");
+setHoldingKind("投資信託");
+setHoldingMarket("FUND");
+setHoldingUnit("株");
           }}
         >
           キャンセル

@@ -24,10 +24,14 @@ export type Holding = {
   unit?: "株" | "口";
   value: number;
   kind?: HoldingKind;
+  market?: HoldingMarket;
 };
+
+export type HoldingMarket = "JP" | "US" | "FUND";
 
 export type HoldingDictionaryEntry = {
   keyword: string;
   kind: HoldingKind;
   unit: "株" | "口";
+  market: HoldingMarket;
 };
