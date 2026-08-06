@@ -72,11 +72,9 @@ export default function TransactionForm({
   useEffect(() => {
   setType(editing?.type ?? "expense");
   setAmountStr(editing ? String(editing.amount) : "");
-
   const raw = editing?.category ?? "";
   const hit = ringTitleResolver.find((p) => p.category === raw);
   setCategory(hit ? hit.title : raw);
-
   setOccurredAt(
     editing?.occurredAt ? toYMD(editing.occurredAt) : toYMD(new Date().toISOString())
   );
