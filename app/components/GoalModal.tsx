@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import RingGoalEditor from "./RingGoalEditor";
 
 type Props = {
+  userKey: string;
   goalFocusCategory: string | null;
   goalAssetKey: string;
   ringCategories: string[];
@@ -12,6 +13,7 @@ type Props = {
 };
 
 export default function GoalModal({
+  userKey,
   goalFocusCategory,
   goalAssetKey,
   ringCategories,
@@ -89,9 +91,10 @@ export default function GoalModal({
           onTouchMove={(e) => e.stopPropagation()}
         >
           <RingGoalEditor
-            ringCategories={ringCategories}
-            resolveLabel={resolveLabel}
-          />
+  userKey={userKey}
+  ringCategories={ringCategories}
+  resolveLabel={resolveLabel}
+/>
         </div>
 
         <div

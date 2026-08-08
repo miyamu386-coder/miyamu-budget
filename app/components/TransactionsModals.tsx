@@ -305,6 +305,7 @@ closeGoalEditor,
       )}
       {goalModalOpen && (
   <GoalModal
+    userKey={userKey}
     goalFocusCategory={goalFocusCategory}
     goalAssetKey={goalAssetKey}
     ringCategories={ringCategories}

@@ -1,3 +1,6 @@
+import { Capacitor } from "@capacitor/core";
+import { Preferences } from "@capacitor/preferences";
+
 const STORAGE_KEY = "miyamu_budget_user_key";
 const NAME_KEY_PREFIX = "miyamu_budget_user_name:";
 
@@ -7,18 +10,56 @@ export function clearUserKeyCache() {
   cached = null;
 }
 
-export function getUserKeyName(key: string) {
+async function getStoredValue(key: string): Promise<string | null> {
   try {
-    return localStorage.getItem(NAME_KEY_PREFIX + key) ?? "";
-  } catch {
-    return "";
+    if (Capacitor.isNativePlatform()) {
+      const result = await Preferences.get({ key });
+      return result.value;
+    }
+
+    return localStorage.getItem(key);
+  } catch (error) {
+    console.error("storage get failed:", error);
+    return null;
   }
 }
 
-export function setUserKeyName(key: string, name: string) {
+async function setStoredValue(key: string, value: string) {
   try {
-    localStorage.setItem(NAME_KEY_PREFIX + key, name);
-  } catch {}
+    if (Capacitor.isNativePlatform()) {
+      await Preferences.set({ key, value });
+      return;
+    }
+
+    localStorage.setItem(key, value);
+  } catch (error) {
+    console.error("storage set failed:", error);
+  }
+}
+
+async function removeStoredValue(key: string) {
+  try {
+    if (Capacitor.isNativePlatform()) {
+      await Preferences.remove({ key });
+      return;
+    }
+
+    localStorage.removeItem(key);
+  } catch (error) {
+    console.error("storage remove failed:", error);
+  }
+}
+export async function saveUserKey(key: string) {
+  await setStoredValue(STORAGE_KEY, key);
+  cached = key;
+}
+
+export async function getUserKeyName(key: string) {
+  return (await getStoredValue(NAME_KEY_PREFIX + key)) ?? "";
+}
+
+export async function setUserKeyName(key: string, name: string) {
+  await setStoredValue(NAME_KEY_PREFIX + key, name);
 }
 
 function gen32hex() {
@@ -66,7 +107,6 @@ async function syncUserKeyCookie(userKey: string) {
   }
 }
 
-// 絶対にthrowしない
 export async function getOrCreateUserKey(): Promise<string> {
   if (cached) {
     await syncUserKeyCookie(cached);
@@ -78,31 +118,30 @@ export async function getOrCreateUserKey(): Promise<string> {
     return cached;
   }
 
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
+  const saved = await getStoredValue(STORAGE_KEY);
 
-    if (saved && saved.trim()) {
-      cached = saved.trim();
+  if (saved && saved.trim()) {
+    cached = saved.trim();
 
-      await syncUserKeyCookie(cached);
+    await syncUserKeyCookie(cached);
 
-      return cached;
-    }
-  } catch {
-    // 読めなくても新規作成へ進む
+    return cached;
   }
 
   const key = gen32hex();
 
-  try {
-    localStorage.setItem(STORAGE_KEY, key);
-  } catch {}
+  await setStoredValue(STORAGE_KEY, key);
 
   cached = key;
 
   await syncUserKeyCookie(key);
 
   return cached;
+}
+
+export async function removeUserKey() {
+  await removeStoredValue(STORAGE_KEY);
+  clearUserKeyCache();
 }
 
 export function maskKey(key: string) {

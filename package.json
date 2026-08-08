@@ -13,6 +13,7 @@
     "@capacitor/cli": "^8.5.0",
     "@capacitor/core": "^8.5.0",
     "@capacitor/ios": "^8.5.0",
+    "@capacitor/preferences": "^8.0.1",
     "@capacitor/splash-screen": "^8.0.2",
     "@prisma/adapter-better-sqlite3": "^7.3.0",
     "@prisma/client": "^6.19.2",

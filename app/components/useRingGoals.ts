@@ -16,7 +16,8 @@ export function useRingGoals({
   userKey,
   goalAssetKey,
 }: UseRingGoalsParams) {
-  const [ringGoals, setRingGoals] = useState<RingGoal[]>([]);
+  const [ringGoals, setRingGoals] =
+    useState<RingGoal[]>([]);
 
   const [goalModalOpen, setGoalModalOpen] =
     useState(false);
@@ -26,10 +27,26 @@ export function useRingGoals({
     setGoalFocusCategory,
   ] = useState<string | null>(null);
 
+  // =========================
+  // 目標データ読み込み
+  // =========================
   useEffect(() => {
     if (!userKey) return;
 
-    setRingGoals(loadRingGoals());
+    let cancelled = false;
+
+    void (async () => {
+      const goals =
+        await loadRingGoals(userKey);
+
+      if (!cancelled) {
+        setRingGoals(goals);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [userKey]);
 
   const targetBalance = getTarget(
@@ -37,7 +54,9 @@ export function useRingGoals({
     goalAssetKey
   );
 
-  const openGoalEditor = (category: string) => {
+  const openGoalEditor = (
+    category: string
+  ) => {
     setGoalFocusCategory(category);
     setGoalModalOpen(true);
   };
@@ -45,7 +64,15 @@ export function useRingGoals({
   const closeGoalEditor = () => {
     setGoalModalOpen(false);
     setGoalFocusCategory(null);
-    setRingGoals(loadRingGoals());
+
+    if (!userKey) return;
+
+    void (async () => {
+      const goals =
+        await loadRingGoals(userKey);
+
+      setRingGoals(goals);
+    })();
   };
 
   return {

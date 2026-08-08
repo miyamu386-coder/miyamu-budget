@@ -1,6 +1,11 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
 import {
   loadRingGoals,
   upsertTarget,
@@ -9,40 +14,62 @@ import {
 } from "../../lib/ringGoals";
 
 type Props = {
+  userKey: string;
   ringCategories: string[];
   resolveLabel?: (category: string) => string;
   onSaved?: () => void;
 };
 
 export default function RingGoalEditor({
+  userKey,
   ringCategories,
   resolveLabel,
   onSaved,
 }: Props) {
-  const [goals, setGoals] = useState<RingGoal[]>([]);
-  const [draft, setDraft] = useState<Record<string, number>>({});
+  const [goals, setGoals] =
+    useState<RingGoal[]>([]);
 
+  const [draft, setDraft] =
+    useState<Record<string, number>>({});
+
+  // =========================
+  // 保存済み目標を読み込む
+  // =========================
   useEffect(() => {
-    const g = loadRingGoals();
-    setGoals(g);
+    if (!userKey) return;
 
-    const initial: Record<string, number> = {};
+    let cancelled = false;
 
-    for (const c of ringCategories) {
-      initial[c] = getTarget(g, c);
-    }
+    void (async () => {
+      const g =
+        await loadRingGoals(userKey);
 
-    setDraft(initial);
+      if (cancelled) return;
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ringCategories.join("|")]);
+      setGoals(g);
 
- const cats = useMemo(() => {
-  const uniq = Array.from(new Set(ringCategories));
-  uniq.sort();
+      const initial: Record<string, number> = {};
 
-  return uniq;
-}, [ringCategories]);
+      for (const c of ringCategories) {
+        initial[c] = getTarget(g, c);
+      }
+
+      setDraft(initial);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userKey, ringCategories]);
+
+  const cats = useMemo(() => {
+    const uniq =
+      Array.from(new Set(ringCategories));
+
+    uniq.sort();
+
+    return uniq;
+  }, [ringCategories]);
 
   if (cats.length === 0) return null;
 
@@ -58,25 +85,33 @@ export default function RingGoalEditor({
         overflow: "hidden",
       }}
     >
-      <div style={{ fontWeight: 900, marginBottom: 12 }}>
+      <div
+        style={{
+          fontWeight: 900,
+          marginBottom: 12,
+        }}
+      >
         リング目標（円）
       </div>
 
-      <div style={{ display: "grid", gap: 14 }}>
+      <div
+        style={{
+          display: "grid",
+          gap: 14,
+        }}
+      >
         {cats.map((cat) => {
-          const label = resolveLabel ? resolveLabel(cat) : cat;
+          const label = resolveLabel
+            ? resolveLabel(cat)
+            : cat;
 
-console.log({
-  cat,
-  label,
-});
           if (
-  label === "生活費" ||
-  label === "貯蓄（今月）" ||
-  label === "貯蓄枠"
-) {
-  return null;
-}
+            label === "生活費" ||
+            label === "貯蓄（今月）" ||
+            label === "貯蓄枠"
+          ) {
+            return null;
+          }
 
           return (
             <div
@@ -85,7 +120,8 @@ console.log({
                 display: "grid",
                 gap: 8,
                 paddingBottom: 14,
-                borderBottom: "1px solid #eee",
+                borderBottom:
+                  "1px solid #eee",
               }}
             >
               <div
@@ -101,7 +137,8 @@ console.log({
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "minmax(0, 1fr) auto",
+                  gridTemplateColumns:
+                    "minmax(0, 1fr) auto",
                   gap: 8,
                   alignItems: "stretch",
                 }}
@@ -113,7 +150,9 @@ console.log({
                   onChange={(e) =>
                     setDraft((previous) => ({
                       ...previous,
-                      [cat]: Number(e.target.value),
+                      [cat]: Number(
+                        e.target.value
+                      ),
                     }))
                   }
                   placeholder="例：300000"
@@ -123,7 +162,8 @@ console.log({
                     boxSizing: "border-box",
                     padding: 10,
                     borderRadius: 10,
-                    border: "1px solid #ccc",
+                    border:
+                      "1px solid #ccc",
                     fontSize: 16,
                   }}
                 />
@@ -131,20 +171,26 @@ console.log({
                 <button
                   type="button"
                   onClick={() => {
-                    const nextGoals = upsertTarget(
-                      goals,
-                      cat,
-                      draft[cat] ?? 0,
-                    );
+                    void (async () => {
+                      const nextGoals =
+                        await upsertTarget(
+                          userKey,
+                          goals,
+                          cat,
+                          draft[cat] ?? 0
+                        );
 
-                    setGoals(nextGoals);
-                    onSaved?.();
+                      setGoals(nextGoals);
+
+                      onSaved?.();
+                    })();
                   }}
                   style={{
                     minWidth: 72,
                     padding: "10px 12px",
                     borderRadius: 10,
-                    border: "1px solid #ddd",
+                    border:
+                      "1px solid #ddd",
                     background: "#fff",
                     fontWeight: 700,
                     cursor: "pointer",

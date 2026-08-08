@@ -7,9 +7,9 @@ import {
   getUserKeyName,
   normalizeUserKeyInput,
   setUserKeyName,
+  removeUserKey,
+  saveUserKey,
 } from "../../lib/userKey";
-
-const STORAGE_KEY = "miyamu_budget_user_key";
 
 export function useUserKeyManager() {
   const [userKey, setUserKey] = useState("");
@@ -36,12 +36,16 @@ export function useUserKeyManager() {
   }, []);
 
   useEffect(() => {
-    if (!userIdOpen) return;
+  if (!userIdOpen) return;
 
-    setPasteKey("");
-    setPasteName("");
-    setCurrentName(getUserKeyName(userKey));
-  }, [userIdOpen, userKey]);
+  setPasteKey("");
+  setPasteName("");
+
+  void (async () => {
+    const name = await getUserKeyName(userKey);
+    setCurrentName(name);
+  })();
+}, [userIdOpen, userKey]);
 
   useEffect(() => {
     if (!keyEditingOpen) return;
@@ -54,21 +58,14 @@ export function useUserKeyManager() {
   };
 
   const saveAndApplyUserKey = async (next: string) => {
-    try {
-      localStorage.setItem(STORAGE_KEY, next);
-    } catch (error) {
-      console.error("userKey localStorage save failed:", error);
-    }
+  await saveUserKey(next);
 
-    clearUserKeyCache();
+  clearUserKeyCache();
 
-    /*
-     * localStorageからキーを読み直し、
-     * /api/user-keyへのPOSTでCookieにも同期する
-     */
-    const syncedKey = await getOrCreateUserKey();
-    setUserKey(syncedKey);
-  };
+  const syncedKey = await getOrCreateUserKey();
+  setUserKey(syncedKey);
+};
+
 
   const applyPastedKey = async () => {
     const next = normalizeUserKeyInput(pasteKey);
@@ -83,8 +80,8 @@ export function useUserKeyManager() {
     const name = pasteName.trim();
 
     if (name) {
-      setUserKeyName(next, name);
-    }
+  await setUserKeyName(next, name);
+}
 
     try {
       await saveAndApplyUserKey(next);
@@ -155,27 +152,21 @@ export function useUserKeyManager() {
   };
 
   const regenerateUserKey = async () => {
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch (error) {
-      console.error("userKey localStorage remove failed:", error);
-    }
+  try {
+    await removeUserKey();
 
-    try {
-      clearUserKeyCache();
+    const next = await getOrCreateUserKey();
 
-      const next = await getOrCreateUserKey();
+    setUserKey(next);
+    setKeyEditingOpen(false);
+  } catch (error) {
+    console.error("regenerateUserKey failed:", error);
 
-      setUserKey(next);
-      setKeyEditingOpen(false);
-    } catch (error) {
-      console.error("regenerateUserKey failed:", error);
-
-      window.alert(
-        "再生成に失敗しました。コンソールを確認してね。"
-      );
-    }
-  };
+    window.alert(
+      "再生成に失敗しました。コンソールを確認してね。"
+    );
+  }
+};
 
   return {
     userKey,
@@ -207,3 +198,4 @@ export function useUserKeyManager() {
     hardReload,
   };
 }
+
