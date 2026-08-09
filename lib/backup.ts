@@ -1,5 +1,12 @@
 import type { Transaction } from "../app/types";
 import type { RingGoal } from "./ringGoals";
+import { Capacitor } from "@capacitor/core";
+import {
+  Filesystem,
+  Directory,
+  Encoding,
+} from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
 import {
   clearUserKeyCache,
   normalizeUserKeyInput,
@@ -24,7 +31,7 @@ export type BackupData = {
 // =========================
 // バックアップ書き出し
 // =========================
-export function exportMiyamuBackup(
+export async function exportMiyamuBackup(
   params: BackupData
 ) {
   try {
@@ -34,26 +41,61 @@ export function exportMiyamuBackup(
       exportedAt: new Date().toISOString(),
     };
 
+    const fileName =
+      `miyamuMaker-backup-${params.selectedYm}.json`;
+
+    const json =
+      JSON.stringify(backup, null, 2);
+
+    // =========================
+    // iOS / Android
+    // =========================
+    if (Capacitor.isNativePlatform()) {
+      const result =
+        await Filesystem.writeFile({
+          path: fileName,
+          data: json,
+          directory: Directory.Cache,
+          encoding: Encoding.UTF8,
+        });
+
+      await Share.share({
+        title: "みやむMaker バックアップ",
+        text: "バックアップファイルを保存してください。",
+        url: result.uri,
+        dialogTitle: "バックアップを保存",
+      });
+
+      return;
+    }
+
+    // =========================
+    // Web
+    // =========================
     const blob = new Blob(
-      [JSON.stringify(backup, null, 2)],
+      [json],
       {
         type: "application/json",
       }
     );
 
-    const url = URL.createObjectURL(blob);
+    const url =
+      URL.createObjectURL(blob);
 
-    const a = document.createElement("a");
+    const a =
+      document.createElement("a");
 
     a.href = url;
-    a.download =
-      `miyamuMaker-backup-${params.selectedYm}.json`;
+    a.download = fileName;
 
     a.click();
 
     URL.revokeObjectURL(url);
   } catch (error) {
-    console.error(error);
+    console.error(
+      "backup export failed",
+      error
+    );
 
     alert(
       "バックアップ作成に失敗しました"
