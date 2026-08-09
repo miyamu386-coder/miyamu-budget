@@ -207,45 +207,15 @@ export async function importMiyamuBackup(
       )
     );
 
-    // =========================
-    // transactions復元
-    // =========================
-    const restoreResponse =
-      await fetch(
-        "/api/transactions",
-        {
-          method: "PUT",
-
-          headers: {
-            "Content-Type":
-              "application/json",
-
-            "x-user-key":
-              nextUserKey,
-          },
-
-          body: JSON.stringify({
-            transactions:
-              nextTransactions,
-          }),
-        }
-      );
-
-    const restoreResult =
-      await restoreResponse
-        .json()
-        .catch(() => null);
-
-    if (!restoreResponse.ok) {
-      console.error(
-        "transaction restore failed:",
-        restoreResult
-      );
-
-      throw new Error(
-        "明細の復元に失敗しました"
-      );
-    }
+   // =========================
+// transactions復元
+// Web → localStorage
+// iOS / Android → Preferences
+// =========================
+await setStoredValue(
+  `miyamu_transactions_v1:${nextUserKey}`,
+  JSON.stringify(nextTransactions)
+);
 
     // =========================
     // React stateにも反映
