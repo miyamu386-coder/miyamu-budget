@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Transaction, TxType } from "./types";
-import { getOrCreateUserKey } from "../lib/userKey";
 
 type Props = {
   onAdded?: (t: Transaction) => void;
@@ -143,48 +142,30 @@ export default function TransactionForm({
       return;
     }
 
-    // ✅ ここがポイント：必ず await
-    const key = await getOrCreateUserKey();
-
     setLoading(true);
     try {
       if (editing) {
-        const res = await fetch("/api/transactions?id=" + editing.id, {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            "x-user-key": key, // cookieが本命だけど、互換で付けてもOK
-          },
-          body: JSON.stringify({ type, amount, category: normalizedCategory, occurredAt }),
-        });
-
-        if (!res.ok) {
-          const e = await res.json().catch(() => ({}));
-          throw new Error(e?.error ?? "update failed");
-        }
-
-        const updated: Transaction = await res.json();
+  const updated: Transaction = {
+    ...editing,
+    type,
+    amount,
+    category: normalizedCategory,
+    occurredAt,
+  };
 
         const t1 = decideToast(type, normalizedCategory);
         showToast(t1.kind, t1.text);
 
         onUpdated?.(updated);
       } else {
-        const res = await fetch("/api/transactions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-user-key": key,
-          },
-          body: JSON.stringify({ type, amount, category: normalizedCategory, occurredAt }),
-        });
-
-        if (!res.ok) {
-          const e = await res.json().catch(() => ({}));
-          throw new Error(e?.error ?? "create failed");
-        }
-
-        const created: Transaction = await res.json();
+        const created: Transaction = {
+  id: Date.now(),
+  type,
+  amount,
+  category: normalizedCategory,
+  occurredAt,
+  createdAt: new Date().toISOString(),
+};
 
         const t1 = decideToast(type, normalizedCategory);
         showToast(t1.kind, t1.text);

@@ -83,33 +83,8 @@ function gen32hex() {
   return (hex() + hex() + hex() + hex()).slice(0, 32);
 }
 
-async function syncUserKeyCookie(userKey: string) {
-  try {
-    const response = await fetch("/api/user-key", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ userKey }),
-    });
-
-    if (!response.ok) {
-      const data = await response.json().catch(() => null);
-
-      console.error(
-        "userKey cookie sync failed:",
-        response.status,
-        data
-      );
-    }
-  } catch (error) {
-    console.error("userKey cookie sync failed:", error);
-  }
-}
-
 export async function getOrCreateUserKey(): Promise<string> {
   if (cached) {
-    await syncUserKeyCookie(cached);
     return cached;
   }
 
@@ -123,8 +98,6 @@ export async function getOrCreateUserKey(): Promise<string> {
   if (saved && saved.trim()) {
     cached = saved.trim();
 
-    await syncUserKeyCookie(cached);
-
     return cached;
   }
 
@@ -133,8 +106,6 @@ export async function getOrCreateUserKey(): Promise<string> {
   await setStoredValue(STORAGE_KEY, key);
 
   cached = key;
-
-  await syncUserKeyCookie(key);
 
   return cached;
 }

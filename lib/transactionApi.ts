@@ -1,4 +1,3 @@
-import { Capacitor } from "@capacitor/core";
 import type { Transaction } from "../app/types";
 
 export type CreateTransactionPayload = {
@@ -26,35 +25,8 @@ function createLocalTransaction(
 }
 
 export async function createTransactionApi(
-  userKey: string,
+  _userKey: string,
   payload: CreateTransactionPayload
 ): Promise<Transaction> {
-  // iPhone / Androidアプリ
-  if (Capacitor.isNativePlatform()) {
-    return createLocalTransaction(payload);
-  }
-
-  // ブラウザ版は今まで通り
-  const response = await fetch("/api/transactions", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-user-key": userKey,
-    },
-    body: JSON.stringify(payload),
-  });
-
-  const data = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    throw new Error(
-      JSON.stringify(
-        data ?? {
-          error: "POST failed",
-        }
-      )
-    );
-  }
-
-  return data as Transaction;
+  return createLocalTransaction(payload);
 }

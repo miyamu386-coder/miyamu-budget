@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { Transaction } from "./types";
-import { getOrCreateUserKey } from "../lib/userKey";
 
 function formatDate(iso: string) {
   const d = new Date(iso);
@@ -23,33 +22,16 @@ export default function TransactionList({
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const remove = async (id: number) => {
-    if (deletingId === id) return;
+  if (deletingId === id) return;
 
-    const userKey = await getOrCreateUserKey(); // ✅ await
+  setDeletingId(id);
 
-    setDeletingId(id);
-    try {
-      const res = await fetch(`/api/transactions?id=${id}`, {
-        method: "DELETE",
-        headers: {
-          "x-user-key": userKey,
-        },
-      });
-
-      if (!res.ok) {
-        const e = await res.json().catch(() => ({}));
-        alert(e?.error ?? "削除に失敗しました");
-        return;
-      }
-
-      onDeleted(id);
-    } catch (e) {
-      console.error(e);
-      alert("削除に失敗しました");
-    } finally {
-      setDeletingId(null);
-    }
-  };
+  try {
+    onDeleted(id);
+  } finally {
+    setDeletingId(null);
+  }
+};
 
   return (
     <div>
