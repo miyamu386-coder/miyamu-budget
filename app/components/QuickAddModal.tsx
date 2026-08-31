@@ -1,6 +1,6 @@
 "use client";
 
-import type React from "react";
+import React, { useState } from "react";
 import type { Transaction } from "../types";
 import HoldingManager from "./HoldingManager";
 import { yen } from "../../lib/format";
@@ -48,6 +48,10 @@ type Props = {
   closeQuickAdd: () => void;
   saveQuickAdd: () => void;
   startEdit: (t: Transaction) => void;
+  updateTransactionAmount: (
+    id: number,
+    amount: number
+  ) => void;
   parseAmountLike: (s: string) => number;
   makeId: () => string;
   ringCategory: (ringKey: string) => string;
@@ -73,10 +77,21 @@ export default function QuickAddModal({
   closeQuickAdd,
   saveQuickAdd,
   startEdit,
+  updateTransactionAmount,
   parseAmountLike,
   makeId,
   ringCategory,
 }: Props) {
+  const [
+    editingTransaction,
+    setEditingTransaction,
+  ] = useState<Transaction | null>(null);
+
+  const [
+    editingAmountStr,
+    setEditingAmountStr,
+  ] = useState("");
+
   if (!meta) return null;
 
   const mode = meta.mode;
@@ -91,8 +106,8 @@ export default function QuickAddModal({
     meta.mode === "income_only"
       ? "income"
       : meta.mode === "expense_only"
-      ? "expense"
-      : quickType;
+        ? "expense"
+        : quickType;
 
   if (quickView === "holdings") {
     return (
@@ -172,6 +187,74 @@ export default function QuickAddModal({
               入力一覧：{meta.title}
             </div>
 
+            {editingTransaction && (
+              <div
+                style={{
+                  marginBottom: 12,
+                  padding: 12,
+                  borderRadius: 12,
+                  border: "1px solid #ddd",
+                  background: "#fafafa",
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: 900,
+                    marginBottom: 8,
+                  }}
+                >
+                  金額変更
+                </div>
+
+                <input
+                  value={editingAmountStr}
+                  onChange={(e) =>
+                    setEditingAmountStr(e.target.value)
+                  }
+                  inputMode="text"
+                  style={{
+                    width: "100%",
+                    padding: 12,
+                    borderRadius: 12,
+                    border: "1px solid #ddd",
+                    fontSize: 16,
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const amount =
+                      parseAmountLike(editingAmountStr);
+
+                    if (amount <= 0) {
+                      alert("金額を入力してください");
+                      return;
+                    }
+
+                    updateTransactionAmount(
+                      editingTransaction.id,
+                      amount
+                    );
+
+                    setEditingTransaction(null);
+                    setEditingAmountStr("");
+                  }}
+                  style={{
+                    marginTop: 10,
+                    padding: "10px 14px",
+                    borderRadius: 12,
+                    border: "1px solid #111",
+                    background: "#111",
+                    color: "#fff",
+                    fontWeight: 900,
+                    cursor: "pointer",
+                  }}
+                >
+                  更新
+                </button>
+              </div>
+            )}
+
             <button
               type="button"
               onClick={() => setQuickView("form")}
@@ -232,7 +315,8 @@ export default function QuickAddModal({
                         type="button"
                         onClick={() => {
                           startEdit(t);
-                          closeQuickAdd();
+                          setEditingTransaction(t);
+                          setEditingAmountStr(String(t.amount));
                         }}
                         style={{
                           padding: "6px 10px",
@@ -270,10 +354,10 @@ export default function QuickAddModal({
                   ymdToMonthKey(ymd) === selectedYm
                 );
               }).length === 0 && (
-                <div style={{ fontSize: 13, opacity: 0.65 }}>
-                  入力履歴がありません
-                </div>
-              )}
+                  <div style={{ fontSize: 13, opacity: 0.65 }}>
+                    入力履歴がありません
+                  </div>
+                )}
             </div>
           </>
         ) : (

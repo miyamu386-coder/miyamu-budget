@@ -1,6 +1,12 @@
 import type { Transaction } from "../app/types";
 import { fmtYM } from "./dateUtils";
 import { yen } from "./format";
+import {
+  Directory,
+  Encoding,
+  Filesystem,
+} from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
 
 type MonthSummary = {
   income: number;
@@ -85,7 +91,7 @@ function buildExpenseBreakdownRows(
     breakdown.set(
       detail,
       (breakdown.get(detail) ?? 0) +
-        transaction.amount
+      transaction.amount
     );
   }
 
@@ -262,16 +268,15 @@ function buildMonthlyReportHtml(params: {
       </thead>
 
       <tbody>
-        ${
-          breakdownRows ||
-          `
+        ${breakdownRows ||
+    `
             <tr>
               <td colspan="2">
                 （支出がありません）
               </td>
             </tr>
           `
-        }
+    }
       </tbody>
     </table>
   </div>
@@ -293,16 +298,15 @@ function buildMonthlyReportHtml(params: {
       </thead>
 
       <tbody>
-        ${
-          transactionRows ||
-          `
+        ${transactionRows ||
+    `
             <tr>
               <td colspan="5">
                 （データがありません）
               </td>
             </tr>
           `
-        }
+    }
       </tbody>
     </table>
   </div>
@@ -310,65 +314,64 @@ function buildMonthlyReportHtml(params: {
 </html>`;
 }
 
-export function openMonthlyPrintView({
+export async function openMonthlyPrintView({
   selectedYm,
   monthTransactions,
   monthSummary,
   resolveCategoryLabel,
-}: OpenMonthlyPrintViewParams): void {
-  const userAgent = navigator.userAgent;
+}: OpenMonthlyPrintViewParams): Promise<void> {
+  try {
+    const title = `月次レポート（${fmtYM(
+      selectedYm
+    )}）`;
 
-  const isIOS = /iP(hone|od|ad)/.test(userAgent);
+    const transactionRows =
+      buildTransactionRows(
+        monthTransactions,
+        resolveCategoryLabel
+      );
 
-  const isSafari =
-    /Safari/.test(userAgent) &&
-    !/CriOS|FxiOS|EdgiOS/.test(userAgent);
+    const breakdownRows =
+      buildExpenseBreakdownRows(
+        monthTransactions
+      );
 
-  const isIOSSafari = isIOS && isSafari;
+    const html = buildMonthlyReportHtml({
+      title,
+      transactionRows,
+      breakdownRows,
+      monthSummary,
+    });
 
-  const title = `月次レポート（${fmtYM(
-    selectedYm
-  )}）`;
+    const fileName =
+      `miyamu-report-${selectedYm}.html`;
 
-  const transactionRows = buildTransactionRows(
-    monthTransactions,
-    resolveCategoryLabel
-  );
+    await Filesystem.writeFile({
+      path: fileName,
+      data: html,
+      directory: Directory.Cache,
+      encoding: Encoding.UTF8,
+    });
 
-  const breakdownRows =
-    buildExpenseBreakdownRows(monthTransactions);
+    const fileInfo =
+      await Filesystem.getUri({
+        path: fileName,
+        directory: Directory.Cache,
+      });
 
-  const html = buildMonthlyReportHtml({
-    title,
-    transactionRows,
-    breakdownRows,
-    monthSummary,
-  });
-
-  const printWindow = window.open("", "_blank");
-
-  if (!printWindow) {
-    window.alert(
-      "ポップアップがブロックされました。iPhoneはSafariのポップアップ設定を確認してください。"
+    await Share.share({
+      title,
+      files: [fileInfo.uri],
+      dialogTitle: "印刷 / PDF",
+    });
+  } catch (error) {
+    console.error(
+      "monthly report share failed:",
+      error
     );
-    return;
-  }
 
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.focus();
-
-  if (!isIOSSafari) {
-    window.setTimeout(() => {
-      try {
-        printWindow.print();
-      } catch (error) {
-        console.error(
-          "monthly report print failed:",
-          error
-        );
-      }
-    }, 250);
+    window.alert(
+      "月次レポートを開けませんでした。"
+    );
   }
 }

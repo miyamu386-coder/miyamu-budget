@@ -50,7 +50,7 @@ type Props = {
     SetStateAction<string>
   >;
   createMode: RingMode;
-setCreateMode: Dispatch<SetStateAction<RingMode>>;
+  setCreateMode: Dispatch<SetStateAction<RingMode>>;
   createCarryOver: boolean;
   setCreateCarryOver: Dispatch<
     SetStateAction<boolean>
@@ -70,23 +70,23 @@ setCreateMode: Dispatch<SetStateAction<RingMode>>;
     SetStateAction<string | null>
   >;
   removeExtraRing: () => void;
-    quickAddOpen: boolean;
+  quickAddOpen: boolean;
   quickMeta: any;
   quickView: ComponentProps<
-  typeof QuickAddModal
->["quickView"];
+    typeof QuickAddModal
+  >["quickView"];
 
-setQuickView: ComponentProps<
-  typeof QuickAddModal
->["setQuickView"];
+  setQuickView: ComponentProps<
+    typeof QuickAddModal
+  >["setQuickView"];
 
-quickType: ComponentProps<
-  typeof QuickAddModal
->["quickType"];
+  quickType: ComponentProps<
+    typeof QuickAddModal
+  >["quickType"];
 
-setQuickType: ComponentProps<
-  typeof QuickAddModal
->["setQuickType"];
+  setQuickType: ComponentProps<
+    typeof QuickAddModal
+  >["setQuickType"];
   quickDate: string;
   setQuickDate: Dispatch<SetStateAction<string>>;
   quickAmountStr: string;
@@ -101,6 +101,10 @@ setQuickType: ComponentProps<
   closeQuickAdd: () => void;
   saveQuickAdd: () => void;
   startEdit: (value: any) => void;
+  updateTransactionAmount: (
+    id: number,
+    amount: number
+  ) => void;
   parseAmountLike: typeof import("../../lib/amount").parseAmountLike;
   makeId: typeof import("../../lib/ringUtils").makeId;
   ringCategory: typeof import("../../lib/ringUtils").ringCategory;
@@ -117,11 +121,11 @@ setQuickType: ComponentProps<
     SetStateAction<boolean>
   >;
   goalModalOpen: boolean;
-goalFocusCategory: string | null;
-goalAssetKey: string;
-ringCategories: string[];
-resolveCategoryLabel: (category: string) => string;
-closeGoalEditor: () => void;
+  goalFocusCategory: string | null;
+  goalAssetKey: string;
+  ringCategories: string[];
+  resolveCategoryLabel: (category: string) => string;
+  closeGoalEditor: () => void;
 };
 
 export default function TransactionsModals({
@@ -164,28 +168,29 @@ export default function TransactionsModals({
   setExtraEditId,
   removeExtraRing,
   quickAddOpen,
-quickMeta,
-quickView,
-setQuickView,
-quickType,
-setQuickType,
-quickDate,
-setQuickDate,
-quickAmountStr,
-setQuickAmountStr,
-quickDetail,
-setQuickDetail,
-isSavingQuick,
-selectedYm,
-transactions,
-holdings,
-setHoldings,
-closeQuickAdd,
-saveQuickAdd,
-startEdit,
-parseAmountLike,
-makeId,
-ringCategory,
+  quickMeta,
+  quickView,
+  setQuickView,
+  quickType,
+  setQuickType,
+  quickDate,
+  setQuickDate,
+  quickAmountStr,
+  setQuickAmountStr,
+  quickDetail,
+  setQuickDetail,
+  isSavingQuick,
+  selectedYm,
+  transactions,
+  holdings,
+  setHoldings,
+  closeQuickAdd,
+  saveQuickAdd,
+  startEdit,
+  updateTransactionAmount,
+  parseAmountLike,
+  makeId,
+  ringCategory,
 
   showUserKeyUi,
   keyEditingOpen,
@@ -195,11 +200,11 @@ ringCategory,
   regenerateUserKey,
   setKeyEditingOpen,
   goalModalOpen,
-goalFocusCategory,
-goalAssetKey,
-ringCategories,
-resolveCategoryLabel,
-closeGoalEditor,
+  goalFocusCategory,
+  goalAssetKey,
+  ringCategories,
+  resolveCategoryLabel,
+  closeGoalEditor,
 
 }: Props) {
   return (
@@ -304,47 +309,48 @@ closeGoalEditor,
         />
       )}
       {goalModalOpen && (
-  <GoalModal
-    userKey={userKey}
-    goalFocusCategory={goalFocusCategory}
-    goalAssetKey={goalAssetKey}
-    ringCategories={ringCategories}
-    resolveLabel={(cat) => {
-      if (cat === goalAssetKey) {
-        return "総資産 目標";
-      }
+        <GoalModal
+          userKey={userKey}
+          goalFocusCategory={goalFocusCategory}
+          goalAssetKey={goalAssetKey}
+          ringCategories={ringCategories}
+          resolveLabel={(cat) => {
+            if (cat === goalAssetKey) {
+              return "総資産 目標";
+            }
 
-      return resolveCategoryLabel(cat);
-    }}
-    onClose={closeGoalEditor}
-  />
-)}
-{quickAddOpen && (
-  <QuickAddModal
-    meta={quickMeta}
-    quickView={quickView}
-    setQuickView={setQuickView}
-    quickType={quickType}
-    setQuickType={setQuickType}
-    quickDate={quickDate}
-    setQuickDate={setQuickDate}
-    quickAmountStr={quickAmountStr}
-    setQuickAmountStr={setQuickAmountStr}
-    quickDetail={quickDetail}
-    setQuickDetail={setQuickDetail}
-    isSavingQuick={isSavingQuick}
-    selectedYm={selectedYm}
-    transactions={transactions}
-    holdings={holdings}
-    setHoldings={setHoldings}
-    closeQuickAdd={closeQuickAdd}
-    saveQuickAdd={saveQuickAdd}
-    startEdit={startEdit}
-    parseAmountLike={parseAmountLike}
-    makeId={makeId}
-    ringCategory={ringCategory}
-  />
-)}
+            return resolveCategoryLabel(cat);
+          }}
+          onClose={closeGoalEditor}
+        />
+      )}
+      {quickAddOpen && (
+        <QuickAddModal
+          meta={quickMeta}
+          quickView={quickView}
+          setQuickView={setQuickView}
+          quickType={quickType}
+          setQuickType={setQuickType}
+          quickDate={quickDate}
+          setQuickDate={setQuickDate}
+          quickAmountStr={quickAmountStr}
+          setQuickAmountStr={setQuickAmountStr}
+          quickDetail={quickDetail}
+          setQuickDetail={setQuickDetail}
+          isSavingQuick={isSavingQuick}
+          selectedYm={selectedYm}
+          transactions={transactions}
+          holdings={holdings}
+          setHoldings={setHoldings}
+          closeQuickAdd={closeQuickAdd}
+          saveQuickAdd={saveQuickAdd}
+          startEdit={startEdit}
+          updateTransactionAmount={updateTransactionAmount}
+          parseAmountLike={parseAmountLike}
+          makeId={makeId}
+          ringCategory={ringCategory}
+        />
+      )}
     </>
   );
 }

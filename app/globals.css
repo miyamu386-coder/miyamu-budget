@@ -24,3 +24,101 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* =========================
+   Maker Bottom Navigation
+========================= */
+
+.maker-bottom-navigation {
+  position: fixed;
+  left: 50%;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+
+  transform: translateX(-50%);
+  z-index: 1000;
+
+  width: calc(100% - 24px);
+  max-width: 420px;
+
+  padding: 8px;
+
+  border-radius: 20px;
+
+  background: rgba(255,
+      255,
+      255,
+      0.94);
+
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.14);
+
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.maker-bottom-navigation-inner {
+  display: grid;
+  grid-template-columns:
+    repeat(3, 1fr);
+  gap: 8px;
+}
+
+.maker-bottom-navigation-button {
+  min-height: 48px;
+
+  padding: 0 8px;
+
+  border: none;
+  border-radius: 14px;
+
+  background: transparent;
+  color: #444;
+
+  font-size: 14px;
+  font-weight: 700;
+
+  cursor: pointer;
+
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    transform 0.15s ease;
+}
+
+.maker-bottom-navigation-button:active {
+  transform: scale(0.96);
+}
+
+.maker-bottom-navigation-button.is-active {
+  background: #222;
+  color: #fff;
+}
+
+.maker-add-ring-fixed {
+  position: fixed;
+  left: 50%;
+  bottom: calc(104px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 1001;
+
+  width: calc(100% - 32px);
+  max-width: 420px;
+}
+
+/* =========================
+   Maker Ring Fixed
+========================= */
+
+.maker-ring-fixed {
+  position: fixed;
+
+  left: 50%;
+  top: 20px;
+
+  transform: translateX(-50%);
+
+  width: 100%;
+  max-width: 980px;
+
+  z-index: 10;
+}

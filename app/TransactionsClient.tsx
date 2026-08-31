@@ -1,6 +1,5 @@
 "use client";
 
-import { M_PLUS_Rounded_1c } from "next/font/google";
 import { useRef, useState } from "react";
 import type { Transaction } from "./types";
 import {
@@ -9,7 +8,11 @@ import {
 } from "../lib/ringUtils";
 import { parseAmountLike } from "../lib/amount";
 import { useLongPressHandlers } from "../lib/useLongPressHandlers";
-
+import MakerBottomNavigation, {
+  type MakerTab,
+} from "./components/MakerBottomNavigation";
+import MakerReportView from "./components/MakerReportView";
+import MakerMyPageView from "./components/MakerMyPageView";
 import { useHoldings } from "./components/useHoldings";
 import { useExtraRings } from "./components/useExtraRings";
 import { useTransactions } from "./components/useTransactions";
@@ -26,14 +29,13 @@ import CenterAssetRing from "./components/CenterAssetRing";
 import ExtraRingLayer from "./components/ExtraRingLayer";
 import AddRingButton from "./components/AddRingButton";
 import HeaderBar from "./components/HeaderBar";
-import ActionBar from "./components/ActionBar";
 import { useQuickAddSave } from "./components/useQuickAddSave";
 import { useBackupManager } from "./components/useBackupManager";
 import { useCenterAssetCard } from "./components/useCenterAssetCard";
 import { useResponsiveLayout } from "./components/useResponsiveLayout";
 import { useCategoryLabels } from "./components/useCategoryLabels";
-import { useOrbitPositions } from "./components/useOrbitPositions";
 import { useOrbitDrag } from "./components/useOrbitDrag";
+import { useOrbitPositions } from "./components/useOrbitPositions";
 import { useReportActions } from "./components/useReportActions";
 import { useClientReady } from "./components/useClientReady";
 import TransactionsModals from "./components/TransactionsModals";
@@ -46,12 +48,6 @@ type Props = {
 // ローカル開発だけ表示
 const SHOW_USERKEY_UI =
   process.env.NODE_ENV !== "production";
-
-const makerTitleFont = M_PLUS_Rounded_1c({
-  weight: "800",
-  subsets: ["latin"],
-  display: "swap",
-});
 
 // ✅ 安全設計：固定3 + 追加10 = 合計13
 const FIXED_LIFE_KEY = "life";
@@ -72,7 +68,6 @@ export default function TransactionsClient({
 
   const [selectedRing, setSelectedRing] =
     useState<string | null>(null);
-
   const [orbitOffset, setOrbitOffset] =
     useState(0);
 
@@ -85,8 +80,14 @@ export default function TransactionsClient({
     setOrbitOffset,
   });
 
+
   const [mainView, setMainView] =
     useState<"input" | "history">("input");
+  const [makerTab, setMakerTab] =
+    useState<MakerTab>("home");
+  const [isExportingReport, setIsExportingReport] =
+    useState(false);
+
 
   // =========================
   // ユーザーキー
@@ -125,6 +126,18 @@ export default function TransactionsClient({
     userKey,
     initialTransactions
   );
+  const updateTransactionAmount = (
+    id: number,
+    amount: number
+  ) => {
+    setTransactions((prev) =>
+      prev.map((t) =>
+        t.id === id
+          ? { ...t, amount }
+          : t
+      )
+    );
+  };
 
   // =========================
   // ✅ A案：
@@ -359,7 +372,7 @@ export default function TransactionsClient({
 
   const {
     shouldIgnoreClick:
-      shouldIgnoreAsset,
+    shouldIgnoreAsset,
     ...lpGoalAssetProps
   } = lpGoalAsset;
 
@@ -375,31 +388,29 @@ export default function TransactionsClient({
     monthSummary,
     resolveCategoryLabel,
   });
+  const handleExportMonthlyImage =
+    async () => {
+      setIsExportingReport(true);
+
+      await new Promise<void>((resolve) => {
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(() => {
+            resolve();
+          });
+        });
+      });
+
+      try {
+        await exportMonthlyImage();
+      } finally {
+        setIsExportingReport(false);
+      }
+    };
+
 
   if (!mounted) return null;
 
-  // =========================
-  // 履歴画面
-  // =========================
-  if (mainView === "history") {
-    return (
-      <TransactionHistoryView
-        selectedYm={selectedYm}
-        setSelectedYm={setSelectedYm}
-        transactions={monthTransactions}
-        editing={editing}
-        setEditing={setEditing}
-        setTransactions={setTransactions}
-        resolveCategoryLabel={
-          resolveCategoryLabel
-        }
-        startEdit={setEditing}
-        onBack={() =>
-          setMainView("input")
-        }
-      />
-    );
-  }
+
 
   // =========================
   // メイン画面
@@ -558,6 +569,7 @@ export default function TransactionsClient({
         }
         saveQuickAdd={saveQuickAdd}
         startEdit={setEditing}
+        updateTransactionAmount={updateTransactionAmount}
         parseAmountLike={
           parseAmountLike
         }
@@ -567,40 +579,43 @@ export default function TransactionsClient({
         }
       />
 
-      <h1
-        className={
-          makerTitleFont.className
-        }
-        style={{
-          margin: "0 0 12px",
-          fontSize: 36,
-          fontWeight: 800,
-          letterSpacing: "-0.02em",
-          textAlign: "center",
-        }}
-      >
-        みやむMaker
-      </h1>
-
-      <HeaderBar
-        selectedYm={selectedYm}
-        setSelectedYm={
-          setSelectedYm
-        }
-      />
+      {makerTab === "home" && (
+        <div
+          style={{
+            position: "relative",
+            zIndex: 4,
+          }}
+        >
+          <HeaderBar
+            selectedYm={selectedYm}
+            setSelectedYm={
+              setSelectedYm
+            }
+          />
+        </div>
+      )}
 
       <div
         id="miyamu-report"
         ref={layoutRef}
+        className="maker-ring-fixed"
         style={{
-          maxWidth: 980,
-          margin: "0 auto",
+          pointerEvents:
+            makerTab === "home"
+              ? "auto"
+              : "none",
+          zIndex:
+            makerTab === "home" || isExportingReport
+              ? 3
+              : 0,
+          visibility:
+            makerTab === "home" || isExportingReport
+              ? "visible"
+              : "hidden",
         }}
       >
         <div
-          onTouchStart={
-            onTouchStart
-          }
+          onTouchStart={onTouchStart}
           onTouchMove={onTouchMove}
           onTouchEnd={onTouchEnd}
           style={{
@@ -608,20 +623,16 @@ export default function TransactionsClient({
             width: "100%",
             height: areaH,
             display: "flex",
-            justifyContent:
-              "center",
+            justifyContent: "center",
             alignItems: "center",
             touchAction: "none",
           }}
         >
           <WatchMofuDisplay
             isMobile={isMobile}
-            speech={
-              watchMofuSpeech
-            }
+            speech={watchMofuSpeech}
           />
 
-          {/* 中央：総資産 */}
           <CenterAssetRing
             centerCard={centerCard}
             totalAssetBalance={
@@ -630,9 +641,7 @@ export default function TransactionsClient({
             isMobile={isMobile}
             bigSize={bigSize}
             strokeBig={strokeBig}
-            outwardBig={
-              outwardBig
-            }
+            outwardBig={outwardBig}
             longPressProps={
               lpGoalAssetProps
             }
@@ -645,16 +654,12 @@ export default function TransactionsClient({
             extraPositions={
               extraPositions
             }
-            extraRings={
-              extraRings
-            }
+            extraRings={extraRings}
             extraComputed={
               extraComputed
             }
             ringGoals={ringGoals}
-            glowRingId={
-              glowRingId
-            }
+            glowRingId={glowRingId}
             selectedRing={
               selectedRing
             }
@@ -683,43 +688,78 @@ export default function TransactionsClient({
             }
           />
         </div>
-
-        <AddRingButton
-          canAddExtra={
-            canAddExtra
-          }
-          maxExtraRings={
-            maxExtraRings
-          }
-          extraRingCount={
-            extraRings.length
-          }
-          onOpenCreate={
-            openCreate
-          }
-        />
-
-        <ActionBar
-          exportMonthlyImage={
-            exportMonthlyImage
-          }
-          openPrintView={
-            openPrintView
-          }
-          exportBackup={
-            exportBackup
-          }
-          importFileRef={
-            importFileRef
-          }
-          importBackup={
-            importBackup
-          }
-          setMainView={
-            setMainView
-          }
-        />
       </div>
+
+      {makerTab === "home" && (
+        <div className="maker-add-ring-fixed">
+          <AddRingButton
+            canAddExtra={canAddExtra}
+            maxExtraRings={maxExtraRings}
+            extraRingCount={
+              extraRings.length
+            }
+            onOpenCreate={openCreate}
+          />
+        </div>
+      )}
+
+      {makerTab === "report" && (
+        <div
+          style={{
+            position: "relative",
+            zIndex: 2,
+            minHeight: "100vh",
+            background: "#fff",
+          }}
+        >
+          {mainView === "history" ? (
+            <TransactionHistoryView
+              selectedYm={selectedYm}
+              setSelectedYm={setSelectedYm}
+              transactions={monthTransactions}
+              editing={editing}
+              setEditing={setEditing}
+              setTransactions={setTransactions}
+              resolveCategoryLabel={
+                resolveCategoryLabel
+              }
+              startEdit={setEditing}
+              onBack={() =>
+                setMainView("input")
+              }
+            />
+          ) : (
+            <MakerReportView
+              onOpenHistory={() =>
+                setMainView("history")
+              }
+              onExportMonthlyImage={
+                handleExportMonthlyImage
+              }
+              onOpenPrintView={
+                openPrintView
+              }
+            />
+          )}
+        </div>
+      )}
+
+      {makerTab === "mypage" && (
+        <MakerMyPageView
+          exportBackup={exportBackup}
+          importFileRef={importFileRef}
+          importBackup={importBackup}
+        />
+      )}
+
+      <MakerBottomNavigation
+        activeTab={
+          makerTab
+        }
+        onChange={
+          setMakerTab
+        }
+      />
     </div>
   );
 }

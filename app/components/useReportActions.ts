@@ -33,14 +33,14 @@ export function useReportActions({
     });
   };
 
-  const exportMonthlyImage = () => {
-    return exportElementImage(
-      "miyamu-report",
-      `miyamu-report-${selectedYm}.png`,
-      "レポートが見つかりません",
-      "画像作成に失敗しました"
-    );
-  };
+const exportMonthlyImage = () => {
+  return exportElementImage(
+    "miyamu-report",
+    `miyamu-report-${selectedYm}.png`,
+    "レポートが見つかりません",
+    "画像作成に失敗しました"
+  );
+};
 
   return {
     openPrintView,
