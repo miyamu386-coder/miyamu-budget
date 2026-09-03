@@ -27,7 +27,7 @@ import { useRingGoals } from "./components/useRingGoals";
 import WatchMofuDisplay from "./components/WatchMofuDisplay";
 import CenterAssetRing from "./components/CenterAssetRing";
 import ExtraRingLayer from "./components/ExtraRingLayer";
-import AddRingButton from "./components/AddRingButton";
+import RingManagementView from "./components/RingManagementView";
 import HeaderBar from "./components/HeaderBar";
 import { useQuickAddSave } from "./components/useQuickAddSave";
 import { useBackupManager } from "./components/useBackupManager";
@@ -39,6 +39,7 @@ import { useOrbitPositions } from "./components/useOrbitPositions";
 import { useReportActions } from "./components/useReportActions";
 import { useClientReady } from "./components/useClientReady";
 import TransactionsModals from "./components/TransactionsModals";
+
 
 type Props = {
   initialTransactions: Transaction[];
@@ -87,7 +88,8 @@ export default function TransactionsClient({
     useState<MakerTab>("home");
   const [isExportingReport, setIsExportingReport] =
     useState(false);
-
+  const [homeView, setHomeView] =
+    useState<"rings" | "manage">("rings");
 
   // =========================
   // ユーザーキー
@@ -579,21 +581,22 @@ export default function TransactionsClient({
         }
       />
 
-      {makerTab === "home" && (
-        <div
-          style={{
-            position: "relative",
-            zIndex: 4,
-          }}
-        >
-          <HeaderBar
-            selectedYm={selectedYm}
-            setSelectedYm={
-              setSelectedYm
-            }
-          />
-        </div>
-      )}
+      {makerTab === "home" &&
+        homeView === "rings" && (
+          <div
+            style={{
+              position: "relative",
+              zIndex: 4,
+            }}
+          >
+            <HeaderBar
+              selectedYm={selectedYm}
+              setSelectedYm={
+                setSelectedYm
+              }
+            />
+          </div>
+        )}
 
       <div
         id="miyamu-report"
@@ -601,15 +604,20 @@ export default function TransactionsClient({
         className="maker-ring-fixed"
         style={{
           pointerEvents:
-            makerTab === "home"
+            makerTab === "home" &&
+              homeView === "rings"
               ? "auto"
               : "none",
           zIndex:
-            makerTab === "home" || isExportingReport
+            (makerTab === "home" &&
+              homeView === "rings") ||
+              isExportingReport
               ? 3
               : 0,
           visibility:
-            makerTab === "home" || isExportingReport
+            (makerTab === "home" &&
+              homeView === "rings") ||
+              isExportingReport
               ? "visible"
               : "hidden",
         }}
@@ -690,18 +698,19 @@ export default function TransactionsClient({
         </div>
       </div>
 
-      {makerTab === "home" && (
-        <div className="maker-add-ring-fixed">
-          <AddRingButton
+      {makerTab === "home" &&
+        homeView === "manage" && (
+          <RingManagementView
+            extraRings={extraRings}
             canAddExtra={canAddExtra}
             maxExtraRings={maxExtraRings}
-            extraRingCount={
-              extraRings.length
-            }
             onOpenCreate={openCreate}
+            onOpenEdit={openExtraEdit}
+            onBack={() =>
+              setHomeView("rings")
+            }
           />
-        </div>
-      )}
+        )}
 
       {makerTab === "report" && (
         <div
@@ -753,12 +762,17 @@ export default function TransactionsClient({
       )}
 
       <MakerBottomNavigation
-        activeTab={
-          makerTab
-        }
-        onChange={
-          setMakerTab
-        }
+        activeTab={makerTab}
+        onChange={(tab) => {
+          if (tab === "home") {
+            setMakerTab("home");
+            setHomeView("manage");
+            return;
+          }
+
+          setMakerTab(tab);
+          setHomeView("rings");
+        }}
       />
     </div>
   );
