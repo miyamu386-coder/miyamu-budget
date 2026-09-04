@@ -16,6 +16,7 @@ import {
 type Props = {
   userKey: string;
   ringCategories: string[];
+  goalFocusCategory?: string | null;
   resolveLabel?: (category: string) => string;
   onSaved?: () => void;
 };
@@ -23,6 +24,7 @@ type Props = {
 export default function RingGoalEditor({
   userKey,
   ringCategories,
+  goalFocusCategory,
   resolveLabel,
   onSaved,
 }: Props) {
@@ -62,14 +64,18 @@ export default function RingGoalEditor({
     };
   }, [userKey, ringCategories]);
 
-  const cats = useMemo(() => {
-    const uniq =
-      Array.from(new Set(ringCategories));
+ const cats = useMemo(() => {
+  if (goalFocusCategory) {
+    return [goalFocusCategory];
+  }
 
-    uniq.sort();
+  const uniq =
+    Array.from(new Set(ringCategories));
 
-    return uniq;
-  }, [ringCategories]);
+  uniq.sort();
+
+  return uniq;
+}, [ringCategories, goalFocusCategory]);
 
   if (cats.length === 0) return null;
 

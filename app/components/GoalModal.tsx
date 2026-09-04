@@ -93,6 +93,7 @@ export default function GoalModal({
           <RingGoalEditor
   userKey={userKey}
   ringCategories={ringCategories}
+  goalFocusCategory={goalFocusCategory}
   resolveLabel={resolveLabel}
 />
         </div>

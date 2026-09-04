@@ -89,7 +89,9 @@ export default function TransactionsClient({
   const [isExportingReport, setIsExportingReport] =
     useState(false);
   const [homeView, setHomeView] =
-    useState<"rings" | "manage">("rings");
+    useState<"rings" | "manage">("manage");
+  const [detectiveMofuOpen, setDetectiveMofuOpen] =
+    useState(false);
 
   // =========================
   // ユーザーキー
@@ -365,10 +367,13 @@ export default function TransactionsClient({
   // =========================
   const lpGoalAsset =
     useLongPressHandlers(
-      () =>
-        openGoalEditor(
-          GOAL_ASSET_KEY
-        ),
+      () => {
+        setDetectiveMofuOpen(true);
+
+        window.setTimeout(() => {
+          setDetectiveMofuOpen(false);
+        }, 3000);
+      },
       650
     );
 
@@ -622,6 +627,7 @@ export default function TransactionsClient({
               : "hidden",
         }}
       >
+
         <div
           onTouchStart={onTouchStart}
           onTouchMove={onTouchMove}
@@ -657,7 +663,71 @@ export default function TransactionsClient({
               shouldIgnoreAsset
             }
           />
+          {detectiveMofuOpen && (
+            <div
+              style={{
+                position: "absolute",
+                left: "50%",
+                top: isMobile ? "95px" : "80px",
+                transform: "translateX(-50%)",
+                zIndex: 40,
+                pointerEvents: "none",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                animation:
+                  "detectiveMofuAppear 220ms ease-out both",
+              }}
+            >
+              <div
+                style={{
+                  position: "relative",
+                  marginBottom: 8,
+                  padding: "10px 14px",
+                  borderRadius: 14,
+                  background: "rgba(255,255,255,0.96)",
+                  border:
+                    "1px solid rgba(0,0,0,0.10)",
+                  boxShadow:
+                    "0 10px 24px rgba(0,0,0,0.14)",
+                  fontSize: isMobile ? 14 : 16,
+                  fontWeight: 900,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                資産状況、確認しろよ？
 
+                <div
+                  style={{
+                    position: "absolute",
+                    left: "50%",
+                    bottom: -7,
+                    transform:
+                      "translateX(-50%) rotate(45deg)",
+                    width: 14,
+                    height: 14,
+                    background:
+                      "rgba(255,255,255,0.96)",
+                    borderRight:
+                      "1px solid rgba(0,0,0,0.10)",
+                    borderBottom:
+                      "1px solid rgba(0,0,0,0.10)",
+                  }}
+                />
+              </div>
+
+              <img
+                src="/mofu-detective-chibi.png"
+                alt="探偵モフ"
+                style={{
+                  width: isMobile ? 150 : 220,
+                  height: "auto",
+                  filter:
+                    "drop-shadow(0 14px 24px rgba(0,0,0,0.18))",
+                }}
+              />
+            </div>
+          )}
           <ExtraRingLayer
             extraPositions={
               extraPositions
@@ -688,13 +758,32 @@ export default function TransactionsClient({
             openQuickAdd={
               openQuickAdd
             }
-            openExtraEdit={
-              openExtraEdit
+            openGoalEditor={
+              openGoalEditor
             }
             setSelectedRing={
               setSelectedRing
             }
           />
+          <style jsx>{`
+  @keyframes detectiveMofuAppear {
+    from {
+      opacity: 0;
+      transform:
+        translateX(-50%)
+        translateY(14px)
+        scale(0.96);
+    }
+
+    to {
+      opacity: 1;
+      transform:
+        translateX(-50%)
+        translateY(0)
+        scale(1);
+    }
+  }
+`}</style>
         </div>
       </div>
 

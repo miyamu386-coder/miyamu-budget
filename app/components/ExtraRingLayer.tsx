@@ -22,7 +22,7 @@ type Props = {
   getRingSums: any;
   openHoldingsView: any;
   openQuickAdd: any;
-  openExtraEdit: any;
+  openGoalEditor: any;
   setSelectedRing: any;
 };
 
@@ -49,7 +49,7 @@ export default function ExtraRingLayer({
   getRingSums,
   openHoldingsView,
   openQuickAdd,
-  openExtraEdit,
+  openGoalEditor,
   setSelectedRing,
 }: Props) {
   return (
@@ -66,37 +66,37 @@ export default function ExtraRingLayer({
 
         const repayInfo: RepayInfo | undefined = showRepay
           ? (() => {
-              const totalDebt = getTarget(
-                ringGoals,
-                ringCategory(r.ringKey)
-              );
+            const totalDebt = getTarget(
+              ringGoals,
+              ringCategory(r.ringKey)
+            );
 
-              const repaidTotal = getRingSums(
-                r.ringKey,
-                true
-              ).income;
+            const repaidTotal = getRingSums(
+              r.ringKey,
+              true
+            ).income;
 
-              const monthlyPayment = getRingSums(
-                r.ringKey,
-                false
-              ).income;
+            const monthlyPayment = getRingSums(
+              r.ringKey,
+              false
+            ).income;
 
-              const result = calcRepayment({
-                totalDebt,
-                repaidTotal,
-                monthlyPayment,
-                asOf: asOf ?? new Date(0),
-              });
+            const result = calcRepayment({
+              totalDebt,
+              repaidTotal,
+              monthlyPayment,
+              asOf: asOf ?? new Date(0),
+            });
 
-              return {
-                enabled: totalDebt > 0,
-                progressPct: result.progressPct,
-                remaining: result.remaining,
-                months: result.months,
-                payoffDate: result.payoffDate,
-                message: result.message,
-              };
-            })()
+            return {
+              enabled: totalDebt > 0,
+              progressPct: result.progressPct,
+              remaining: result.remaining,
+              months: result.months,
+              payoffDate: result.payoffDate,
+              message: result.message,
+            };
+          })()
           : undefined;
 
         return (
@@ -129,8 +129,8 @@ export default function ExtraRingLayer({
                 defaultType
               );
             }}
-            onLongPressEditRing={(id) =>
-              openExtraEdit(id)
+            onLongPressGoal={() =>
+              openGoalEditor(catKey)
             }
           />
         );

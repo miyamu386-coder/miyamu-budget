@@ -166,7 +166,7 @@ export default function ExtraRingButton({
   strokeSmall,
   outwardSmall,
   onTapAdd,
-  onLongPressEditRing,
+  onLongPressGoal,
   repayInfo,
   isGlowing = false,
   selected = false,
@@ -189,7 +189,7 @@ export default function ExtraRingButton({
   strokeSmall: number;
   outwardSmall: number;
   onTapAdd: (id: string, defaultType: TxType) => void;
-  onLongPressEditRing: (id: string) => void;
+  onLongPressGoal: (id: string) => void;
   repayInfo?: RepayInfo;
   isGlowing?: boolean;
   selected?: boolean;
@@ -200,7 +200,7 @@ export default function ExtraRingButton({
 
   const prog = target > 0 ? clamp01(valueForProgress / target) : 0;
 
-  const lp = useLongPressHandlers(() => onLongPressEditRing(id), 650);
+  const lp = useLongPressHandlers(() => onLongPressGoal(id), 650);
   const { shouldIgnoreClick, ...lpProps } = lp;
 
   const defaultType: TxType = mode === "income_only" ? "income" : "expense";
