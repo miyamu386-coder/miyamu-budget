@@ -71,11 +71,10 @@ export default function GoalModal({
         >
           リング目標を編集
           {goalFocusCategory
-            ? `：${
-                goalFocusCategory === goalAssetKey
-                  ? "総資産"
-                  : resolveLabel(goalFocusCategory)
-              }`
+            ? `：${goalFocusCategory === goalAssetKey
+              ? "総資産"
+              : resolveLabel(goalFocusCategory)
+            }`
             : ""}
         </div>
 
@@ -91,11 +90,11 @@ export default function GoalModal({
           onTouchMove={(e) => e.stopPropagation()}
         >
           <RingGoalEditor
-  userKey={userKey}
-  ringCategories={ringCategories}
-  goalFocusCategory={goalFocusCategory}
-  resolveLabel={resolveLabel}
-/>
+            userKey={userKey}
+            ringCategories={ringCategories}
+            goalFocusCategory={goalFocusCategory}
+            resolveLabel={resolveLabel}
+          />
         </div>
 
         <div

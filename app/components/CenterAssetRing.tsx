@@ -23,6 +23,7 @@ type Props = {
   outwardBig: number;
   longPressProps: Record<string, unknown>;
   shouldIgnoreClick: () => boolean;
+  onClick: () => void;
 };
 
 export default function CenterAssetRing({
@@ -34,6 +35,7 @@ export default function CenterAssetRing({
   outwardBig,
   longPressProps,
   shouldIgnoreClick,
+  onClick,
 }: Props) {
   return (
     <button
@@ -44,6 +46,8 @@ export default function CenterAssetRing({
           event.preventDefault();
           return;
         }
+
+        onClick();
       }}
       style={{
         width: bigSize,

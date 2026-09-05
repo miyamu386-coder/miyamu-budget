@@ -64,18 +64,18 @@ export default function RingGoalEditor({
     };
   }, [userKey, ringCategories]);
 
- const cats = useMemo(() => {
-  if (goalFocusCategory) {
-    return [goalFocusCategory];
-  }
+  const cats = useMemo(() => {
+    if (goalFocusCategory) {
+      return [goalFocusCategory];
+    }
 
-  const uniq =
-    Array.from(new Set(ringCategories));
+    const uniq =
+      Array.from(new Set(ringCategories));
 
-  uniq.sort();
+    uniq.sort();
 
-  return uniq;
-}, [ringCategories, goalFocusCategory]);
+    return uniq;
+  }, [ringCategories, goalFocusCategory]);
 
   if (cats.length === 0) return null;
 

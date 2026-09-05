@@ -89,7 +89,7 @@ export default function TransactionsClient({
   const [isExportingReport, setIsExportingReport] =
     useState(false);
   const [homeView, setHomeView] =
-    useState<"rings" | "manage">("manage");
+    useState<"rings" | "manage">("rings");
   const [detectiveMofuOpen, setDetectiveMofuOpen] =
     useState(false);
 
@@ -662,6 +662,9 @@ export default function TransactionsClient({
             shouldIgnoreClick={
               shouldIgnoreAsset
             }
+            onClick={() =>
+              openGoalEditor(GOAL_ASSET_KEY)
+            }
           />
           {detectiveMofuOpen && (
             <div
@@ -854,7 +857,12 @@ export default function TransactionsClient({
         activeTab={makerTab}
         onChange={(tab) => {
           if (tab === "home") {
-            setMakerTab("home");
+            if (makerTab !== "home") {
+              setMakerTab("home");
+              setHomeView("rings");
+              return;
+            }
+
             setHomeView("manage");
             return;
           }
