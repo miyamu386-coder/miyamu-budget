@@ -1,9 +1,15 @@
 "use client";
 
 import {
+    useEffect,
     useState,
     type RefObject,
 } from "react";
+
+import {
+    isSoundEnabled,
+    setSoundEnabled,
+} from "../../lib/sound";
 
 type Props = {
     exportBackup: () => void;
@@ -19,9 +25,84 @@ export default function MakerMyPageView({
     importBackup,
 }: Props) {
     const [view, setView] =
-        useState<"menu" | "settings">("menu");
+        useState<
+            "menu" | "settings" | "about"
+        >("menu");
+
+    const [soundEnabled, setSoundEnabledState] =
+        useState(true);
+
+    useEffect(() => {
+        setSoundEnabledState(
+            isSoundEnabled()
+        );
+    }, []);
 
     if (view === "settings") {
+        return (
+            <section
+                style={{
+                    maxWidth: 520,
+                    margin: "0 auto",
+                    padding: "24px 0 110px",
+                }}
+            >
+                <button
+                    type="button"
+                    onClick={() =>
+                        setView("menu")
+                    }
+                    style={buttonStyle}
+                >
+                    ← マイページへ戻る
+                </button>
+
+                <h2
+                    style={{
+                        margin: "20px 0",
+                        fontSize: 24,
+                        fontWeight: 800,
+                        textAlign: "center",
+                    }}
+                >
+                    設定
+                </h2>
+
+                <button
+                    type="button"
+                    onClick={() => {
+                        const next =
+                            !soundEnabled;
+
+                        setSoundEnabledState(
+                            next
+                        );
+
+                        setSoundEnabled(
+                            next
+                        );
+                    }}
+                    style={{
+                        ...buttonStyle,
+                        width: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent:
+                            "space-between",
+                    }}
+                >
+                    <span>効果音</span>
+
+                    <span>
+                        {soundEnabled
+                            ? "ON 🔊"
+                            : "OFF 🔇"}
+                    </span>
+                </button>
+            </section>
+        );
+    }
+    if (view === "about") {
         return (
             <section
                 style={{
@@ -162,6 +243,16 @@ export default function MakerMyPageView({
                     type="button"
                     onClick={() =>
                         setView("settings")
+                    }
+                    style={buttonStyle}
+                >
+                    設定
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() =>
+                        setView("about")
                     }
                     style={buttonStyle}
                 >

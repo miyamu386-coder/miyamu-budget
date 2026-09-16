@@ -39,7 +39,7 @@ import { useOrbitPositions } from "./components/useOrbitPositions";
 import { useReportActions } from "./components/useReportActions";
 import { useClientReady } from "./components/useClientReady";
 import TransactionsModals from "./components/TransactionsModals";
-
+import { playSound } from "../lib/sound";
 
 type Props = {
   initialTransactions: Transaction[];
@@ -368,9 +368,13 @@ export default function TransactionsClient({
       () => {
         setDetectiveMofuOpen(true);
 
+        playSound(
+          "/sounds/mofu-check-assets.mp3"
+        );
+
         window.setTimeout(() => {
           setDetectiveMofuOpen(false);
-        }, 3000);
+        }, 5500);
       },
       650
     );

@@ -8,6 +8,7 @@ import {
 } from "../../lib/ringUtils";
 import { decideSaveReaction } from "./useSaveEffects";
 import type { RingGoal } from "../../lib/ringGoals";
+import { playSound } from "../../lib/sound";
 
 type SaveReactionInput =
   Parameters<typeof decideSaveReaction>[0];
@@ -32,13 +33,13 @@ type Params = {
   fixedLifeKey: string;
   fixedSaveKey: string;
 
-getRingSums: (
-  ringKey: string,
-  useCarry: boolean
-) => {
-  income: number;
-  expense: number;
-};
+  getRingSums: (
+    ringKey: string,
+    useCarry: boolean
+  ) => {
+    income: number;
+    expense: number;
+  };
 
   triggerSaveOverlay: (
     kind: SaveReactionResult["kind"],
@@ -50,10 +51,10 @@ getRingSums: (
   setPayoffModal: (
     value:
       | {
-          title: string;
-          amount: number;
-          date: string;
-        }
+        title: string;
+        amount: number;
+        date: string;
+      }
       | null
   ) => void;
 };
@@ -74,6 +75,12 @@ export function useQuickAddSave({
     try {
       const { meta, type, amount } =
         await saveQuickTransaction();
+      if (type === "income") {
+        playSound("/sounds/income.mp3");
+      } else {
+        playSound("/sounds/expense.mp3");
+      }
+
 
       const reaction = decideSaveReaction({
         ...meta,
@@ -116,7 +123,7 @@ export function useQuickAddSave({
           Math.max(
             0,
             totalDebt -
-              nextRepaidTotal
+            nextRepaidTotal
           );
 
         if (
