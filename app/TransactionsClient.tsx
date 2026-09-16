@@ -86,8 +86,6 @@ export default function TransactionsClient({
     useState<"input" | "history">("input");
   const [makerTab, setMakerTab] =
     useState<MakerTab>("home");
-  const [isExportingReport, setIsExportingReport] =
-    useState(false);
   const [homeView, setHomeView] =
     useState<"rings" | "manage">("rings");
   const [detectiveMofuOpen, setDetectiveMofuOpen] =
@@ -386,33 +384,12 @@ export default function TransactionsClient({
   // =========================
   // ✅ レポート
   // =========================
-  const {
-    openPrintView,
-    exportMonthlyImage,
-  } = useReportActions({
+  const { openPrintView } = useReportActions({
     selectedYm,
     monthTransactions,
     monthSummary,
     resolveCategoryLabel,
   });
-  const handleExportMonthlyImage =
-    async () => {
-      setIsExportingReport(true);
-
-      await new Promise<void>((resolve) => {
-        window.requestAnimationFrame(() => {
-          window.requestAnimationFrame(() => {
-            resolve();
-          });
-        });
-      });
-
-      try {
-        await exportMonthlyImage();
-      } finally {
-        setIsExportingReport(false);
-      }
-    };
 
 
   if (!mounted) return null;
@@ -614,15 +591,13 @@ export default function TransactionsClient({
               ? "auto"
               : "none",
           zIndex:
-            (makerTab === "home" &&
-              homeView === "rings") ||
-              isExportingReport
+            makerTab === "home" &&
+              homeView === "rings"
               ? 3
               : 0,
           visibility:
-            (makerTab === "home" &&
-              homeView === "rings") ||
-              isExportingReport
+            makerTab === "home" &&
+              homeView === "rings"
               ? "visible"
               : "hidden",
         }}
@@ -833,9 +808,6 @@ export default function TransactionsClient({
             <MakerReportView
               onOpenHistory={() =>
                 setMainView("history")
-              }
-              onExportMonthlyImage={
-                handleExportMonthlyImage
               }
               onOpenPrintView={
                 openPrintView

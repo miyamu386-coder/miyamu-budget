@@ -30,8 +30,8 @@ export function buildOrbitPositions({
 
   const selectedIndex = selectedRing
     ? extraRings.findIndex(
-        (ring) => ring.id === selectedRing
-      )
+      (ring) => ring.id === selectedRing
+    )
     : 0;
 
   return extraRings.map((ring, index) => {

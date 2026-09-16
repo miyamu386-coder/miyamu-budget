@@ -256,8 +256,8 @@ function buildMonthlyReportHtml(params: {
 
   <div class="box">
     <div class="box-title">
-      支出内訳（detailCategory）
-    </div>
+  支出内訳
+</div>
 
     <table>
       <thead>
@@ -289,11 +289,11 @@ function buildMonthlyReportHtml(params: {
     <table>
       <thead>
         <tr>
-          <th>日付</th>
-          <th>種別</th>
-          <th class="right">金額</th>
-          <th>リング</th>
-          <th>detailCategory</th>
+         <th>日付</th>
+<th>種別</th>
+<th class="right">金額</th>
+<th>リング</th>
+<th>内訳</th>
         </tr>
       </thead>
 

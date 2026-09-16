@@ -1,6 +1,5 @@
 "use client";
 
-import { exportElementImage } from "../../lib/exportImage";
 import { openMonthlyPrintView } from "../../lib/monthlyReport";
 
 type MonthSummary = Parameters<
@@ -33,17 +32,7 @@ export function useReportActions({
     });
   };
 
-const exportMonthlyImage = () => {
-  return exportElementImage(
-    "miyamu-report",
-    `miyamu-report-${selectedYm}.png`,
-    "レポートが見つかりません",
-    "画像作成に失敗しました"
-  );
-};
-
   return {
     openPrintView,
-    exportMonthlyImage,
   };
 }

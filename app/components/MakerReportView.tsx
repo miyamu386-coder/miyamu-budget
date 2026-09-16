@@ -2,13 +2,11 @@
 
 type Props = {
     onOpenHistory: () => void;
-    onExportMonthlyImage: () => void;
     onOpenPrintView: () => void;
 };
 
 export default function MakerReportView({
     onOpenHistory,
-    onExportMonthlyImage,
     onOpenPrintView,
 }: Props) {
     return (
@@ -41,14 +39,6 @@ export default function MakerReportView({
                     style={buttonStyle}
                 >
                     取引履歴
-                </button>
-
-                <button
-                    type="button"
-                    onClick={onExportMonthlyImage}
-                    style={buttonStyle}
-                >
-                    月レポート保存
                 </button>
 
                 <button
