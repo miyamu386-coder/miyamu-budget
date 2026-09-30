@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import TransactionList from "../TransactionList";
 import { Transaction } from "../types";
 import { fmtYM, addMonths } from "../../lib/dateUtils";
@@ -32,6 +33,9 @@ export default function TransactionHistoryView({
   startEdit,
   onBack,
 }: Props) {
+  const [editingAmountStr, setEditingAmountStr] =
+    useState("");
+
   return (
     <div
       style={{
@@ -100,10 +104,84 @@ export default function TransactionHistoryView({
           ▶
         </button>
       </div>
+      {editing && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: 14,
+            borderRadius: 12,
+            border: "1px solid #ddd",
+            background: "#fafafa",
+          }}
+        >
+          <div
+            style={{
+              fontWeight: 900,
+              marginBottom: 8,
+            }}
+          >
+            金額変更
+          </div>
+
+          <input
+            value={editingAmountStr}
+            onChange={(e) =>
+              setEditingAmountStr(e.target.value)
+            }
+            inputMode="text"
+            style={{
+              width: "100%",
+              padding: 12,
+              borderRadius: 12,
+              border: "1px solid #ddd",
+              fontSize: 16,
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              const amount = Number(
+                editingAmountStr.replace(/,/g, "")
+              );
+
+              if (!Number.isFinite(amount) || amount <= 0) {
+                alert("金額を入力してください");
+                return;
+              }
+
+              setTransactions((prev) =>
+                prev.map((t) =>
+                  t.id === editing.id
+                    ? { ...t, amount }
+                    : t
+                )
+              );
+
+              setEditing(null);
+              setEditingAmountStr("");
+            }}
+            style={{
+              marginTop: 10,
+              padding: "10px 14px",
+              borderRadius: 12,
+              border: "1px solid #111",
+              background: "#111",
+              color: "#fff",
+              fontWeight: 900,
+              cursor: "pointer",
+            }}
+          >
+            更新
+          </button>
+        </div>
+      )}
 
       <TransactionList
         transactions={transactions}
-        onEdit={startEdit}
+        onEdit={(t) => {
+          startEdit(t);
+          setEditingAmountStr(String(t.amount));
+        }}
         onDeleted={(id) => {
           setTransactions((prev) => prev.filter((t) => t.id !== id));
 

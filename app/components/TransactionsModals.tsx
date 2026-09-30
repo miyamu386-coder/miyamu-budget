@@ -105,6 +105,7 @@ type Props = {
     id: number,
     amount: number
   ) => void;
+  deleteTransaction: (id: number) => void;
   parseAmountLike: typeof import("../../lib/amount").parseAmountLike;
   makeId: typeof import("../../lib/ringUtils").makeId;
   ringCategory: typeof import("../../lib/ringUtils").ringCategory;
@@ -188,6 +189,7 @@ export default function TransactionsModals({
   saveQuickAdd,
   startEdit,
   updateTransactionAmount,
+  deleteTransaction,
   parseAmountLike,
   makeId,
   ringCategory,
@@ -346,6 +348,7 @@ export default function TransactionsModals({
           saveQuickAdd={saveQuickAdd}
           startEdit={startEdit}
           updateTransactionAmount={updateTransactionAmount}
+          deleteTransaction={deleteTransaction}
           parseAmountLike={parseAmountLike}
           makeId={makeId}
           ringCategory={ringCategory}

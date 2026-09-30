@@ -140,6 +140,17 @@ export default function TransactionsClient({
       )
     );
   };
+  const deleteTransaction = (
+    id: number
+  ) => {
+    setTransactions((prev) =>
+      prev.filter((t) => t.id !== id)
+    );
+
+    setEditing((current) =>
+      current?.id === id ? null : current
+    );
+  };
 
   // =========================
   // ✅ A案：
@@ -558,6 +569,7 @@ export default function TransactionsClient({
         saveQuickAdd={saveQuickAdd}
         startEdit={setEditing}
         updateTransactionAmount={updateTransactionAmount}
+        deleteTransaction={deleteTransaction}
         parseAmountLike={
           parseAmountLike
         }

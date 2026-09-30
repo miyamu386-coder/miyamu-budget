@@ -55,6 +55,7 @@ type Props = {
   parseAmountLike: (s: string) => number;
   makeId: () => string;
   ringCategory: (ringKey: string) => string;
+  deleteTransaction: (id: number) => void;
 };
 
 export default function QuickAddModal({
@@ -78,6 +79,7 @@ export default function QuickAddModal({
   saveQuickAdd,
   startEdit,
   updateTransactionAmount,
+  deleteTransaction,
   parseAmountLike,
   makeId,
   ringCategory,
@@ -220,38 +222,76 @@ export default function QuickAddModal({
                     fontSize: 16,
                   }}
                 />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const amount =
-                      parseAmountLike(editingAmountStr);
-
-                    if (amount <= 0) {
-                      alert("金額を入力してください");
-                      return;
-                    }
-
-                    updateTransactionAmount(
-                      editingTransaction.id,
-                      amount
-                    );
-
-                    setEditingTransaction(null);
-                    setEditingAmountStr("");
-                  }}
+                <div
                   style={{
+                    display: "flex",
+                    gap: 10,
                     marginTop: 10,
-                    padding: "10px 14px",
-                    borderRadius: 12,
-                    border: "1px solid #111",
-                    background: "#111",
-                    color: "#fff",
-                    fontWeight: 900,
-                    cursor: "pointer",
                   }}
                 >
-                  更新
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const amount =
+                        parseAmountLike(editingAmountStr);
+
+                      if (amount <= 0) {
+                        alert("金額を入力してください");
+                        return;
+                      }
+
+                      updateTransactionAmount(
+                        editingTransaction.id,
+                        amount
+                      );
+
+                      setEditingTransaction(null);
+                      setEditingAmountStr("");
+                    }}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 12,
+                      border: "1px solid #111",
+                      background: "#111",
+                      color: "#fff",
+                      fontWeight: 900,
+                      cursor: "pointer",
+                    }}
+                  >
+                    更新
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (
+                        !window.confirm(
+                          "この入力を削除しますか？"
+                        )
+                      ) {
+                        return;
+                      }
+
+                      deleteTransaction(
+                        editingTransaction.id
+                      );
+
+                      setEditingTransaction(null);
+                      setEditingAmountStr("");
+                    }}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 12,
+                      border: "1px solid #f2b3b3",
+                      background: "#fff0f0",
+                      color: "#b42318",
+                      fontWeight: 900,
+                      cursor: "pointer",
+                    }}
+                  >
+                    削除
+                  </button>
+                </div>
               </div>
             )}
 

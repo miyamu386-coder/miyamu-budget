@@ -22,16 +22,20 @@ export default function TransactionList({
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const remove = async (id: number) => {
-  if (deletingId === id) return;
+    if (deletingId === id) return;
 
-  setDeletingId(id);
+    if (!window.confirm("この入力を削除しますか？")) {
+      return;
+    }
 
-  try {
-    onDeleted(id);
-  } finally {
-    setDeletingId(null);
-  }
-};
+    setDeletingId(id);
+
+    try {
+      onDeleted(id);
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
     <div>
