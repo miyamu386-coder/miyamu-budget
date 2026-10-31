@@ -838,6 +838,7 @@ export default function TransactionsClient({
           exportBackup={exportBackup}
           importFileRef={importFileRef}
           importBackup={importBackup}
+          transactions={transactions}
         />
       )}
 

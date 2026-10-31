@@ -1,5 +1,4 @@
 "use client";
-
 import {
     useEffect,
     useState,
@@ -10,6 +9,8 @@ import {
     isSoundEnabled,
     setSoundEnabled,
 } from "../../lib/sound";
+import MakerCashFlowView from "./MakerCashFlowView";
+import type { Transaction } from "../types";
 
 type Props = {
     exportBackup: () => void;
@@ -17,16 +18,18 @@ type Props = {
     importBackup: (
         file: File
     ) => Promise<void>;
+    transactions: Transaction[];
 };
 
 export default function MakerMyPageView({
     exportBackup,
     importFileRef,
     importBackup,
+    transactions,
 }: Props) {
     const [view, setView] =
         useState<
-            "menu" | "settings" | "about"
+            "menu" | "settings" | "about" | "cashflow"
         >("menu");
 
     const [soundEnabled, setSoundEnabledState] =
@@ -37,6 +40,39 @@ export default function MakerMyPageView({
             isSoundEnabled()
         );
     }, []);
+
+    if (view === "cashflow") {
+        return (
+            <section
+                style={{
+                    maxWidth: 1200,
+                    margin: "0 auto",
+                    padding: "24px 0 110px",
+                }}
+            >
+                <button
+                    type="button"
+                    onClick={() => setView("menu")}
+                    style={buttonStyle}
+                >
+                    ← マイページへ戻る
+                </button>
+
+                <h2
+                    style={{
+                        margin: "20px 0",
+                        fontSize: 24,
+                        fontWeight: 800,
+                        textAlign: "center",
+                    }}
+                >
+                    キャッシュフロー
+                </h2>
+
+                <MakerCashFlowView transactions={transactions} />
+            </section>
+        );
+    }
 
     if (view === "settings") {
         return (
@@ -204,6 +240,16 @@ export default function MakerMyPageView({
                     gap: 12,
                 }}
             >
+                {/* ✅ キャッシュフロー */}
+                <button
+                    type="button"
+                    onClick={() => setView("cashflow")}
+                    style={buttonStyle}
+                >
+                    キャッシュフロー
+                </button>
+
+                {/* 既存のバックアップ */}
                 <button
                     type="button"
                     onClick={exportBackup}
