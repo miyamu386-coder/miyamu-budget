@@ -25,17 +25,17 @@ type CashFlowRow = {
 const incomeRows: CashFlowRow[] = [
   {
     id: "income1",
-    label: "収入①",
+    label: "本人の収入",
     type: "income",
   },
   {
     id: "income2",
-    label: "収入②",
+    label: "家族の収入",
     type: "income",
   },
   {
     id: "temporaryIncome",
-    label: "一時的な収入",
+    label: "臨時収入（還付金等）",
     type: "income",
   },
 ];
@@ -86,6 +86,7 @@ type FamilyMember = {
 type CashFlowData = {
   family: FamilyMember[];
   events: Record<string, string>;
+  targetFunds: Record<string, number>;
   values: Record<string, Record<string, number>>;
   initialBalance: number;
 };
@@ -103,6 +104,7 @@ function createInitialData(): CashFlowData {
       })
     ),
     events: {},
+    targetFunds: {},
     values: {},
     initialBalance: 0,
   };
@@ -210,6 +212,7 @@ export default function MakerCashFlowView({
             ? parsed.family.slice(0, 4)
             : createInitialData().family,
           events: parsed.events ?? {},
+          targetFunds: parsed.targetFunds ?? {},
           values: parsed.values ?? {},
         });
       }
@@ -763,6 +766,54 @@ export default function MakerCashFlowView({
                 </td>
               ))}
             </tr>
+                        {/* ライフイベントの必要資金 */}
+            <tr>
+              <th style={labelStyle}>
+                必要資金（目標）
+              </th>
+
+              {yearList.map((year) => (
+                <td
+                  key={year}
+                  style={cellStyle}
+                >
+                  <input
+                    type="number"
+                    min="0"
+                    value={
+                      data.targetFunds[
+                        String(year)
+                      ] ?? ""
+                    }
+                    onChange={(event) => {
+                      const value =
+                        event.target.value;
+
+                      const amount =
+                        value === ""
+                          ? 0
+                          : Number(value);
+
+                      if (
+                        !Number.isFinite(amount) ||
+                        amount < 0
+                      ) {
+                        return;
+                      }
+
+                      setData((prev) => ({
+                        ...prev,
+                        targetFunds: {
+                          ...prev.targetFunds,
+                          [String(year)]: amount,
+                        },
+                      }));
+                    }}
+                    style={inputStyle}
+                  />
+                </td>
+              ))}
+            </tr>
 
             {incomeRows.map(
               renderMoneyRow
@@ -795,6 +846,49 @@ export default function MakerCashFlowView({
               "balance",
               "#f8e6f4"
             )}
+                        {/* 必要資金と貯蓄残高の差額 */}
+            <tr>
+              <th
+                style={{
+                  ...labelStyle,
+                  background: "#fff4df",
+                }}
+              >
+                目標との差額
+              </th>
+
+              {calculations.map((item) => {
+                const target =
+                  data.targetFunds[
+                    String(item.year)
+                  ];
+
+                const difference =
+                  target === undefined
+                    ? null
+                    : item.balance - target;
+
+                return (
+                  <td
+                    key={item.year}
+                    style={{
+                      ...cellStyle,
+                      background: "#fff4df",
+                      fontWeight: 800,
+                      color:
+                        difference !== null &&
+                        difference < 0
+                          ? "#c62828"
+                          : "#222",
+                    }}
+                  >
+                    {difference === null
+                      ? "—"
+                      : formatMoney(difference)}
+                  </td>
+                );
+              })}
+            </tr>
           </tbody>
         </table>
       </div>
