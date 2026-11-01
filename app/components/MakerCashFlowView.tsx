@@ -4,11 +4,12 @@ import { aggregateCashFlow } from "./cashFlowUtils";
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
 const START_YEAR = 2026;
-const YEARS = 21;
+const YEARS = 40;
 
 const yearList = Array.from(
   { length: YEARS },
@@ -156,11 +157,36 @@ export default function MakerCashFlowView({
 
   const [loaded, setLoaded] =
     useState(false);
-    // メーカーの取引実績を年別に集計
-const actualTotals = useMemo(
-  () => aggregateCashFlow(transactions),
-  [transactions]
-);
+
+  // =========================
+  // キャッシュフロー拡大・縮小
+  // =========================
+  const [scale, setScale] = useState(1);
+
+  const tableContainerRef =
+    useRef<HTMLDivElement>(null);
+
+  const pinchRef = useRef<{
+    distance: number;
+    scale: number;
+  } | null>(null);
+
+  const lastTapRef = useRef(0);
+
+  const MIN_SCALE = 0.5;
+  const MAX_SCALE = 2;
+
+  const clampScale = (value: number) =>
+    Math.min(
+      MAX_SCALE,
+      Math.max(MIN_SCALE, value)
+    );
+
+  // メーカーの取引実績を年別に集計
+  const actualTotals = useMemo(
+    () => aggregateCashFlow(transactions),
+    [transactions]
+  );
 
   // =========================
   // 保存データ読込
@@ -225,7 +251,7 @@ const actualTotals = useMemo(
   ) => {
     return (
       data.values[rowId]?.[
-        String(year)
+      String(year)
       ] ?? 0
     );
   };
@@ -276,9 +302,9 @@ const actualTotals = useMemo(
         (member, i) =>
           i === index
             ? {
-                ...member,
-                [field]: value,
-              }
+              ...member,
+              [field]: value,
+            }
             : member
       ),
     }));
@@ -343,7 +369,7 @@ const actualTotals = useMemo(
             min="0"
             value={
               data.values[row.id]?.[
-                String(year)
+              String(year)
               ] ?? ""
             }
             onChange={(event) =>
@@ -397,6 +423,83 @@ const actualTotals = useMemo(
       ))}
     </tr>
   );
+  // =========================
+  // ピンチ操作
+  // =========================
+  const getTouchDistance = (
+    touches: React.TouchList
+  ) => {
+    const dx =
+      touches[0].clientX -
+      touches[1].clientX;
+
+    const dy =
+      touches[0].clientY -
+      touches[1].clientY;
+
+    return Math.hypot(dx, dy);
+  };
+
+  const handleTouchStart = (
+    event: React.TouchEvent<HTMLDivElement>
+  ) => {
+    if (event.touches.length === 2) {
+      pinchRef.current = {
+        distance: getTouchDistance(event.touches),
+        scale,
+      };
+      return;
+    }
+
+    if (event.touches.length === 1) {
+      const target = event.target as HTMLElement;
+
+      if (
+        target.closest(
+          "input, textarea, button, select"
+        )
+      ) {
+        return;
+      }
+
+      const now = Date.now();
+
+      if (now - lastTapRef.current < 300) {
+        setScale(1);
+        lastTapRef.current = 0;
+      } else {
+        lastTapRef.current = now;
+      }
+    }
+  };
+
+  const handleTouchMove = (
+    event: React.TouchEvent<HTMLDivElement>
+  ) => {
+    if (
+      event.touches.length !== 2 ||
+      !pinchRef.current
+    ) {
+      return;
+    }
+
+    const distance =
+      getTouchDistance(event.touches);
+
+    const nextScale =
+      pinchRef.current.scale *
+      (distance / pinchRef.current.distance);
+
+    setScale(clampScale(nextScale));
+  };
+
+  const handleTouchEnd = (
+    event: React.TouchEvent<HTMLDivElement>
+  ) => {
+    if (event.touches.length < 2) {
+      pinchRef.current = null;
+    }
+  };
 
   if (!loaded) {
     return (
@@ -471,11 +574,16 @@ const actualTotals = useMemo(
       </div>
 
       <div
+        ref={tableContainerRef}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
         style={{
-          overflowX: "auto",
+          overflow: "auto",
           borderRadius: 12,
-          border:
-            "1px solid #ddd",
+          border: "1px solid #ddd",
+          touchAction: "pan-x pan-y",
         }}
       >
         <table
@@ -485,6 +593,7 @@ const actualTotals = useMemo(
             borderSpacing: 0,
             width: "max-content",
             fontSize: 13,
+            zoom: scale,
           }}
         >
           <thead>
@@ -533,9 +642,8 @@ const actualTotals = useMemo(
                 <tr key={index}>
                   <th style={labelStyle}>
                     <input
-                      placeholder={`家族${
-                        index + 1
-                      }`}
+                      placeholder={`家族${index + 1
+                        }`}
                       value={
                         member.name
                       }
@@ -562,8 +670,8 @@ const actualTotals = useMemo(
                         member.age === ""
                           ? ""
                           : Number(
-                              member.age
-                            ) + yearIndex;
+                            member.age
+                          ) + yearIndex;
 
                       return (
                         <td
@@ -571,7 +679,7 @@ const actualTotals = useMemo(
                           style={cellStyle}
                         >
                           {yearIndex ===
-                          0 ? (
+                            0 ? (
                             <input
                               type="number"
                               min="0"
@@ -617,7 +725,7 @@ const actualTotals = useMemo(
                   <textarea
                     value={
                       data.events[
-                        String(year)
+                      String(year)
                       ] ?? ""
                     }
                     onChange={(
