@@ -322,7 +322,68 @@ export default function MakerCashFlowView({
       },
     }));
   };
+  // =========================
+  // 収支メーカーの年間実績を反映
+  // =========================
+  const applyActualTotals = () => {
+    const year = 2026;
+    const totals = actualTotals[year];
 
+    if (!totals) {
+      window.alert(
+        "2026年の取引実績がありません。"
+      );
+      return;
+    }
+
+    const rows = [
+      ...incomeRows,
+      ...expenseRows,
+    ];
+
+    const changes = rows
+      .filter((row) => totals[row.id as keyof typeof totals] !== undefined)
+      .map((row) => ({
+        id: row.id,
+        label: row.label,
+        amount: totals[row.id as keyof typeof totals] ?? 0,
+      }));
+
+    const message = [
+      "2026年の実績を反映します。",
+      "",
+      ...changes.map(
+        (item) =>
+          `${item.label}：${formatMoney(item.amount)}円`
+      ),
+      "",
+      "既存の2026年の入力金額は上書きされます。",
+      "2027年以降の入力内容は変更しません。",
+      "",
+      "反映しますか？",
+    ].join("\n");
+
+    if (!window.confirm(message)) {
+      return;
+    }
+
+    setData((prev) => {
+      const values = { ...prev.values };
+
+      for (const row of rows) {
+        values[row.id] = {
+          ...values[row.id],
+          [String(year)]:
+            totals[row.id as keyof typeof totals] ?? 0,
+        };
+      }
+
+      return {
+        ...prev,
+        values,
+      };
+    });
+  };
   // =========================
   // 家族情報更新
   // =========================
@@ -647,6 +708,43 @@ export default function MakerCashFlowView({
             </div>
           ))
         )}ß
+      </div>
+            <div
+        style={{
+          marginBottom: 20,
+          padding: 16,
+          borderRadius: 14,
+          background: "#f8f1f8",
+        }}
+      >
+        <button
+          type="button"
+          onClick={applyActualTotals}
+          style={{
+            padding: "12px 20px",
+            borderRadius: 10,
+            border: "none",
+            background: "#222",
+            color: "#fff",
+            fontSize: 14,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          2026年の実績を表に反映
+        </button>
+
+        <p
+          style={{
+            margin: "10px 0 0",
+            fontSize: 12,
+            color: "#666",
+          }}
+        >
+          収支メーカーの記録から年間実績を取得し、
+          2026年の入力欄へ反映します。
+          反映前に確認画面が表示されます。
+        </p>
       </div>
       <div
         ref={tableContainerRef}
