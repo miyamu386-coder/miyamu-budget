@@ -7,6 +7,7 @@ import {
   Filesystem,
 } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
+import { Capacitor } from "@capacitor/core";
 
 type MonthSummary = {
   income: number;
@@ -345,6 +346,28 @@ export async function openMonthlyPrintView({
 
     const fileName =
       `miyamu-report-${selectedYm}.html`;
+      // PWA・ブラウザ版ではHTMLファイルを直接保存する
+if (!Capacitor.isNativePlatform()) {
+  const blob = new Blob([html], {
+    type: "text/html;charset=utf-8",
+  });
+
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  window.setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 1000);
+
+  return;
+}
 
     await Filesystem.writeFile({
       path: fileName,
