@@ -189,7 +189,39 @@ export default function MakerCashFlowView({
     () => aggregateCashFlow(transactions),
     [transactions]
   );
+  // =========================
+  // 収支メーカーの年間実績
+  // =========================
+  const actualSummary = useMemo(() => {
+    return Object.entries(actualTotals)
+      .map(([year, categories]) => {
+        const income = incomeRows.reduce(
+          (sum, row) =>
+            sum +
+            (categories[
+              row.id as keyof typeof categories
+            ] ?? 0),
+          0
+        );
 
+        const expense = expenseRows.reduce(
+          (sum, row) =>
+            sum +
+            (categories[
+              row.id as keyof typeof categories
+            ] ?? 0),
+          0
+        );
+
+        return {
+          year: Number(year),
+          income,
+          expense,
+          annualBalance: income - expense,
+        };
+      })
+      .sort((a, b) => a.year - b.year);
+  }, [actualTotals]);
   // =========================
   // 保存データ読込
   // =========================
@@ -766,7 +798,7 @@ export default function MakerCashFlowView({
                 </td>
               ))}
             </tr>
-                        {/* ライフイベントの必要資金 */}
+            {/* ライフイベントの必要資金 */}
             <tr>
               <th style={labelStyle}>
                 必要資金（目標）
@@ -782,7 +814,7 @@ export default function MakerCashFlowView({
                     min="0"
                     value={
                       data.targetFunds[
-                        String(year)
+                      String(year)
                       ] ?? ""
                     }
                     onChange={(event) => {
@@ -846,7 +878,7 @@ export default function MakerCashFlowView({
               "balance",
               "#f8e6f4"
             )}
-                        {/* 必要資金と貯蓄残高の差額 */}
+            {/* 必要資金と貯蓄残高の差額 */}
             <tr>
               <th
                 style={{
@@ -860,7 +892,7 @@ export default function MakerCashFlowView({
               {calculations.map((item) => {
                 const target =
                   data.targetFunds[
-                    String(item.year)
+                  String(item.year)
                   ];
 
                 const difference =
@@ -877,7 +909,7 @@ export default function MakerCashFlowView({
                       fontWeight: 800,
                       color:
                         difference !== null &&
-                        difference < 0
+                          difference < 0
                           ? "#c62828"
                           : "#222",
                     }}

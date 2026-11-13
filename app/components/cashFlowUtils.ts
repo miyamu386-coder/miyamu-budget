@@ -17,6 +17,25 @@ export type CashFlowTotals = Record<
     Partial<Record<CashFlowCategory, number>>
 >;
 
+// =========================
+// キャッシュフロー対象外の取引
+// =========================
+function isTransfer(
+    transaction: Transaction
+): boolean {
+    const detail = (
+        transaction.detailCategory ?? ""
+    ).trim();
+
+    return (
+        transaction.category === "ring:save" ||
+        detail === "口座振替"
+    );
+}
+
+// =========================
+// 取引の分類
+// =========================
 function classifyTransaction(
     transaction: Transaction
 ): CashFlowCategory {
@@ -75,17 +94,28 @@ function classifyTransaction(
     return "other";
 }
 
+// =========================
+// 年間実績の集計
+// =========================
 export function aggregateCashFlow(
     transactions: Transaction[]
 ): CashFlowTotals {
     const totals: CashFlowTotals = {};
 
     for (const transaction of transactions) {
+        // 貯蓄・口座振替は集計対象外
+        if (isTransfer(transaction)) {
+            continue;
+        }
+
         const year = Number(
             transaction.occurredAt.slice(0, 4)
         );
 
-        if (!Number.isInteger(year)) {
+        if (
+            !Number.isInteger(year) ||
+            year < 2026
+        ) {
             continue;
         }
 
