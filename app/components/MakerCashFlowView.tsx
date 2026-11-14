@@ -190,39 +190,6 @@ export default function MakerCashFlowView({
     [transactions]
   );
   // =========================
-  // 収支メーカーの年間実績
-  // =========================
-  const actualSummary = useMemo(() => {
-    return Object.entries(actualTotals)
-      .map(([year, categories]) => {
-        const income = incomeRows.reduce(
-          (sum, row) =>
-            sum +
-            (categories[
-              row.id as keyof typeof categories
-            ] ?? 0),
-          0
-        );
-
-        const expense = expenseRows.reduce(
-          (sum, row) =>
-            sum +
-            (categories[
-              row.id as keyof typeof categories
-            ] ?? 0),
-          0
-        );
-
-        return {
-          year: Number(year),
-          income,
-          expense,
-          annualBalance: income - expense,
-        };
-      })
-      .sort((a, b) => a.year - b.year);
-  }, [actualTotals]);
-  // =========================
   // 保存データ読込
   // =========================
   useEffect(() => {
@@ -670,46 +637,6 @@ export default function MakerCashFlowView({
       </div>
 
       <div
-        style={{
-          marginBottom: 20,
-          padding: 16,
-          borderRadius: 14,
-          background: "#f0f7ff",
-        }}
-      >
-        <h3>収支メーカーの年間実績</h3>
-
-        {actualSummary.length === 0 ? (
-          <p>集計対象の取引がありません。</p>
-        ) : (
-          actualSummary.map((item) => (
-            <div
-              key={item.year}
-              style={{
-                marginBottom: 12,
-                paddingBottom: 12,
-                borderBottom: "1px solid #ddd",
-              }}
-            >
-              <strong>{item.year}年</strong>
-
-              <div>
-                収入：{formatMoney(item.income)}円
-              </div>
-
-              <div>
-                支出：{formatMoney(item.expense)}円
-              </div>
-
-              <div>
-                年間収支：
-                {formatMoney(item.annualBalance)}円
-              </div>
-            </div>
-          ))
-        )}ß
-      </div>
-            <div
         style={{
           marginBottom: 20,
           padding: 16,
